@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Location Calendar 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { background: #E5DCC6; }
+    ::selection { background: #54632F; color: #FBF7EC; }
+    [contenteditable] { outline: none; }
+    [contenteditable]:focus { box-shadow: 0 0 0 2px rgba(84,99,47,0.35); background: #FFFDF5; border-radius: 3px; }
+    .btn-hover:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 rgba(42,37,30,0.16) !important; }
+    .btn-hover:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 rgba(42,37,30,0.12) !important; }
+    .tile:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(42,37,30,0.12) !important; }
+    .ev-chip:hover { box-shadow: 0 2px 6px rgba(42,37,30,0.28); filter: brightness(1.03); }
+    .loc-row:hover { background: #F4EEDE !important; }
+    .month-link:hover { opacity: 0.65; }
+    .year-link:hover { color: #54632F !important; }
+    .del-btn:hover { background: #9C3B22 !important; color: #FBF7EC !important; border-color: #9C3B22 !important; }
+    .add-ev-btn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.16) !important; }
+    .add-ev-btn:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 rgba(42,37,30,0.12) !important; }
+    .save-btn:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 rgba(42,37,30,0.18) !important; }
+    .save-btn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 rgba(42,37,30,0.12) !important; }
+    .close-btn:hover { background: #EFE7D2 !important; color: #2A251E !important; }
+    .tick-btn:hover { border-color: #54632F !important; background: #fff !important; }
+    .region-uk:hover { background: #54632F !important; color: #FBF7EC !important; }
+    .region-int:hover { background: #9E4B26 !important; color: #FBF7EC !important; }
+    .done-toggle:hover { background: #E4E8D0 !important; border-color: #54632F !important; }
+    .image-slot { position: relative; display: flex; align-items: center; justify-content: center; background: #EFE7D2; overflow: hidden; cursor: default; }
+    .image-slot.drag-over { background: #E4E8D0; outline: 2px dashed #54632F; }
+    .image-slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .image-slot .placeholder-text { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #A89A7C; letter-spacing: .06em; text-align: center; padding: 12px; pointer-events: none; z-index: 1; }
+    .image-slot .drop-hint { display: none; }
+    .image-slot:hover .drop-hint { display: block; }
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: auto; }
+    input:focus { border-color: #54632F !important; box-shadow: 0 0 0 2px rgba(84,99,47,0.22) !important; }
+    .kind-btn:hover { filter: brightness(0.97); }
+    .loc-pick:hover { border-color: #54632F !important; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
+const e = React.createElement;
+
+// ─── Storage ────────────────────────────────────────────────────────────────
+// This is the single "switch" for where saved data lives. Today it points at
+// the browser's local storage. To move to the cloud (Cloudflare R2) later, only
+// the insides of these functions change — nothing else in the app needs to.
+const STORAGE_VERSION = 1;
+const Storage = {
+  loadData() {
+    try {
+      const raw = localStorage.getItem('calendar:data');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.version !== STORAGE_VERSION) return null;
+      return parsed.data;
+    } catch (_) { return null; }
+  },
+  saveData(data) {
+    try { localStorage.setItem('calendar:data', JSON.stringify({ version: STORAGE_VERSION, data })); } catch (_) {}
+  },
+  clearData() {
+    try { localStorage.removeItem('calendar:data'); } catch (_) {}
+  },
+  loadImage(id) {
+    try { return localStorage.getItem('img:' + id); } catch (_) { return null; }
+  },
+  saveImage(id, dataUrl) {
+    try { localStorage.setItem('img:' + id, dataUrl); return true; } catch (_) { return false; }
+  },
+  removeImage(id) {
+    try { localStorage.removeItem('img:' + id); } catch (_) {}
+  },
+};
+
+// ─── Image Slot ───────────────────────────────────────────────────────────────
+function ImageSlot({ id, placeholder, height, style = {} }) {
+  const [src, setSrc] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  useEffect(() => {
+    const s = Storage.loadImage(id);
+    setSrc(s || null);
+  }, [id]);
+
+  const handleDrop = useCallback((ev) => {
+    ev.preventDefault(); setDragOver(false);
+    const file = ev.dataTransfer.files[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e2) => {
+      const dataUrl = e2.target.result;
+      setSrc(dataUrl);
+      Storage.saveImage(id, dataUrl);
+    };
+    reader.readAsDataURL(file);
+  }, [id]);
+
+  const handleClear = useCallback((ev) => {
+    ev.stopPropagation();
+    setSrc(null);
+    Storage.removeImage(id);
+  }, [id]);
+
+  return e('div', {
+    className: 'image-slot' + (dragOver ? ' drag-over' : ''),
+    style: { height, ...style },
+    onDragOver: (ev) => { ev.preventDefault(); setDragOver(true); },
+    onDragLeave: () => setDragOver(false),
+    onDrop: handleDrop,
+  },
+    src && e('img', { src, alt: '' }),
+    src && e('button', {
+      onClick: handleClear,
+      title: 'Remove image',
+      style: { position: 'absolute', top: 6, right: 6, zIndex: 10, width: 24, height: 24, background: 'rgba(42,37,30,0.6)', border: 'none', color: '#FBF7EC', borderRadius: '50%', cursor: 'pointer', fontSize: 13, lineHeight: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+    }, '×'),
+    !src && e('div', { className: 'placeholder-text' },
+      e('div', null, '↓ drop a photo'),
+      e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } }, placeholder)
+    )
+  );
+}
+
+// ─── Editable text field ──────────────────────────────────────────────────────
+// An inline click-to-edit box. The trick: while you're typing, the page does NOT
+// redraw this box (which is what used to throw the cursor to the start and make
+// text appear backwards). It only saves your change once you click away (blur).
+function Editable({ tag = 'div', value, onCommit, title, style, className }) {
+  const ref = useRef(null);
+  // Put the starting text in once when the box first appears (or when it's
+  // pointed at a different location), without touching it again while editing.
+  useEffect(() => {
+    if (ref.current && ref.current.textContent !== (value || '')) {
+      ref.current.textContent = value || '';
+    }
+  }, []);
+  const handleBlur = () => {
+    const text = ref.current ? ref.current.textContent : '';
+    if (text !== value) onCommit(text);
+  };
+  return e(tag, {
+    ref,
+    contentEditable: true,
+    suppressContentEditableWarning: true,
+    onBlur: handleBlur,
+    title, style, className,
+  });
+}
+
+// ─── Data ─────────────────────────────────────────────────────────────────────
+function makeData() {
+  return [
+    {
+      key:'jan', name:'January', year:2026, dow:4, days:31, featured:'lake-district',
+      tagline:'Frost, low sun and the quiet months on the fells.',
+      sunrise:'08:00', sunset:'16:20', daylightNote:'≈ 8 h daylight · long golden hours',
+      heroId:'hero-jan26', heroPlaceholder:'Derwentwater at first light — drop your hero shot',
+      heroNote:'Shoot dawn · still water & mist',
+      locations:[
+        { id:'lake-district', region:'UK', name:'Lake District', tag:'Fells & tarns',
+          where:'Cumbria, North-West England', postcode:'CA12 5UE',
+          idea:'Snow-dusted fells mirrored in Derwentwater, the lone tree at Buttermere, and the long sweep of Catbells at dawn.',
+          when:'Late Dec–Feb for snow on the tops. First light (~08:00) for still water and valley mist.',
+          kit:'24–70mm · 70–200mm · Sturdy tripod · Polariser · ND grad · Lens cloths' },
+        { id:'leith-hill', region:'UK', name:'Leith Hill', tag:'Inversions',
+          where:'Surrey Hills AONB, England', postcode:'RH5 6LU',
+          idea:'A sea of fog over the Weald from the tower, layered ridgelines, and bluebells in the woods come spring.',
+          when:'Autumn & winter dawns for temperature inversions. Arrive 45 min before sunrise.',
+          kit:'70–200mm · Tripod · Head-torch · Flask — it\'s cold up top' },
+        { id:'puzzlewood', region:'UK', name:'Puzzlewood', tag:'Ancient wood',
+          where:'Forest of Dean, Gloucestershire', postcode:'GL16 8QB',
+          idea:'Moss-draped boulders and twisted roots, shafts of light through the canopy, intimate woodland tangles.',
+          when:'Overcast days or just after rain for saturated greens. Avoid harsh midday sun.',
+          kit:'16–35mm · Polariser · Tripod · Knee pads' },
+        { id:'lofoten', region:'INT', name:'Lofoten Islands', tag:'Aurora',
+          where:'Nordland, Norway · Reine / Hamnøy', postcode:'8390',
+          idea:'Aurora over the red rorbuer cabins, jagged peaks rising from the sea, the classic Hamnøy bridge.',
+          when:'Late Sep–Mar for aurora. Clear, dark nights — ideally near the new moon.',
+          kit:'14–24mm f/2.8 · Tripod · Spare batteries · Intervalometer · Hand-warmers' },
+      ],
+      events:[
+        { id:'e-jan-1', type:'day', day:3, kind:'fullmoon', label:'Wolf Moon' },
+        { id:'e-jan-2', type:'range', start:3, end:4, kind:'meteor', label:'Quadrantids' },
+        { id:'e-jan-3', type:'day', day:18, kind:'newmoon', label:'New Moon' },
+        { id:'e-jan-4', type:'range', start:26, end:31, kind:'nature', label:'Snowdrops emerging' },
+      ],
+    },
+    {
+      key:'feb', name:'February', year:2026, dow:0, days:28, featured:'glencoe',
+      tagline:'Storm season on the coast, snow lingering up north.',
+      sunrise:'07:20', sunset:'17:15', daylightNote:'≈ 10 h daylight · the light returns',
+      heroId:'hero-feb26', heroPlaceholder:'Buachaille Etive Mòr in snow — drop your hero shot',
+      heroNote:'Watch the weather windows',
+      locations:[
+        { id:'glencoe', region:'UK', name:'Glencoe', tag:'Winter peaks',
+          where:'Highlands, Scotland', postcode:'PH49 4HX',
+          idea:'The Three Sisters under snow, Buachaille Etive Mòr above the falls, Lochan na h-Achlaise reflections.',
+          when:'Dec–Mar for snow. Dawn light on the Buachaille; chase the clearing storms.',
+          kit:'24–70mm · 70–200mm · Tripod · ND grads · Full waterproofs · Microspikes' },
+        { id:'porthcawl', region:'UK', name:'Porthcawl', tag:'Storm seas',
+          where:'Bridgend, South Wales', postcode:'CF36 3YT',
+          idea:'Storm waves exploding over the lighthouse at high tide, long-exposure seascapes, the old breakwater.',
+          when:'Winter storms on a spring high tide. Shoot 1–2 hrs either side of high water, into the sunset.',
+          kit:'24–70mm · Weather-sealed body · ND filters · Lens cloths · Waterproofs' },
+        { id:'dolomites', region:'INT', name:'Dolomites', tag:'Alpenglow',
+          where:'South Tyrol, Italy · Val Gardena', postcode:'39048',
+          idea:'Snow-clad spires at alpenglow, the Seceda ridgeline, lone huts beneath a field of stars.',
+          when:'Winter for snow and alpenglow at sunrise & sunset. Clear skies for the Milky Way later in spring.',
+          kit:'16–35mm · 70–200mm · Tripod · Warm gloves · Crampons · Spare batteries' },
+      ],
+      events:[
+        { id:'e-feb-1', type:'day', day:1, kind:'fullmoon', label:'Snow Moon' },
+        { id:'e-feb-2', type:'day', day:17, kind:'newmoon', label:'New Moon' },
+        { id:'e-feb-3', type:'range', start:14, end:28, kind:'nature', label:'Snowdrops in bloom' },
+      ],
+    },
+    {
+      key:'mar', name:'March', year:2026, dow:0, days:31, featured:'farndale',
+      tagline:'Daffodils, the equinox and the return of long evenings.',
+      sunrise:'06:20', sunset:'18:00', daylightNote:'≈ 12 h daylight · equal day & night',
+      heroId:'hero-mar26', heroPlaceholder:'Farndale daffodils at dawn — drop your hero shot',
+      heroNote:'Soft overcast or golden hour',
+      locations:[
+        { id:'farndale', region:'UK', name:'Farndale', tag:'Daffodils',
+          where:'North York Moors, England', postcode:'YO62 7UY',
+          idea:'Wild daffodils lining the River Dove, the daffodil walk to Church Houses, dawn mist over the dale.',
+          when:'Mid–late March into early April for the daffodils. Soft overcast, or golden-hour low light.',
+          kit:'24–70mm · 100mm macro · Polariser · Tripod' },
+        { id:'galloway', region:'UK', name:'Galloway Dark Sky Park', tag:'Dark sky',
+          where:'Dumfries & Galloway, Scotland', postcode:'DG7 3SQ',
+          idea:'The Milky Way arching over Clatteringshaws Loch, star trails, aurora to the north on active nights.',
+          when:'Around the new moon (mid–late Mar) for the darkest skies. Clear, moonless nights.',
+          kit:'14–24mm f/2.8 · Tripod · Intervalometer · Red head-torch · Dew heater' },
+        { id:'jokulsarlon', region:'INT', name:'Jökulsárlón', tag:'Ice & aurora',
+          where:'Vatnajökull, Iceland', postcode:'781',
+          idea:'Icebergs stranded on Diamond Beach, aurora mirrored in the lagoon, blue-hour ice.',
+          when:'Through March for aurora and ice. Blue hour and full dark.',
+          kit:'14–24mm · 24–70mm · Tripod · Waterproof boots · Head-torch · Spare batteries' },
+      ],
+      events:[
+        { id:'e-mar-1', type:'day', day:3, kind:'eclipse', label:'Total lunar eclipse' },
+        { id:'e-mar-2', type:'day', day:19, kind:'newmoon', label:'New Moon' },
+        { id:'e-mar-3', type:'range', start:18, end:31, kind:'nature', label:'Daffodils — Farndale' },
+        { id:'e-mar-4', type:'day', day:20, kind:'season', label:'Spring equinox' },
+        { id:'e-mar-5', type:'day', day:29, kind:'season', label:'Clocks forward' },
+      ],
+    },
+    {
+      key:'apr', name:'April', year:2026, dow:3, days:30, featured:'micheldever',
+      tagline:'Bluebells, blossom and waterfalls in full spate.',
+      sunrise:'06:05', sunset:'20:10', daylightNote:'≈ 14 h daylight · soft blossom light',
+      heroId:'hero-apr26', heroPlaceholder:'Micheldever bluebells at dawn — drop your hero shot',
+      heroNote:'Backlit at sunrise · misty woodland',
+      locations:[
+        { id:'micheldever', region:'UK', name:'Micheldever Wood', tag:'Bluebells',
+          where:'Hampshire, England', postcode:'SO21 3AR',
+          idea:'A haze of bluebells under straight beech trunks, low sun raking through the trees, intimate woodland details.',
+          when:'Late Apr into early May for peak bloom. First light for backlight and mist; overcast for saturated colour.',
+          kit:'24–70mm · 70–200mm · Polariser · Tripod · Knee pads' },
+        { id:'brecon-falls', region:'UK', name:'Waterfall Country', tag:'Waterfalls',
+          where:'Brecon Beacons, South Wales', postcode:'CF44 9JF',
+          idea:'Sgwd yr Eira behind its curtain of water, mossy gorges in fresh green, long-exposure cascades after rain.',
+          when:'Spring snowmelt and rain for full flow. Overcast days for even light and silky water.',
+          kit:'16–35mm · Polariser · 6-stop ND · Tripod · Waterproofs · Microfibre cloths' },
+        { id:'keukenhof', region:'INT', name:'Dutch Tulip Fields', tag:'Tulips',
+          where:'Lisse, Netherlands', postcode:'2161',
+          idea:'Ribbons of red and yellow tulips to the horizon, a lone windmill, drone-flat graphic colour blocks.',
+          when:'Mid-Apr to early May for peak bloom. Dawn for calm air and soft side-light.',
+          kit:'24–70mm · 70–200mm · Polariser · Tripod · Drone (where permitted)' },
+      ],
+      events:[
+        { id:'e-apr-1', type:'day', day:2, kind:'fullmoon', label:'Pink Moon' },
+        { id:'e-apr-2', type:'day', day:17, kind:'newmoon', label:'New Moon' },
+        { id:'e-apr-3', type:'range', start:22, end:23, kind:'meteor', label:'Lyrids' },
+        { id:'e-apr-4', type:'range', start:20, end:30, kind:'nature', label:'Bluebells peaking' },
+      ],
+    },
+    {
+      key:'may', name:'May', year:2026, dow:5, days:31, featured:'skye',
+      tagline:'The first warm nights and the Milky Way\'s return.',
+      sunrise:'05:05', sunset:'21:00', daylightNote:'≈ 16 h daylight · short, dark-blue nights',
+      heroId:'hero-may26', heroPlaceholder:'The Old Man of Storr at dawn — drop your hero shot',
+      heroNote:'Pre-dawn climb · catch first light',
+      locations:[
+        { id:'skye', region:'UK', name:'Isle of Skye', tag:'Trotternish',
+          where:'Inner Hebrides, Scotland', postcode:'IV51 9HX',
+          idea:'First light on the Old Man of Storr, the Quiraing\'s folded ridges, Neist Point lighthouse at sunset.',
+          when:'May–Jun for long days and greenery before the midges. Dawn at the Storr, sunset at Neist.',
+          kit:'16–35mm · 24–70mm · Tripod · ND grads · Waterproofs · Head-torch' },
+        { id:'durdle-door', region:'UK', name:'Durdle Door', tag:'Sea arch',
+          where:'Jurassic Coast, Dorset', postcode:'BH20 5PU',
+          idea:'The Milky Way arching through the limestone arch, blue-hour seascapes, the sweep of the Jurassic Coast.',
+          when:'May–Jul for the galactic core. Around the new moon, clear nights, low light pollution to the south.',
+          kit:'14–24mm f/2.8 · Tripod · Intervalometer · Head-torch · Spare batteries' },
+        { id:'plitvice', region:'INT', name:'Plitvice Lakes', tag:'Waterfalls',
+          where:'Lika-Senj, Croatia', postcode:'53231',
+          idea:'Turquoise terraced lakes, boardwalks threading through waterfalls, lush spring canopy from above.',
+          when:'May–Jun for snowmelt flow and fresh leaf. Overcast for the colour; first entry to beat the crowds.',
+          kit:'16–35mm · 24–70mm · Polariser · ND filters · Tripod' },
+      ],
+      events:[
+        { id:'e-may-1', type:'day', day:1, kind:'fullmoon', label:'Flower Moon' },
+        { id:'e-may-2', type:'range', start:6, end:7, kind:'meteor', label:'Eta Aquariids' },
+        { id:'e-may-3', type:'day', day:16, kind:'newmoon', label:'New Moon' },
+        { id:'e-may-4', type:'range', start:10, end:31, kind:'nature', label:'Milky Way core season' },
+      ],
+    },
+    {
+      key:'jun', name:'June', year:2026, dow:1, days:30, featured:'farne',
+      tagline:'Solstice light, puffins and skies that never fully darken.',
+      sunrise:'04:40', sunset:'21:45', daylightNote:'≈ 17 h daylight · barely-dark solstice skies',
+      heroId:'hero-jun26', heroPlaceholder:'Puffins at Bamburgh — drop your hero shot',
+      heroNote:'Golden hour runs late · ~21:00',
+      locations:[
+        { id:'farne', region:'UK', name:'Farne Islands', tag:'Puffins',
+          where:'Northumberland Coast, England', postcode:'NE68 7SR',
+          idea:'Puffins with beaks full of sand eels, Bamburgh Castle above the dunes, terns wheeling over the boat.',
+          when:'Jun–Jul for breeding seabirds. Early boats for soft light; long evenings at the castle.',
+          kit:'100–400mm · 24–70mm · Fast shutter · Beanbag · Rain cover' },
+        { id:'glenfinnan', region:'UK', name:'Glenfinnan Viaduct', tag:'Steam train',
+          where:'Lochaber, Scottish Highlands', postcode:'PH37 4LT',
+          idea:'The Jacobite steam train curving across the viaduct in a plume of smoke, Loch Shiel beyond, hillside viewpoint.',
+          when:'May–Jul for greenery and timetabled steam runs. Arrive early for the viewpoint; check the day\'s schedule.',
+          kit:'24–70mm · 70–200mm · Tripod · Polariser · Midge net' },
+        { id:'faroe', region:'INT', name:'Faroe Islands', tag:'Sea cliffs',
+          where:'Sørvágur, Faroe Islands', postcode:'380',
+          idea:'The optical illusion of Sørvágsvatn hovering above the sea, the Drangarnir sea stacks, turf-roofed villages.',
+          when:'Jun–Jul for greenest hills and midnight light. Plan around fast-moving weather and the tides.',
+          kit:'16–35mm · 24–70mm · Tripod · ND grads · Full waterproofs · Lens cloths' },
+      ],
+      events:[
+        { id:'e-jun-1', type:'day', day:15, kind:'newmoon', label:'New Moon' },
+        { id:'e-jun-2', type:'day', day:21, kind:'season', label:'Summer solstice' },
+        { id:'e-jun-3', type:'range', start:1, end:30, kind:'nature', label:'Noctilucent cloud season' },
+        { id:'e-jun-4', type:'day', day:30, kind:'fullmoon', label:'Strawberry Moon' },
+      ],
+    },
+    {
+      key:'jul', name:'July', year:2026, dow:3, days:31, featured:'valensole',
+      tagline:'Lavender rows, warm coasts and the core riding high.',
+      sunrise:'05:00', sunset:'21:25', daylightNote:'≈ 16 h daylight · warm, late golden hours',
+      heroId:'hero-jul26', heroPlaceholder:'Valensole lavender at sunrise — drop your hero shot',
+      heroNote:'Dawn before the heat haze',
+      locations:[
+        { id:'valensole', region:'INT', name:'Valensole Plateau', tag:'Lavender',
+          where:'Provence, France', postcode:'04210',
+          idea:'Endless lavender rows leading to a lone stone farmhouse, golden light and bees, a cypress on the skyline.',
+          when:'Late Jun to mid-Jul before the harvest. Sunrise for calm air, low light and empty fields.',
+          kit:'24–70mm · 70–200mm · Polariser · Tripod · Insect repellent' },
+        { id:'kynance', region:'UK', name:'Kynance Cove', tag:'Turquoise coast',
+          where:'The Lizard, Cornwall', postcode:'TR12 7PJ',
+          idea:'Serpentine stacks in turquoise water, white sand at low tide, the Milky Way over the cove after dark.',
+          when:'Jul for warm seas and late light. Low tide for the beach; clear new-moon nights for the stars.',
+          kit:'16–35mm · 24–70mm · Polariser · Tripod · Tide table' },
+        { id:'malham', region:'UK', name:'Malham Cove', tag:'Limestone',
+          where:'Yorkshire Dales, England', postcode:'BD23 4DJ',
+          idea:'The great curved amphitheatre of limestone, the cracked pavement on top, swifts screaming overhead.',
+          when:'Summer for green dales and long evenings. Golden hour on the cove face; clear nights for stars above.',
+          kit:'16–35mm · 24–70mm · Tripod · Polariser · Head-torch' },
+      ],
+      events:[
+        { id:'e-jul-1', type:'day', day:14, kind:'newmoon', label:'New Moon' },
+        { id:'e-jul-2', type:'range', start:29, end:31, kind:'meteor', label:'Delta Aquariids' },
+        { id:'e-jul-3', type:'day', day:29, kind:'fullmoon', label:'Buck Moon' },
+        { id:'e-jul-4', type:'range', start:1, end:20, kind:'nature', label:'Lavender in bloom' },
+      ],
+    },
+    {
+      key:'aug', name:'August', year:2026, dow:6, days:31, featured:'n-spain',
+      tagline:'A total eclipse of the sun and heather on the moors.',
+      sunrise:'05:50', sunset:'20:30', daylightNote:'≈ 15 h daylight · true darkness returns',
+      heroId:'hero-aug26', heroPlaceholder:'Totality over northern Spain — drop your hero shot',
+      heroNote:'12 Aug · totality near sunset',
+      locations:[
+        { id:'n-spain', region:'INT', name:'Northern Spain', tag:'Total eclipse',
+          where:'Picos de Europa, Asturias', postcode:'33556',
+          idea:'The 12 Aug total solar eclipse low over the mountains near sunset, the diamond ring, a landscape plunged into twilight.',
+          when:'12 Aug 2026 — totality crosses northern Spain in the evening. Scout a clear western horizon days ahead.',
+          kit:'70–200mm · 16–35mm · Solar filter · Tripod · Intervalometer · Spare batteries' },
+        { id:'stanage', region:'UK', name:'Stanage Edge', tag:'Heather',
+          where:'Peak District, England', postcode:'S32 1DA',
+          idea:'Purple heather along the gritstone edge, abandoned millstones below, dawn cloud spilling over the moor.',
+          when:'Mid-Aug to early Sep for heather. Sunrise on the edge; clear nights for the Milky Way to the south.',
+          kit:'24–70mm · 16–35mm · Polariser · Tripod · Head-torch' },
+        { id:'harris', region:'UK', name:'Isle of Harris', tag:'White-sand beaches',
+          where:'Outer Hebrides, Scotland', postcode:'HS3 3HX',
+          idea:'Luskentyre\'s turquoise shallows and white sand, machair flowers behind the dunes, big Atlantic skies.',
+          when:'Aug for warm light and machair colour. Low tide for sand patterns; the late golden hour runs long.',
+          kit:'16–35mm · 24–70mm · Polariser · ND grads · Tripod' },
+      ],
+      events:[
+        { id:'e-aug-1', type:'day', day:12, kind:'eclipse', label:'Total solar eclipse' },
+        { id:'e-aug-2', type:'range', start:11, end:13, kind:'meteor', label:'Perseids' },
+        { id:'e-aug-3', type:'day', day:28, kind:'fullmoon', label:'Sturgeon Moon' },
+        { id:'e-aug-4', type:'range', start:15, end:31, kind:'nature', label:'Heather in bloom' },
+      ],
+    },
+    {
+      key:'sep', name:'September', year:2026, dow:2, days:30, featured:'rothiemurchus',
+      tagline:'Equinox, the first turning leaves and aurora\'s return.',
+      sunrise:'06:45', sunset:'19:20', daylightNote:'≈ 13 h daylight · equal day & night again',
+      heroId:'hero-sep26', heroPlaceholder:'Loch an Eilein reflections — drop your hero shot',
+      heroNote:'Still dawn · mirror reflections',
+      locations:[
+        { id:'rothiemurchus', region:'UK', name:'Loch an Eilein', tag:'Highland autumn',
+          where:'Cairngorms, Scotland', postcode:'PH22 1QP',
+          idea:'The ruined island castle mirrored in still water, ancient Caledonian pines turning, dawn mist on the loch.',
+          when:'Late Sep into Oct as the birches turn. Wind-still dawns for reflections; aurora to the north on clear nights.',
+          kit:'24–70mm · 70–200mm · Polariser · Tripod · Head-torch' },
+        { id:'corfe', region:'UK', name:'Corfe Castle', tag:'Misty ruins',
+          where:'Isle of Purbeck, Dorset', postcode:'BH20 5EZ',
+          idea:'The ruined castle floating above a sea of valley fog at sunrise, the steam railway passing below.',
+          when:'Sep–Oct mornings after a cold, still night. Reach the West Hill viewpoint before first light.',
+          kit:'70–200mm · 24–70mm · Tripod · Head-torch · Flask' },
+        { id:'bled', region:'INT', name:'Lake Bled', tag:'Alpine lake',
+          where:'Upper Carniola, Slovenia', postcode:'4260',
+          idea:'The island church wrapped in dawn mist, the clifftop castle, golden hillsides reflected in still water.',
+          when:'Late Sep–Oct for autumn colour and morning mist. Dawn from Mala Osojnica for the classic view.',
+          kit:'24–70mm · 70–200mm · Tripod · Polariser · Head-torch' },
+      ],
+      events:[
+        { id:'e-sep-1', type:'day', day:11, kind:'newmoon', label:'New Moon' },
+        { id:'e-sep-2', type:'day', day:23, kind:'season', label:'Autumn equinox' },
+        { id:'e-sep-3', type:'day', day:26, kind:'fullmoon', label:'Harvest Moon' },
+        { id:'e-sep-4', type:'range', start:23, end:30, kind:'nature', label:'First autumn colour' },
+      ],
+    },
+    {
+      key:'oct', name:'October', year:2026, dow:4, days:31, featured:'westonbirt',
+      tagline:'Peak colour, raking light and the clocks falling back.',
+      sunrise:'07:30', sunset:'18:10', daylightNote:'≈ 11 h daylight · low, raking autumn light',
+      heroId:'hero-oct26', heroPlaceholder:'Westonbirt in peak colour — drop your hero shot',
+      heroNote:'Backlit maples · mid-morning',
+      locations:[
+        { id:'westonbirt', region:'UK', name:'Westonbirt Arboretum', tag:'Autumn colour',
+          where:'Gloucestershire, England', postcode:'GL8 8QS',
+          idea:'Japanese maples glowing backlit, leaf-carpeted avenues, intimate abstracts of red, orange and gold.',
+          when:'Mid–late Oct for peak colour. Backlight mid-morning; overcast and after rain for saturated tones.',
+          kit:'70–200mm · 100mm macro · Polariser · Tripod' },
+        { id:'new-forest', region:'UK', name:'New Forest', tag:'Woodland & ponies',
+          where:'Hampshire, England', postcode:'SO43 7GN',
+          idea:'Ponies in golden bracken, mist between ancient oaks, fungi on the woodland floor, low sun through the canopy.',
+          when:'Oct–Nov for colour, mist and fungi. Dawn for atmosphere; overcast for woodland detail.',
+          kit:'24–70mm · 100–400mm · 100mm macro · Tripod · Kneeling mat' },
+        { id:'dolomites-larch', region:'INT', name:'Lago di Braies', tag:'Golden larches',
+          where:'South Tyrol, Italy', postcode:'39030',
+          idea:'Turquoise lake beneath snow-dusted peaks, wooden rowing boats at the jetty, golden larches on the slopes.',
+          when:'Early–mid Oct as the larches turn. Dawn for first light on the peaks and a calm, empty shoreline.',
+          kit:'16–35mm · 24–70mm · Polariser · ND grads · Tripod · Warm layers' },
+      ],
+      events:[
+        { id:'e-oct-1', type:'day', day:10, kind:'newmoon', label:'New Moon' },
+        { id:'e-oct-2', type:'range', start:21, end:22, kind:'meteor', label:'Orionids' },
+        { id:'e-oct-3', type:'day', day:25, kind:'season', label:'Clocks back' },
+        { id:'e-oct-4', type:'day', day:26, kind:'fullmoon', label:'Hunter\'s Moon' },
+        { id:'e-oct-5', type:'range', start:14, end:31, kind:'nature', label:'Peak autumn colour' },
+      ],
+    },
+    {
+      key:'nov', name:'November', year:2026, dow:0, days:30, featured:'mam-tor',
+      tagline:'Fog, frost and a million starlings at dusk.',
+      sunrise:'07:25', sunset:'16:15', daylightNote:'≈ 9 h daylight · long shadows all day',
+      heroId:'hero-nov26', heroPlaceholder:'Mam Tor above the cloud — drop your hero shot',
+      heroNote:'Dawn inversions · arrive early',
+      locations:[
+        { id:'mam-tor', region:'UK', name:'Mam Tor', tag:'Cloud inversions',
+          where:'Peak District, England', postcode:'S33 8WA',
+          idea:'The ridge rising from a sea of valley fog at sunrise, the winding Great Ridge path, frost on the grass.',
+          when:'Nov mornings after a cold, still, damp night. Hike up in the dark for first light above the cloud.',
+          kit:'24–70mm · 70–200mm · Tripod · Head-torch · Gloves · Flask' },
+        { id:'ham-wall', region:'UK', name:'Ham Wall', tag:'Murmurations',
+          where:'Somerset Levels, England', postcode:'BA6 9SX',
+          idea:'Tens of thousands of starlings swirling against a pink dusk before they drop into the reedbeds to roost.',
+          when:'Nov–Jan, the half-hour before dusk. Check roost reports; arrive an hour early and read the wind.',
+          kit:'24–70mm · 70–200mm · Fast shutter or slow blur · Tripod · Wellingtons' },
+        { id:'abisko', region:'INT', name:'Abisko', tag:'Aurora',
+          where:'Swedish Lapland, Sweden', postcode:'981 07',
+          idea:'The aurora through the Lapporten valley, reflections in Torneträsk, snow-laden birches under a green sky.',
+          when:'Nov–Mar for aurora; Abisko\'s rain shadow keeps skies clear. Dark, clear nights away from the village lights.',
+          kit:'14–24mm f/2.8 · Tripod · Spare batteries · Intervalometer · Hand-warmers · Down layers' },
+      ],
+      events:[
+        { id:'e-nov-1', type:'day', day:9, kind:'newmoon', label:'New Moon' },
+        { id:'e-nov-2', type:'range', start:17, end:18, kind:'meteor', label:'Leonids' },
+        { id:'e-nov-3', type:'day', day:24, kind:'fullmoon', label:'Beaver Moon' },
+        { id:'e-nov-4', type:'range', start:1, end:30, kind:'nature', label:'Starling murmurations' },
+      ],
+    },
+    {
+      key:'dec', name:'December', year:2026, dow:2, days:31, featured:'castlerigg',
+      tagline:'Snow, the longest nights and the year\'s best meteors.',
+      sunrise:'08:10', sunset:'15:50', daylightNote:'≈ 8 h daylight · long, low golden hours',
+      heroId:'hero-dec26', heroPlaceholder:'Castlerigg under the stars — drop your hero shot',
+      heroNote:'Solstice · stars over the stones',
+      locations:[
+        { id:'castlerigg', region:'UK', name:'Castlerigg Stone Circle', tag:'Solstice & stars',
+          where:'Keswick, Lake District', postcode:'CA12 4RN',
+          idea:'The ancient circle ringed by snow-capped fells, star trails wheeling overhead, frost and low solstice light.',
+          when:'Dec for snow, frost and the longest nights. Dawn and dusk for warm light; clear nights for stars.',
+          kit:'16–35mm · 24–70mm · Tripod · Intervalometer · Head-torch · Gloves' },
+        { id:'loch-morlich', region:'UK', name:'Loch Morlich', tag:'Snow & pines',
+          where:'Cairngorms, Scotland', postcode:'PH22 1QU',
+          idea:'Snow-laden Scots pines along the shore, the white Cairngorm plateau beyond, a beach under winter light.',
+          when:'Dec–Feb for snow on the hills. Dawn for alpenglow on the plateau; still days for loch reflections.',
+          kit:'24–70mm · 70–200mm · Tripod · Polariser · Microspikes · Warm layers' },
+        { id:'lapland', region:'INT', name:'Finnish Lapland', tag:'Snow & aurora',
+          where:'Saariselkä, Finland', postcode:'99830',
+          idea:'Snow-crusted spruce "snow ghosts", aurora over frozen fells, pastel polar twilight in the middle of the day.',
+          when:'Dec–Mar for deep snow and aurora. Only a few hours of blue daylight; long, dark nights for the lights.',
+          kit:'14–24mm f/2.8 · 24–70mm · Tripod · Spare batteries · Hand-warmers · Expedition layers' },
+      ],
+      events:[
+        { id:'e-dec-1', type:'day', day:9, kind:'newmoon', label:'New Moon' },
+        { id:'e-dec-2', type:'range', start:13, end:14, kind:'meteor', label:'Geminids' },
+        { id:'e-dec-3', type:'day', day:21, kind:'season', label:'Winter solstice' },
+        { id:'e-dec-4', type:'range', start:22, end:23, kind:'meteor', label:'Ursids' },
+        { id:'e-dec-5', type:'day', day:24, kind:'fullmoon', label:'Cold Moon' },
+      ],
+    },
+  ];
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const EVENT_STYLE = {
+  fullmoon: { glyph: '●', bg: '#E6E3D4', fg: '#3A4259', accent: '#3A4259' },
+  newmoon:  { glyph: '○', bg: '#E6E3D4', fg: '#3B3526', accent: '#6E6450' },
+  meteor:   { glyph: '✦', bg: '#F1E4C6', fg: '#8A5A1B', accent: '#C7902F' },
+  eclipse:  { glyph: '◐', bg: '#EFD9CB', fg: '#9C3B22', accent: '#9C3B22' },
+  nature:   { glyph: '',  bg: '#DEE3C5', fg: '#46562E', accent: '#5A6B2F' },
+  season:   { glyph: '',  bg: '#E5E2D2', fg: '#5A513B', accent: '#9A8C6E' },
+  photoop:  { glyph: '◉', bg: '#2A251E', fg: '#FBF7EC', accent: '#C7902F' },
+};
+
+const KIND_ORDER = ['photoop','fullmoon','newmoon','meteor','eclipse','nature','season'];
+const KIND_LABEL = { photoop:'Photo op', fullmoon:'Full moon', newmoon:'New moon', meteor:'Meteor', eclipse:'Eclipse', nature:'Nature', season:'Season window' };
+
+// ─── Calendar grid builder ─────────────────────────────────────────────────────
+function buildWeeks(month, weekStart = 'Monday') {
+  const leading = weekStart === 'Sunday' ? month.dow : (month.dow + 6) % 7;
+  const cells = [];
+  for (let i = 0; i < leading; i++) cells.push(null);
+  for (let d = 1; d <= month.days; d++) cells.push(d);
+  while (cells.length % 7) cells.push(null);
+
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    const slice = cells.slice(i, i + 7);
+    const present = slice.filter(x => x != null);
+    if (!present.length) { weeks.push({ days: slice.map(d => ({ day: '', inMonth: false })), items: [] }); continue; }
+    const wkStart = present[0], wkEnd = present[present.length - 1];
+    const raw = [];
+    for (const ev of month.events) {
+      const s = ev.start != null ? ev.start : ev.day;
+      const e2 = ev.end != null ? ev.end : ev.day;
+      if (e2 < wkStart || s > wkEnd) continue;
+      const segS = Math.max(s, wkStart), segE = Math.min(e2, wkEnd);
+      const colStart = slice.indexOf(segS), colEnd = slice.indexOf(segE);
+      if (colStart === -1 || colEnd === -1) continue;
+      raw.push({ ev, colStart, colEnd, contRight: e2 > wkEnd });
+    }
+    raw.sort((a, b) => a.colStart - b.colStart || (b.colEnd - b.colStart) - (a.colEnd - a.colStart));
+    const lanes = [];
+    for (const it of raw) {
+      let placed = false;
+      for (let li = 0; li < lanes.length; li++) {
+        if (lanes[li].every(o => it.colStart > o.colEnd || it.colEnd < o.colStart)) {
+          lanes[li].push(it); it.lane = li; placed = true; break;
+        }
+      }
+      if (!placed) { it.lane = lanes.length; lanes.push([it]); }
+    }
+    const items = raw.map(it => {
+      const ev = it.ev;
+      const st = EVENT_STYLE[ev.kind] || EVENT_STYLE.season;
+      return {
+        id: ev.id,
+        ev,
+        label: ev.label,
+        glyph: st.glyph,
+        hasGlyph: !!st.glyph,
+        left: (it.colStart / 7 * 100).toFixed(4) + '%',
+        width: ((it.colEnd - it.colStart + 1) / 7 * 100).toFixed(4) + '%',
+        top: (30 + it.lane * 23) + 'px',
+        bg: st.bg, fg: st.fg, accent: st.accent,
+        contRight: it.contRight,
+      };
+    });
+    weeks.push({ days: slice.map(d => ({ day: d == null ? '' : String(d), inMonth: d != null })), items });
+  }
+  return weeks;
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+function App() {
+  const [data, setData] = useState(() => Storage.loadData() || makeData());
+  const [yearView, setYearView] = useState(true);
+  const [monthIdx, setMonthIdx] = useState(0);
+  const [selectedLoc, setSelectedLoc] = useState('lake-district');
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [draggingLoc, setDraggingLoc] = useState(null);
+  const [dragOverLoc, setDragOverLoc] = useState(null);
+  const [weekStart] = useState('Monday');
+  const [showEvents] = useState(true);
+  const [heroFraming] = useState('Matted print');
+  const uidRef = useRef(100);
+
+  // Save the calendar (locations, events, edits, ordering, ticked-off spots)
+  // every time anything changes, so it survives a page reload.
+  useEffect(() => { Storage.saveData(data); }, [data]);
+
+  const month = data[Math.min(monthIdx, data.length - 1)];
+  const matted = heroFraming === 'Matted print';
+
+  const goToYear = () => setYearView(true);
+  const goToMonth = (idx, locId) => {
+    const m = data[idx];
+    if (!m) return;
+    setYearView(false);
+    setMonthIdx(idx);
+    setSelectedLoc(locId || (m.locations[0] ? m.locations[0].id : null));
+  };
+  const goToJan = () => goToMonth(0, null);
+  const changeMonth = (dir) => {
+    const n = data.length;
+    const pos = yearView ? 0 : (monthIdx + 1);
+    const next = (pos + dir + n + 1) % (n + 1);
+    if (next === 0) { setYearView(true); return; }
+    const idx = next - 1;
+    const first = data[idx].locations[0];
+    setYearView(false);
+    setMonthIdx(idx);
+    setSelectedLoc(first ? first.id : null);
+  };
+
+  const mutateData = (fn) => setData(prev => { const d = prev.map(m => ({ ...m, locations: m.locations.map(l => ({ ...l })), events: m.events.map(e2 => ({ ...e2 })) })); fn(d); return d; });
+
+  const addLocation = () => {
+    uidRef.current++;
+    const id = 'loc-' + Date.now() + '-' + uidRef.current;
+    mutateData(d => {
+      d[monthIdx].locations.push({ id, region:'UK', name:'New location', tag:'New spot', done:false, where:'Where is it?', postcode:'—', idea:'Describe the shot you have in mind — what makes this spot worth the trip.', when:'Best season, time of day and conditions to aim for.', kit:'Lens · Tripod' });
+    });
+    setSelectedLoc(id);
+  };
+
+  const deleteLocation = (id) => {
+    let nextSel = null;
+    mutateData(d => {
+      const locs = d[monthIdx].locations;
+      const i = locs.findIndex(l => l.id === id);
+      if (i === -1) return;
+      locs.splice(i, 1);
+      const next = locs[i] || locs[i - 1] || null;
+      nextSel = next ? next.id : null;
+    });
+    setSelectedLoc(nextSel);
+  };
+
+  const toggleRegion = (id) => {
+    mutateData(d => {
+      const loc = d[monthIdx].locations.find(l => l.id === id);
+      if (loc) loc.region = loc.region === 'UK' ? 'INT' : 'UK';
+    });
+  };
+
+  const toggleDone = (id) => {
+    mutateData(d => {
+      const loc = d[monthIdx].locations.find(l => l.id === id);
+      if (loc) loc.done = !loc.done;
+    });
+  };
+
+  const reorderLoc = (fromId, toId) => {
+    if (!fromId || fromId === toId) return;
+    mutateData(d => {
+      const arr = d[monthIdx].locations;
+      const fromI = arr.findIndex(l => l.id === fromId);
+      const toI = arr.findIndex(l => l.id === toId);
+      if (fromI === -1 || toI === -1) return;
+      const [moved] = arr.splice(fromI, 1);
+      arr.splice(toI, 0, moved);
+    });
+  };
+
+  const editField = (locId, field, value) => {
+    mutateData(d => {
+      const loc = d[monthIdx].locations.find(l => l.id === locId);
+      if (loc) loc[field] = value;
+    });
+  };
+
+  const addEvent = () => {
+    uidRef.current++;
+    const id = 'ev-new-' + uidRef.current;
+    mutateData(d => { d[monthIdx].events.push({ id, type:'range', start:1, end:3, kind:'nature', label:'New event' }); });
+    setEditingEvent({ id, label:'New event', start:'1', end:'3', kind:'nature', locId:null, isNew:true });
+  };
+
+  const openEventEditor = (evId) => {
+    const ev = month.events.find(e2 => e2.id === evId);
+    if (!ev) return;
+    const s = ev.start != null ? ev.start : ev.day;
+    const e2 = ev.end != null ? ev.end : ev.day;
+    setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, locId: ev.locId || null, isNew: false });
+  };
+
+  const saveEvent = () => {
+    if (!editingEvent) return;
+    const d2 = editingEvent;
+    mutateData(d => {
+      const ev = d[monthIdx].events.find(e2 => e2.id === d2.id);
+      if (!ev) return;
+      let s = parseInt(d2.start, 10); if (isNaN(s)) s = 1;
+      let e2 = parseInt(d2.end, 10); if (isNaN(e2)) e2 = s;
+      const days = d[monthIdx].days;
+      s = Math.max(1, Math.min(days, s));
+      e2 = Math.max(s, Math.min(days, e2));
+      ev.start = s; ev.end = e2; ev.day = s;
+      ev.type = s === e2 ? 'day' : 'range';
+      ev.kind = d2.kind;
+      if (d2.kind === 'photoop') {
+        ev.locId = d2.locId || null;
+        const loc = d[monthIdx].locations.find(l => l.id === ev.locId);
+        ev.label = loc ? loc.name : (d2.label || 'Photo op');
+      } else {
+        ev.locId = undefined;
+        ev.label = (d2.label || '').trim() || 'Untitled event';
+      }
+    });
+    setEditingEvent(null);
+  };
+
+  const deleteEvent = () => {
+    if (!editingEvent) return;
+    const evId = editingEvent.id;
+    mutateData(d => {
+      const events = d[monthIdx].events;
+      const i = events.findIndex(e2 => e2.id === evId);
+      if (i !== -1) events.splice(i, 1);
+    });
+    setEditingEvent(null);
+  };
+
+  const schedulePhotoOp = (locId) => {
+    const loc = month.locations.find(l => l.id === locId);
+    if (!loc) return;
+    uidRef.current++;
+    const id = 'ev-new-' + uidRef.current;
+    mutateData(d => { d[monthIdx].events.push({ id, type:'day', start:1, end:1, day:1, kind:'photoop', locId, label:loc.name }); });
+    setEditingEvent({ id, label:loc.name, start:'1', end:'1', kind:'photoop', locId, isNew:true });
+  };
+
+  const setDraftKind = (k) => {
+    setEditingEvent(prev => {
+      if (!prev) return prev;
+      const patch = { kind: k };
+      if (k === 'photoop' && !prev.locId) {
+        patch.locId = month.locations[0] ? month.locations[0].id : null;
+      }
+      return { ...prev, ...patch };
+    });
+  };
+
+  const sel = month.locations.find(l => l.id === selectedLoc) || null;
+  const featured = month.locations.find(l => l.id === month.featured) || month.locations[0] || null;
+  const weeks = buildWeeks(month, weekStart);
+  const doneCount = month.locations.filter(l => l.done).length;
+
+  const draft = editingEvent;
+  let draftView = null;
+  if (draft) {
+    const isPhotoOp = draft.kind === 'photoop';
+    const st = EVENT_STYLE[draft.kind] || EVENT_STYLE.season;
+    let pLabel;
+    if (isPhotoOp) { const loc = month.locations.find(l => l.id === draft.locId); pLabel = loc ? loc.name : 'Pick a location'; }
+    else { pLabel = (draft.label && draft.label.trim()) ? draft.label : 'Untitled event'; }
+    draftView = { ...draft, ...st, previewLabel: pLabel, isPhotoOp, isNormal: !isPhotoOp, heading: draft.isNew ? (isPhotoOp ? 'New photo op' : 'New event') : (isPhotoOp ? 'Edit photo op' : 'Edit event') };
+  }
+
+  const totalLocs = data.reduce((a, m2) => a + m2.locations.length, 0);
+  const ukLocs = data.reduce((a, m2) => a + m2.locations.filter(l => l.region === 'UK').length, 0);
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
+  const BtnBase = { height:40, border:'1px solid #2A251E', cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.12em', textTransform:'uppercase', boxShadow:'3px 3px 0 rgba(42,37,30,0.12)' };
+  const GreenBtn = { ...BtnBase, background:'#54632F', color:'#FBF7EC', display:'inline-flex', alignItems:'center', gap:9, padding:'0 17px' };
+  const WhiteBtn = { ...BtnBase, background:'#FBF7EC', color:'#2A251E', fontSize:19, width:40, fontFamily:"'Spectral',serif" };
+
+  const dot = (color) => e('span', { style:{ width:9, height:9, borderRadius:'50%', background:color, display:'inline-block' } });
+  const Divider = () => e('span', { style:{ width:1, height:28, background:'#D2C7AC', margin:'0 4px' } });
+
+  // Nav buttons shared
+  const navRow = (showYearBtn) => e('div', { style:{ display:'flex', gap:9, alignItems:'center' } },
+    showYearBtn && e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' 2026'),
+    showYearBtn && e(Divider),
+    e('button', { className:'btn-hover', onClick:()=>changeMonth(-1), style:WhiteBtn }, '‹'),
+    e('button', { className:'btn-hover', onClick:()=>changeMonth(1), style:WhiteBtn }, '›'),
+    !showYearBtn && e(Divider),
+    !showYearBtn && e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→')),
+    showYearBtn && e(Divider),
+    showYearBtn && e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), ' Add location')
+  );
+
+  const regionLegend = () => e('div', { style:{ display:'flex', gap:16, alignItems:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', color:'#6E6450' } },
+    e('span', { style:{ display:'flex', alignItems:'center', gap:7 } }, dot('#54632F'), 'UK'),
+    e('span', { style:{ display:'flex', alignItems:'center', gap:7 } }, dot('#9E4B26'), 'INTERNATIONAL')
+  );
+
+  // ─── Year page ────────────────────────────────────────────────────────────
+  const renderYearPage = () => e('div', null,
+    // Header
+    e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:24, flexWrap:'wrap' } },
+      e('div', null,
+        e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
+        e('div', { style:{ display:'flex', alignItems:'flex-end', gap:18, marginTop:4 } },
+          e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'clamp(64px,11vw,104px)', lineHeight:'0.82', color:'#2A251E', letterSpacing:'-0.015em' } }, '2026'),
+          e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:9, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
+            e('span', null, data.length + ' months'),
+            e('span', null, totalLocs + ' locations'),
+            e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
+          )
+        ),
+        e('div', { style:{ marginTop:12, fontSize:17, color:'#6E6450', maxWidth:'46ch', lineHeight:1.5 } }, 'A year of places to point a camera — frost on the fells, bluebells and lavender, a total eclipse, aurora and the longest nights. The plan, page by page.')
+      ),
+      e('div', { style:{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:14 } },
+        navRow(false),
+        regionLegend()
+      )
+    ),
+    e('div', { style:{ height:1, background:'#D2C7AC', margin:'22px 0 24px' } }),
+    // Hero
+    e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
+      e(ImageSlot, { id:'hero-2026', placeholder:'Your standout frame of 2026 — drop a hero shot', height: matted ? 404 : 430 })
+    ),
+    e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
+      e('div', { style:{ display:'flex', alignItems:'center', gap:10 } },
+        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'The year ahead'),
+        e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:16, fontWeight:600, color:'#2A251E' } }, 'Twelve frames, twelve months')
+      ),
+      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#8A7D63', letterSpacing:'.03em' } }, 'UK & international')
+    ),
+    // Month index
+    e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:40 } },
+      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'#8A7D63', whiteSpace:'nowrap' } }, 'The year, month by month'),
+      e('span', { style:{ flex:1, height:1, background:'#D2C7AC' } }),
+      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em', color:'#A89A7C' } }, totalLocs + ' locations')
+    ),
+    e('div', { style:{ marginTop:4 } },
+      data.map((m2, i) =>
+        e('div', { key: m2.key, style:{ display:'grid', gridTemplateColumns:'150px 1fr', gap:26, padding:'22px 0', borderTop:'1px solid #D2C7AC' } },
+          e('div', { className:'month-link', onClick:()=>goToMonth(i, null), role:'button', tabIndex:0, style:{ cursor:'pointer', alignSelf:'start' } },
+            e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, letterSpacing:'.12em', color:'#B7AD90' } }, String(i+1).padStart(2,'0')),
+            e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:24, fontWeight:700, color:'#2A251E', lineHeight:'1.02', marginTop:3 } }, m2.name),
+            e('div', { style:{ marginTop:9, fontSize:13, color:'#8A7D63', lineHeight:1.4 } }, m2.tagline),
+            e('div', { style:{ marginTop:11, fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.03em', color:'#54632F' } }, '↑ ' + m2.sunrise + '   ↓ ' + m2.sunset),
+            e('div', { style:{ marginTop:4, fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.06em', color:'#A89A7C' } }, m2.locations.length + (m2.locations.length === 1 ? ' spot' : ' spots'))
+          ),
+          e('div', null,
+            m2.locations.map((loc, j) =>
+              e('div', { key: loc.id },
+                j > 0 && e('div', { style:{ height:1, background:'#ECE3CD', marginLeft:26 } }),
+                e('div', { className:'loc-row', onClick:()=>goToMonth(i, loc.id), role:'button', tabIndex:0, style:{ display:'grid', gridTemplateColumns:'14px 1fr', gap:12, padding:'13px 10px 13px 0', cursor:'pointer', borderRadius:3 } },
+                  e('div', { style:{ paddingTop:6 } },
+                    e('span', { style:{ width:9, height:9, borderRadius:'50%', background: loc.region==='UK' ? '#54632F' : '#9E4B26', display:'inline-block' } })
+                  ),
+                  e('div', null,
+                    e('div', { style:{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' } },
+                      e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:17, fontWeight:600, color:'#2A251E' } }, loc.name),
+                      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71' } }, loc.tag),
+                      e('span', { style:{ fontSize:14, color:'#6E6450' } }, loc.where),
+                      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, padding:'2px 7px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#6E6450', letterSpacing:'.04em' } }, loc.postcode)
+                    ),
+                    e('div', { style:{ marginTop:6, fontSize:15, color:'#3B3528', lineHeight:1.5, maxWidth:'76ch' } }, loc.idea),
+                    e('div', { style:{ marginTop:7, display:'grid', gridTemplateColumns:'42px 1fr', gap:10, alignItems:'baseline', maxWidth:'76ch' } },
+                      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71' } }, 'When'),
+                      e('span', { style:{ fontSize:13.5, color:'#6E6450', lineHeight:1.45 } }, loc.when)
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    ),
+    e('div', { style:{ marginTop:24, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#A89A7C', letterSpacing:'.03em' } }, 'Tap a month or a location to jump straight to its page.')
+  );
+
+  // ─── Month page ────────────────────────────────────────────────────────────
+  const renderMonthPage = () => {
+    const isUK = (r) => r === 'UK';
+    const regionColor = (r) => isUK(r) ? '#54632F' : '#9E4B26';
+    const kitItems = sel ? sel.kit.split('·').map(s => s.trim()).filter(Boolean) : [];
+
+    return e('div', null,
+      // Header
+      e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
+        e('div', null,
+          e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
+          e('div', { style:{ display:'flex', alignItems:'baseline', gap:14, marginTop:6 } },
+            e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, month.name),
+            e('span', { className:'year-link', onClick:goToYear, role:'button', tabIndex:0, style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:26, fontWeight:500, color:'#A89A7C', cursor:'pointer' } }, String(month.year))
+          ),
+          e('div', { style:{ marginTop:8, fontSize:16, color:'#6E6450', maxWidth:'30ch' } }, month.tagline)
+        ),
+        e('div', { style:{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:14 } },
+          navRow(true),
+          regionLegend()
+        )
+      ),
+      e('div', { style:{ height:1, background:'#D2C7AC', margin:'22px 0 24px' } }),
+
+      // Hero
+      e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
+        e(ImageSlot, { id: month.heroId, placeholder: month.heroPlaceholder, height: matted ? 358 : 380 })
+      ),
+      e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
+        e('div', { style:{ display:'flex', alignItems:'center', gap:10 } },
+          e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Featured'),
+          featured && e('span', { style:{ width:8, height:8, borderRadius:'50%', background:regionColor(featured.region), display:'inline-block' } }),
+          e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:16, fontWeight:600, color:'#2A251E' } }, featured ? featured.name : '—')
+        ),
+        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#8A7D63', letterSpacing:'.03em' } }, month.heroNote)
+      ),
+
+      // Locations section header
+      e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:38 } },
+        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'#8A7D63', whiteSpace:'nowrap' } }, 'Locations this month'),
+        e('span', { style:{ flex:1, height:1, background:'#D2C7AC' } }),
+        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em', color:'#A89A7C' } }, month.locations.length + ' spots · ' + doneCount + ' done')
+      ),
+
+      // Tiles
+      e('div', { style:{ display:'flex', gap:14, marginTop:16, flexWrap:'wrap' } },
+        month.locations.map(l =>
+          e('div', {
+            key: l.id,
+            className: 'tile',
+            role: 'button', tabIndex: 0,
+            draggable: true,
+            onClick: () => setSelectedLoc(l.id),
+            onDragStart: (ev) => { setDraggingLoc(l.id); setDragOverLoc(null); try { ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setData('text/plain',l.id); } catch(_){} },
+            onDragOver: (ev) => { ev.preventDefault(); if (dragOverLoc !== l.id) setDragOverLoc(l.id); },
+            onDrop: (ev) => { ev.preventDefault(); reorderLoc(draggingLoc, l.id); setDraggingLoc(null); setDragOverLoc(null); },
+            onDragEnd: () => { setDraggingLoc(null); setDragOverLoc(null); },
+            style:{ position:'relative', width:170, textAlign:'left', background:'#FBF7EC', border:'1px solid #D2C7AC', padding:0, cursor:'pointer', fontFamily:"'Spectral',serif", overflow:'hidden', opacity: l.id===draggingLoc ? 0.4 : (l.done ? 0.72 : 1), transition:'transform .12s ease, box-shadow .12s ease, opacity .12s ease', boxShadow:'none' }
+          },
+            l.id === selectedLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px solid #2A251E', pointerEvents:'none', zIndex:5 } }),
+            l.id === dragOverLoc && l.id !== draggingLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px dashed #54632F', background:'rgba(84,99,47,0.08)', pointerEvents:'none', zIndex:5 } }),
+            e('div', { style:{ height:4, background: l.region==='UK' ? '#54632F' : '#9E4B26' } }),
+            e('div', { style:{ position:'relative', height:76, backgroundImage:'repeating-linear-gradient(135deg,#EFE7D2 0,#EFE7D2 7px,#E6DCC2 7px,#E6DCC2 14px)', display:'flex', alignItems:'flex-end', padding:'8px 10px', borderBottom:'1px solid #E0D6BE' } },
+              e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#B7AD90', cursor:'grab' } }, '⠿'),
+              l.done
+                ? e('button', { onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as not done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, lineHeight:1, border:'1.5px solid #54632F', background:'#54632F', color:'#FBF7EC' } }, '✓')
+                : e('button', { className:'tick-btn', onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', border:'1.5px solid #B3A988', background:'#FCFAF1' } }),
+              e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71' } }, l.tag)
+            ),
+            e('div', { style:{ padding:'10px 11px 12px' } },
+              e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:15, fontWeight:600, color: l.done ? '#A0987F' : '#2A251E', lineHeight:'1.15', minHeight:34, textDecoration: l.done ? 'line-through' : 'none', textDecorationColor:'#54632F' } }, l.name),
+              e('div', { style:{ marginTop:7, display:'flex', alignItems:'center', gap:7 } },
+                e('span', { style:{ width:7, height:7, borderRadius:'50%', background:regionColor(l.region), display:'inline-block' } }),
+                e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.08em', color:regionColor(l.region) } }, l.region==='UK' ? 'UK' : "INT'L")
+              )
+            )
+          )
+        )
+      ),
+
+      // Detail card
+      sel
+        ? e('div', { style:{ marginTop:18, background:'#FBF7EC', border:'1px solid #D2C7AC', boxShadow:'7px 7px 0 rgba(42,37,30,0.07)', position:'relative' } },
+            e('div', { style:{ height:5, background:regionColor(sel.region) } }),
+            e('div', { style:{ padding:'20px 22px 22px' } },
+              e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16 } },
+                e('div', { style:{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' } },
+                  e(Editable, { key:'name-'+sel.id, tag:'h2', value:sel.name, onCommit:(t)=>editField(sel.id,'name',t), title:'Click to edit', style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:27, color:'#2A251E', lineHeight:1, cursor:'text', outline:'none', borderRadius:3, padding:'2px 6px', margin:'-2px -6px' } }),
+                  sel.region==='UK'
+                    ? e('button', { className:'region-uk', onClick:()=>toggleRegion(sel.id), title:'Switch to International', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.12em', textTransform:'uppercase', padding:'4px 9px', background:'#E4E8D0', color:'#54632F', border:'1px solid #54632F', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 } }, 'UK ', e('span', { style:{ opacity:.6 } }, '⇄'))
+                    : e('button', { className:'region-int', onClick:()=>toggleRegion(sel.id), title:'Switch to UK', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.12em', textTransform:'uppercase', padding:'4px 9px', background:'#F1DECF', color:'#9E4B26', border:'1px solid #9E4B26', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 } }, 'International ', e('span', { style:{ opacity:.6 } }, '⇄'))
+                ),
+                e('button', { className:'close-btn', onClick:()=>setSelectedLoc(null), style:{ flex:'none', width:30, height:30, background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontSize:17, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
+              ),
+              e('div', { style:{ display:'flex', gap:24, marginTop:18, flexWrap:'wrap' } },
+                e('div', { style:{ flex:'0 0 300px', maxWidth:'100%' } },
+                  e(ImageSlot, { id: month.key + '-ref-' + sel.id, placeholder:'Drop a ' + month.name + ' reference shot', height:206, style:{ borderRadius:4, border:'1px solid #D2C7AC' } }),
+                  e('div', { style:{ marginTop:7, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.06em', color:'#A89A7C' } }, 'Reference / inspiration shot')
+                ),
+                e('div', { style:{ flex:1, minWidth:280 } },
+                  // Where
+                  e('div', { style:{ display:'grid', gridTemplateColumns:'74px 1fr', gap:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                    e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Where'),
+                    e('div', null,
+                      e(Editable, { key:'where-'+sel.id, tag:'div', value:sel.where, onCommit:(t)=>editField(sel.id,'where',t), title:'Click to edit', style:{ fontSize:15, color:'#2A251E', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } }),
+                      e(Editable, { key:'postcode-'+sel.id, tag:'span', value:sel.postcode, onCommit:(t)=>editField(sel.id,'postcode',t), title:'Click to edit', style:{ display:'inline-block', marginTop:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, padding:'3px 8px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#6E6450', letterSpacing:'.06em', cursor:'text', outline:'none' } })
+                    )
+                  ),
+                  // Idea
+                  e('div', { style:{ display:'grid', gridTemplateColumns:'74px 1fr', gap:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                    e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Idea'),
+                    e(Editable, { key:'idea-'+sel.id, tag:'div', value:sel.idea, onCommit:(t)=>editField(sel.id,'idea',t), title:'Click to edit', style:{ fontSize:15, color:'#3B3528', lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
+                  ),
+                  // When
+                  e('div', { style:{ display:'grid', gridTemplateColumns:'74px 1fr', gap:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                    e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'When'),
+                    e(Editable, { key:'when-'+sel.id, tag:'div', value:sel.when, onCommit:(t)=>editField(sel.id,'when',t), title:'Click to edit', style:{ fontSize:15, color:'#3B3528', lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
+                  ),
+                  // Kit
+                  e('div', { style:{ display:'grid', gridTemplateColumns:'74px 1fr', gap:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                    e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Kit'),
+                    e('div', { style:{ display:'flex', flexWrap:'wrap', gap:7 } },
+                      kitItems.map((k, i) => e('span', { key:i, style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, padding:'4px 9px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B' } }, k))
+                    )
+                  )
+                )
+              ),
+              // Footer
+              e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginTop:20, paddingTop:14, borderTop:'1px solid #E6DECA', flexWrap:'wrap' } },
+                e('div', { style:{ display:'flex', alignItems:'center', gap:9, flexWrap:'wrap' } },
+                  sel.done
+                    ? e('button', { onClick:()=>toggleDone(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer' } }, e('span', { style:{ fontSize:12, lineHeight:1 } }, '✓'), ' Completed')
+                    : e('button', { className:'done-toggle', onClick:()=>toggleDone(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #B3A988', color:'#5A6B2F', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer' } },
+                        e('span', { style:{ width:12, height:12, borderRadius:'50%', border:'1.5px solid currentColor', display:'inline-block' } }),
+                        ' Mark complete'
+                      ),
+                  e('button', { onClick:()=>schedulePhotoOp(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #2A251E', color:'#2A251E', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer' } },
+                    e('span', { style:{ fontSize:12, lineHeight:1, color:'#C7902F' } }, '◉'),
+                    ' Schedule photo op'
+                  )
+                ),
+                e('button', { className:'del-btn', onClick:()=>deleteLocation(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #D9B3A6', color:'#9C3B22', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer' } },
+                  e('span', { style:{ fontSize:13, lineHeight:1 } }, '✕'),
+                  ' Delete location'
+                )
+              )
+            )
+          )
+        : e('div', { style:{ marginTop:18, border:'1px dashed #C2B695', background:'#F1EBDB', padding:'16px 18px', fontFamily:"'IBM Plex Mono',monospace", fontSize:12, color:'#8A7D63', letterSpacing:'.02em' } }, 'Select a location above to open its shoot brief — where it is, the idea, the best timing, and the kit to pack.'),
+
+      // Calendar
+      e('div', { style:{ marginTop:40, background:'#FBF7EC', border:'1px solid #C9BD9F', boxShadow:'0 1px 0 #C9BFA4' } },
+        // Light strip header
+        e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:18, padding:'14px 18px', borderBottom:'1px solid #D2C7AC', background:'#F4EEDE', flexWrap:'wrap' } },
+          e('div', { style:{ display:'flex', gap:20, alignItems:'center', flexWrap:'wrap' } },
+            e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Typical light'),
+            e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:13, color:'#54632F', letterSpacing:'.02em' } }, '↑ ' + month.sunrise + '   ↓ ' + month.sunset),
+            e('span', { style:{ fontSize:13, color:'#9C8F71' } }, month.daylightNote)
+          ),
+          e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:16, fontWeight:600, color:'#7A6F58' } }, month.name + ' ' + month.year)
+        ),
+        // Weekday headers
+        e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', borderBottom:'1px solid #D2C7AC', background:'#F4EEDE' } },
+          (weekStart==='Sunday' ? ['S','M','T','W','T','F','S'] : ['M','T','W','T','F','S','S']).map((c, i) =>
+            e('div', { key:i, style:{ padding:'9px 0', textAlign:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#9C8F71' } }, c)
+          )
+        ),
+        // Weeks
+        weeks.map((wk, wi) =>
+          e('div', { key:wi, style:{ position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)', gridAutoRows:'minmax(120px,auto)', borderBottom:'1px solid #E2D9C2', backgroundImage:'repeating-linear-gradient(to right,#ECE3CD 0,#ECE3CD 1px,transparent 1px,transparent 14.2857%)' } },
+            wk.days.map((d, di) =>
+              e('div', { key:di, style:{ padding:'7px 9px' } },
+                d.inMonth && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, fontWeight:500, color:'#7A6F58' } }, d.day)
+              )
+            ),
+            wk.items.map(it =>
+              e('div', {
+                key: it.id,
+                title: it.label,
+                className: 'ev-chip',
+                onClick: () => openEventEditor(it.ev.id),
+                style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height:19, display:'flex', alignItems:'center', gap:5, padding:'0 6px', background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, fontWeight:500, lineHeight:1, whiteSpace:'nowrap', overflow:'hidden', cursor:'pointer' }
+              },
+                it.hasGlyph && e('span', { style:{ flex:'none' } }, it.glyph),
+                e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis' } }, it.label),
+                it.contRight && e('span', { style:{ flex:'none', marginLeft:'auto', paddingLeft:3 } }, '→')
+              )
+            )
+          )
+        ),
+        // Legend + Add event
+        showEvents && e('div', { style:{ display:'flex', alignItems:'center', gap:18, flexWrap:'wrap', padding:'12px 18px', borderTop:'1px solid #D2C7AC' } },
+          e('div', { style:{ display:'flex', gap:18, flexWrap:'wrap', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.05em', color:'#8A7D63' } },
+            e('span', { style:{ color:'#2A251E' } }, '◉ Photo op'),
+            e('span', { style:{ color:'#3A4259' } }, '● Full moon'),
+            e('span', null, '○ New moon'),
+            e('span', { style:{ color:'#8A5A1B' } }, '✦ Meteor shower'),
+            e('span', { style:{ color:'#9C3B22' } }, '◐ Eclipse'),
+            e('span', { style:{ color:'#54632F' } }, '▬ Season window')
+          ),
+          e('button', { className:'add-ev-btn', onClick:addEvent, style:{ marginLeft:'auto', display:'inline-flex', alignItems:'center', gap:6, padding:'6px 12px', background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.12)' } },
+            e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1 } }, '+'), ' Add event'
+          )
+        )
+      ),
+      e('div', { style:{ marginTop:18, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#A89A7C', letterSpacing:'.03em', display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' } },
+        e('span', null, 'Drag a tile to reorder · tick the circle to mark a spot done.'),
+        e('span', { style:{ color:'#C2B695' } }, '·'),
+        e('span', null, 'Click a tile for its brief · drop a photo on its slot.')
+      )
+    );
+  };
+
+  // ─── Event editor modal ────────────────────────────────────────────────────
+  const renderEventModal = () => {
+    if (!draft || !draftView) return null;
+    const kindOpts = KIND_ORDER.map(k => {
+      const st = EVENT_STYLE[k];
+      return { k, label:KIND_LABEL[k], ...st, sel: draft.kind===k };
+    });
+    const locOpts = month.locations.map(l => ({ ...l, sel: draft.locId===l.id }));
+
+    return e('div', { onClick:()=>setEditingEvent(null), style:{ position:'fixed', inset:0, background:'rgba(42,37,30,0.34)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:60 } },
+      e('div', { onClick:(ev)=>ev.stopPropagation(), style:{ width:392, maxWidth:'100%', background:'#FBF7EC', border:'1px solid #2A251E', boxShadow:'9px 9px 0 rgba(42,37,30,0.20)' } },
+        e('div', { style:{ height:5, background:draftView.accent } }),
+        e('div', { style:{ padding:'17px 20px 20px' } },
+          e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 } },
+            e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, draftView.heading),
+            e('button', { className:'close-btn', onClick:()=>setEditingEvent(null), style:{ width:28, height:28, background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontSize:16, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
+          ),
+          // Preview chip
+          e('div', { style:{ marginTop:15, display:'flex', alignItems:'center', gap:8, padding:'9px 11px', background:draftView.bg, color:draftView.fg, borderLeft:'3px solid '+draftView.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:500 } },
+            draftView.glyph && e('span', null, draftView.glyph),
+            e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, draftView.previewLabel)
+          ),
+          // Title or location picker
+          draftView.isNormal
+            ? e('div', { style:{ marginTop:16 } },
+                e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', marginBottom:6 } }, 'Title'),
+                e('input', { value:draft.label || '', onChange:(ev)=>setEditingEvent(p=>({...p,label:ev.target.value})), placeholder:'Event name', style:{ width:'100%', background:'#FFFDF5', border:'1px solid #C9BD9F', color:'#2A251E', fontFamily:"'Spectral',serif", fontSize:15, padding:'9px 11px', outline:'none' } })
+              )
+            : e('div', { style:{ marginTop:16 } },
+                e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', marginBottom:6 } }, 'Location card'),
+                e('div', { style:{ display:'flex', flexWrap:'wrap', gap:7 } },
+                  locOpts.map(lo =>
+                    e('button', { key:lo.id, className:'loc-pick', onClick:()=>setEditingEvent(p=>({...p,locId:lo.id})), style:{ position:'relative', display:'flex', alignItems:'center', gap:7, padding:'7px 11px', background:'#FFFDF5', color:'#2A251E', border:'1px solid '+(lo.sel?'#54632F':'#C9BD9F'), borderRadius:2, cursor:'pointer', fontFamily:"'Spectral',serif", fontSize:13 } },
+                      e('span', { style:{ width:8, height:8, borderRadius:'50%', background: lo.region==='UK' ? '#54632F' : '#9E4B26', display:'inline-block', flex:'none' } }),
+                      lo.name,
+                      lo.sel && e('span', { style:{ position:'absolute', top:-6, right:-6, width:17, height:17, borderRadius:'50%', background:'#2A251E', border:'1px solid #2A251E', color:'#FBF7EC', fontSize:10, lineHeight:'15px', textAlign:'center' } }, '✓')
+                    )
+                  )
+                )
+              ),
+          // Start / End day
+          e('div', { style:{ marginTop:14, display:'flex', gap:12 } },
+            e('div', { style:{ flex:1 } },
+              e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', marginBottom:6 } }, 'Start day'),
+              e('input', { type:'number', min:1, max:month.days, value:draft.start, onChange:(ev)=>setEditingEvent(p=>({...p,start:ev.target.value})), style:{ width:'100%', background:'#FFFDF5', border:'1px solid #C9BD9F', color:'#2A251E', fontFamily:"'IBM Plex Mono',monospace", fontSize:15, padding:'9px 11px', outline:'none' } })
+            ),
+            e('div', { style:{ flex:1 } },
+              e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', marginBottom:6 } }, 'End day'),
+              e('input', { type:'number', min:1, max:month.days, value:draft.end, onChange:(ev)=>setEditingEvent(p=>({...p,end:ev.target.value})), style:{ width:'100%', background:'#FFFDF5', border:'1px solid #C9BD9F', color:'#2A251E', fontFamily:"'IBM Plex Mono',monospace", fontSize:15, padding:'9px 11px', outline:'none' } })
+            )
+          ),
+          e('div', { style:{ marginTop:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#A89A7C', letterSpacing:'.04em' } }, month.name + ' · days 1–' + month.days),
+          // Type
+          e('div', { style:{ marginTop:16 } },
+            e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', marginBottom:8 } }, 'Type'),
+            e('div', { style:{ display:'flex', flexWrap:'wrap', gap:8 } },
+              kindOpts.map(k =>
+                e('button', { key:k.k, className:'kind-btn', onClick:()=>setDraftKind(k.k), style:{ position:'relative', display:'flex', alignItems:'center', gap:7, padding:'6px 11px 6px 9px', background:k.bg, color:k.fg, border:'1px solid '+k.accent, borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.03em' } },
+                  e('span', { style:{ width:10, height:10, borderRadius:'50%', background:k.accent, display:'inline-block', flex:'none' } }),
+                  k.label,
+                  k.sel && e('span', { style:{ position:'absolute', top:-6, right:-6, width:17, height:17, borderRadius:'50%', background:'#FBF7EC', border:'1px solid #2A251E', color:'#2A251E', fontSize:10, lineHeight:'15px', textAlign:'center' } }, '✓')
+                )
+              )
+            )
+          ),
+          // Save / Delete
+          e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginTop:22, paddingTop:15, borderTop:'1px solid #E6DECA' } },
+            e('button', { className:'del-btn', onClick:deleteEvent, style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #D9B3A6', color:'#9C3B22', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 13px', cursor:'pointer' } },
+              e('span', { style:{ fontSize:13, lineHeight:1 } }, '✕'), ' Delete'
+            ),
+            e('button', { className:'save-btn', onClick:saveEvent, style:{ display:'inline-flex', alignItems:'center', gap:7, background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'9px 17px', cursor:'pointer', boxShadow:'3px 3px 0 rgba(42,37,30,0.14)' } }, 'Save event')
+          )
+        )
+      )
+    );
+  };
+
+  return e('div', { style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:'36px 26px 70px' } },
+    e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
+      yearView ? renderYearPage() : renderMonthPage(),
+      renderEventModal()
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(e(App));
+</script>
+</body>
+</html>
