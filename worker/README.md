@@ -14,14 +14,22 @@ Photo Calendar website to R2 cloud storage.
 | `BUCKET` | R2 bucket binding | the `photo-calendar` bucket |
 | `UPLOAD_PASSWORD` | Secret (encrypted) | a password only you know |
 
-## Deploy (dashboard, no command line)
+## Deploy via GitHub (recommended — auto-deploys on every push)
 
-1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Worker**.
-2. Name it `photo-calendar-storage`, create, then **Edit code**.
-3. Replace the starter code with the contents of `photo-storage-worker.js`, then **Deploy**.
-4. Worker → **Settings** → **Bindings** → add an **R2 bucket** binding:
-   variable name `BUCKET`, bucket `photo-calendar`.
-5. Worker → **Settings** → **Variables and Secrets** → add a **Secret** named
-   `UPLOAD_PASSWORD` with your chosen password.
-6. Copy the Worker's URL (looks like `https://photo-calendar-storage.<your-subdomain>.workers.dev`).
+The repo includes a `wrangler.toml` at the root, so Cloudflare can build and
+deploy this Worker automatically whenever the code changes.
+
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Worker** →
+   **Connect to Git** (Workers Builds).
+2. Pick the `taledd-dev/photo-calendar` repo and approve access.
+3. Cloudflare reads `wrangler.toml` automatically (Worker name, entry file, and
+   the `BUCKET` binding). Leave the build settings at their defaults and deploy.
+4. Worker → **Settings** → **Variables and Secrets** → add a **Secret** named
+   `UPLOAD_PASSWORD` with your chosen password. (Secrets are set here, never in
+   the repo, and they persist across auto-deploys.)
+5. Copy the Worker's URL (looks like
+   `https://photo-calendar-storage.<your-subdomain>.workers.dev`).
    This URL goes into the website config — it is **not** secret.
+
+After this is set up, any future change to `photo-storage-worker.js` that is
+pushed to GitHub redeploys the Worker automatically — no manual steps.

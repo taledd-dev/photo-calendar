@@ -1,0 +1,18 @@
+# Cloudflare Workers configuration for the photo-storage gatekeeper.
+#
+# This file tells Cloudflare how to deploy the Worker when the repo is
+# connected via "Workers Builds" (Connect to Git). On every push to GitHub,
+# Cloudflare reads this file and redeploys automatically.
+#
+# The secret password (UPLOAD_PASSWORD) is intentionally NOT here — it is set
+# by hand in the Cloudflare dashboard so it never appears in the code.
+
+name = "photo-calendar-storage"
+main = "worker/photo-storage-worker.js"
+compatibility_date = "2025-01-01"
+
+# Connect the Worker to the R2 bucket. Inside the code this appears as
+# env.BUCKET, and it points at the "photo-calendar" bucket you created.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "photo-calendar"
