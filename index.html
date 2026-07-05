@@ -1160,7 +1160,7 @@ function App() {
             onDragOver: (ev) => { ev.preventDefault(); if (dragOverLoc !== l.id) setDragOverLoc(l.id); },
             onDrop: (ev) => { ev.preventDefault(); reorderLoc(draggingLoc, l.id); setDraggingLoc(null); setDragOverLoc(null); },
             onDragEnd: () => { setDraggingLoc(null); setDragOverLoc(null); },
-            style:{ position:'relative', width:170, textAlign:'left', background:'#FBF7EC', border:'1px solid #D2C7AC', padding:0, cursor:'pointer', fontFamily:"'Spectral',serif", overflow:'hidden', opacity: l.id===draggingLoc ? 0.4 : (l.done ? 0.72 : 1), transition:'transform .12s ease, box-shadow .12s ease, opacity .12s ease', boxShadow:'none' }
+            style:{ position:'relative', width:170, textAlign:'left', background:'#FBF7EC', border:'1px solid #D2C7AC', padding:0, cursor:'pointer', fontFamily:"'Spectral',serif", overflow:'hidden', opacity: l.id===draggingLoc ? 0.4 : 1, transition:'transform .12s ease, box-shadow .12s ease, opacity .12s ease', boxShadow:'none' }
           },
             l.id === selectedLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px solid #2A251E', pointerEvents:'none', zIndex:5 } }),
             l.id === dragOverLoc && l.id !== draggingLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px dashed #54632F', background:'rgba(84,99,47,0.08)', pointerEvents:'none', zIndex:5 } }),
@@ -1173,7 +1173,7 @@ function App() {
               e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71' } }, l.tag)
             ),
             e('div', { style:{ padding:'10px 11px 12px' } },
-              e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:15, fontWeight:600, color: l.done ? '#A0987F' : '#2A251E', lineHeight:'1.15', minHeight:34, textDecoration: l.done ? 'line-through' : 'none', textDecorationColor:'#54632F' } }, l.name),
+              e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:15, fontWeight:600, color:'#2A251E', lineHeight:'1.15', minHeight:34 } }, l.name),
               e('div', { style:{ marginTop:7, display:'flex', alignItems:'center', gap:7 } },
                 e('span', { style:{ width:7, height:7, borderRadius:'50%', background:regionColor(l.region), display:'inline-block' } }),
                 e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.08em', color:regionColor(l.region) } }, l.region==='UK' ? 'UK' : "INT'L")
