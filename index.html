@@ -48,6 +48,7 @@
     .hero-caption:focus { outline: none; background: #000 !important; color: #fff !important; border-radius: 0 !important; box-shadow: 0 0 0 2px rgba(84,99,47,0.6); }
     .slide-fade { animation: heroFade .9s ease; }
     @keyframes heroFade { from { opacity: 0; } to { opacity: 1; } }
+    .year-input:empty::before { content: 'YYYY'; color: #B7AD90; }
 </style>
 </head>
 <body>
@@ -124,95 +125,46 @@ const Storage = {
   peekUploadKey() {
     try { return localStorage.getItem('calendar:uploadKey'); } catch (_) { return null; }
   },
-  // Hero captions are shared via a tiny JSON file in R2, so everyone viewing the
-  // calendar sees the same captions (not just the browser that typed them).
-  async loadCaptions() {
+  // Photo metadata (currently the "year taken" for each location) is shared via a
+  // tiny JSON file in R2, so everyone viewing the calendar sees the same info —
+  // captions are otherwise built automatically from the location name and month.
+  async loadMeta() {
     try {
-      const res = await fetch(this.photoUrl('captions.json', Date.now()), { cache: 'no-store' });
+      const res = await fetch(this.photoUrl('photo-meta.json', Date.now()), { cache: 'no-store' });
       if (!res.ok) return null;
       return await res.json();
     } catch (_) { return null; }
   },
-  async saveCaptions(map, key) {
+  async saveMeta(meta, key) {
     try {
-      const res = await fetch(this.photoUrl('captions.json'), {
+      const res = await fetch(this.photoUrl('photo-meta.json'), {
         method: 'PUT',
         headers: { 'x-upload-key': key, 'Content-Type': 'application/json' },
-        body: JSON.stringify(map),
+        body: JSON.stringify(meta),
       });
       if (res.status === 401) { this.clearUploadKey(); alert('That upload password was not accepted — please try again.'); return false; }
       return res.ok;
     } catch (_) { return false; }
   },
-};
-
-// ─── Image Slot ───────────────────────────────────────────────────────────────
-function ImageSlot({ id, placeholder, height, style = {}, overlay = null }) {
-  const [src, setSrc] = useState(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const fileRef = useRef(null);
-
-  // Check whether a photo already exists for this slot, without ever flashing a
-  // broken-image icon: quietly pre-load it and only show it once it has loaded.
-  useEffect(() => {
-    let cancelled = false;
-    const probe = new Image();
-    probe.onload = () => { if (!cancelled) setSrc(Storage.photoUrl(id)); };
-    probe.onerror = () => { if (!cancelled) setSrc(null); };
-    probe.src = Storage.photoUrl(id);
-    return () => { cancelled = true; };
-  }, [id]);
-
-  const uploadFile = useCallback(async (file) => {
-    if (!file || !file.type.startsWith('image/')) return;
-    const key = Storage.getUploadKey();
-    if (!key) return;
-    setBusy(true);
-    const ok = await Storage.saveImage(id, file, key);
-    setBusy(false);
-    if (ok) setSrc(Storage.photoUrl(id, Date.now())); // cache-bust so the new photo shows immediately
-  }, [id]);
-
-  const handleDrop = useCallback((ev) => {
-    ev.preventDefault(); setDragOver(false);
-    uploadFile(ev.dataTransfer.files[0]);
-  }, [uploadFile]);
-
-  const handleClear = useCallback(async (ev) => {
-    ev.stopPropagation();
-    const key = Storage.getUploadKey();
-    if (!key) return;
-    setBusy(true);
-    const ok = await Storage.removeImage(id, key);
-    setBusy(false);
-    if (ok) setSrc(null);
-  }, [id]);
-
-  return e('div', {
-    className: 'image-slot' + (dragOver ? ' drag-over' : ''),
-    style: { height, cursor: (src || busy) ? 'default' : 'pointer', ...style },
-    onDragOver: (ev) => { ev.preventDefault(); setDragOver(true); },
-    onDragLeave: () => setDragOver(false),
-    onDrop: handleDrop,
-    onClick: () => { if (!src && !busy && fileRef.current) fileRef.current.click(); },
+  // Save an uploaded photo as two sizes: a small thumbnail (<base>-thumb) for the
+  // location cards and a larger hero version (<base>) for the slideshows.
+  async savePhotoVariants(base, file, key) {
+    let hero, thumb;
+    try {
+      hero = await resizeImage(file, 1600, 0.85);
+      thumb = await resizeImage(file, 500, 0.8);
+    } catch (_) { alert('Could not process that image — please try a different photo.'); return false; }
+    const okHero = await this.saveImage(base, hero || file, key);
+    if (!okHero) return false;
+    const okThumb = await this.saveImage(base + '-thumb', thumb || hero || file, key);
+    return okThumb;
   },
-    e('input', { ref: fileRef, type: 'file', accept: 'image/*', style: { display: 'none' },
-      onChange: (ev) => { const f = ev.target.files[0]; ev.target.value = ''; uploadFile(f); } }),
-    src && e('img', { src, alt: '' }),
-    src && overlay,
-    src && !busy && e('button', {
-      onClick: handleClear,
-      title: 'Remove image',
-      style: { position: 'absolute', top: 6, right: 6, zIndex: 10, width: 24, height: 24, background: 'rgba(42,37,30,0.6)', border: 'none', color: '#FBF7EC', borderRadius: '50%', cursor: 'pointer', fontSize: 13, lineHeight: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' }
-    }, '×'),
-    busy && e('div', { className: 'placeholder-text', style: { zIndex: 2 } }, 'Uploading…'),
-    !src && !busy && e('div', { className: 'placeholder-text' },
-      e('div', null, '↓ drop or click to add a photo'),
-      e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } }, placeholder)
-    )
-  );
-}
+  async removePhotoVariants(base, key) {
+    const ok = await this.removeImage(base, key);
+    await this.removeImage(base + '-thumb', key);
+    return ok;
+  },
+};
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 // Fisher–Yates shuffle — returns a new array in random order.
@@ -223,6 +175,33 @@ function shuffle(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+// Shrink an uploaded photo to a max edge length and return a JPEG Blob. Used to
+// make a small thumbnail (for the location cards) and a larger hero version (for
+// the slideshows) from the same upload. Respects EXIF orientation on phones.
+async function resizeImage(file, maxEdge, quality) {
+  let source, width, height, bitmap = null;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    source = bitmap; width = bitmap.width; height = bitmap.height;
+  } catch (_) {
+    source = await new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = rej;
+      img.src = URL.createObjectURL(file);
+    });
+    width = source.naturalWidth; height = source.naturalHeight;
+  }
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(source, 0, 0, w, h);
+  if (bitmap && bitmap.close) bitmap.close();
+  return await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
 }
 
 // ─── Hero caption ─────────────────────────────────────────────────────────────
@@ -254,62 +233,150 @@ function HeroCaption({ value, onCommit }) {
   });
 }
 
-// ─── Hero slideshow (year cover) ────────────────────────────────────────────────
-// The 2026 cover isn't uploadable. Instead it cycles through whichever months
-// already have a hero photo, in random order, changing every 30 seconds.
-function HeroSlideshow({ months, boxStyle }) {
-  const [slides, setSlides] = useState([]); // [{ key, heroId, caption }]
+// ─── Photo slideshow ─────────────────────────────────────────────────────────
+// Cycles through a set of photos in random order, changing every `intervalMs`.
+// Each item is { key (unique), base (image name), caption }. It checks which
+// photos exist using the small thumbnails (fast), then shows the hero version of
+// whichever slide is current. Used for both the 2026 cover and each month's hero.
+function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0 }) {
+  const [keys, setKeys] = useState([]); // item keys that have a photo, in order
   const [pos, setPos] = useState(0);
   const orderRef = useRef([]);
+  const sig = items.map(it => it.key + ':' + it.base).join('|');
 
-  // Work out which months actually have a hero photo uploaded (skip empty ones).
+  // Work out which items actually have a photo uploaded (skip empty ones).
   useEffect(() => {
     let cancelled = false;
-    const candidates = months.filter(m => m.heroId).map(m => ({
-      key: m.key, heroId: m.heroId, caption: (m.heroCaption || '').trim(),
-    }));
-    if (!candidates.length) { setSlides([]); return; }
+    const candidates = items.filter(it => it.base);
+    if (!candidates.length) { setKeys([]); return; }
     let pending = candidates.length;
-    const okKeys = new Set();
-    const finish = () => { if (!cancelled) setSlides(candidates.filter(c => okKeys.has(c.key))); };
+    const ok = [];
+    const finish = () => { if (!cancelled) setKeys(candidates.filter(c => ok.includes(c.key)).map(c => c.key)); };
     candidates.forEach(c => {
       const img = new Image();
-      img.onload = () => { okKeys.add(c.key); if (--pending === 0) finish(); };
+      img.onload = () => { ok.push(c.key); if (--pending === 0) finish(); };
       img.onerror = () => { if (--pending === 0) finish(); };
-      img.src = Storage.photoUrl(c.heroId);
+      img.src = Storage.photoUrl(c.base + '-thumb', epoch || undefined);
     });
     return () => { cancelled = true; };
-  }, [months]);
+  }, [sig, epoch]);
 
-  // Cycle through the available photos in a fresh random order, 30s each.
+  // Cycle through the available photos in a fresh random order.
   useEffect(() => {
-    if (slides.length === 0) { orderRef.current = []; setPos(0); return; }
-    orderRef.current = shuffle(slides.map((_, i) => i));
+    if (keys.length === 0) { orderRef.current = []; setPos(0); return; }
+    orderRef.current = shuffle(keys.map((_, i) => i));
     setPos(orderRef.current[0]);
-    if (slides.length === 1) return;
+    if (keys.length === 1) return;
     let p = 0;
     const t = setInterval(() => {
       p++;
-      if (p >= orderRef.current.length) { orderRef.current = shuffle(slides.map((_, i) => i)); p = 0; }
+      if (p >= orderRef.current.length) { orderRef.current = shuffle(keys.map((_, i) => i)); p = 0; }
       setPos(orderRef.current[p]);
-    }, 30000);
+    }, intervalMs);
     return () => clearInterval(t);
-  }, [slides]);
+  }, [keys, intervalMs]);
 
-  if (slides.length === 0) {
+  if (keys.length === 0) {
     return e('div', { className: 'image-slot', style: { ...boxStyle } },
       e('div', { className: 'placeholder-text' },
-        e('div', null, 'Monthly hero slideshow'),
+        e('div', null, 'Photo slideshow'),
         e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } },
-          'Add hero photos to the months and they’ll cycle here every 30 seconds')
+          'Add photos to the locations and they’ll cycle here')
       )
     );
   }
 
-  const cur = slides[pos] || slides[0];
+  const curKey = keys[pos] != null ? keys[pos] : keys[0];
+  const cur = items.find(it => it.key === curKey);
+  if (!cur) return e('div', { className: 'image-slot', style: { ...boxStyle } });
   return e('div', { className: 'image-slot', style: { ...boxStyle } },
-    e('img', { key: cur.heroId, className: 'slide-fade', src: Storage.photoUrl(cur.heroId), alt: '' }),
+    e('img', { key: cur.base, className: 'slide-fade', src: Storage.photoUrl(cur.base, epoch || undefined), alt: '' }),
     cur.caption && e(HeroCaption, { key: 'show-' + cur.key, value: cur.caption, onCommit: null })
+  );
+}
+
+// ─── Location thumbnail ──────────────────────────────────────────────────────
+// Shows the small thumbnail of a location's photo on its card (nothing if none).
+function LocThumb({ base, epoch = 0 }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const url = Storage.photoUrl(base + '-thumb', epoch || undefined);
+    const probe = new Image();
+    probe.onload = () => { if (!cancelled) setSrc(url); };
+    probe.onerror = () => { if (!cancelled) setSrc(null); };
+    probe.src = url;
+    return () => { cancelled = true; };
+  }, [base, epoch]);
+  if (!src) return null;
+  return e('img', { src, alt: '', style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 } });
+}
+
+// ─── Location photo uploader ─────────────────────────────────────────────────
+// The upload control on a location: drop/click a photo and it saves both a
+// thumbnail and a hero version. Shows the thumbnail once set.
+function LocationPhoto({ base, placeholder, style = {}, onChange }) {
+  const [src, setSrc] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  const thumb = (bust) => Storage.photoUrl(base + '-thumb', bust);
+
+  useEffect(() => {
+    let cancelled = false;
+    const probe = new Image();
+    probe.onload = () => { if (!cancelled) setSrc(thumb()); };
+    probe.onerror = () => { if (!cancelled) setSrc(null); };
+    probe.src = thumb();
+    return () => { cancelled = true; };
+  }, [base]);
+
+  const uploadFile = useCallback(async (file) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const key = Storage.getUploadKey();
+    if (!key) return;
+    setBusy(true);
+    const ok = await Storage.savePhotoVariants(base, file, key);
+    setBusy(false);
+    if (ok) { setSrc(thumb(Date.now())); if (onChange) onChange(); }
+  }, [base, onChange]);
+
+  const handleDrop = useCallback((ev) => {
+    ev.preventDefault(); setDragOver(false);
+    uploadFile(ev.dataTransfer.files[0]);
+  }, [uploadFile]);
+
+  const handleClear = useCallback(async (ev) => {
+    ev.stopPropagation();
+    const key = Storage.getUploadKey();
+    if (!key) return;
+    setBusy(true);
+    const ok = await Storage.removePhotoVariants(base, key);
+    setBusy(false);
+    if (ok) { setSrc(null); if (onChange) onChange(); }
+  }, [base, onChange]);
+
+  return e('div', {
+    className: 'image-slot' + (dragOver ? ' drag-over' : ''),
+    style: { cursor: (src || busy) ? 'default' : 'pointer', ...style },
+    onDragOver: (ev) => { ev.preventDefault(); setDragOver(true); },
+    onDragLeave: () => setDragOver(false),
+    onDrop: handleDrop,
+    onClick: () => { if (!src && !busy && fileRef.current) fileRef.current.click(); },
+  },
+    e('input', { ref: fileRef, type: 'file', accept: 'image/*', style: { display: 'none' },
+      onChange: (ev) => { const f = ev.target.files[0]; ev.target.value = ''; uploadFile(f); } }),
+    src && e('img', { src, alt: '' }),
+    src && !busy && e('button', {
+      onClick: handleClear,
+      title: 'Remove photo',
+      style: { position: 'absolute', top: 6, right: 6, zIndex: 10, width: 24, height: 24, background: 'rgba(42,37,30,0.6)', border: 'none', color: '#FBF7EC', borderRadius: '50%', cursor: 'pointer', fontSize: 13, lineHeight: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+    }, '×'),
+    busy && e('div', { className: 'placeholder-text', style: { zIndex: 2 } }, 'Uploading…'),
+    !src && !busy && e('div', { className: 'placeholder-text' },
+      e('div', null, '↓ drop or click to add a photo'),
+      e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } }, placeholder)
+    )
   );
 }
 
@@ -794,19 +861,24 @@ function App() {
   const [weekStart] = useState('Monday');
   const [showEvents] = useState(true);
   const [heroFraming] = useState('Matted print');
+  const [imgEpoch, setImgEpoch] = useState(0); // bumped after an upload so tiles + slideshows refresh
+  const bumpImg = () => setImgEpoch(n => n + 1);
   const uidRef = useRef(100);
 
   // Save the calendar (locations, events, edits, ordering, ticked-off spots)
   // every time anything changes, so it survives a page reload.
   useEffect(() => { Storage.saveData(data); }, [data]);
 
-  // Pull the shared hero captions from the cloud on load, so everyone viewing
-  // the calendar sees the captions the owner typed (not just their own browser).
+  // Pull shared photo metadata (the "year taken" for each location) from the
+  // cloud on load, so everyone viewing the calendar sees the same caption years.
   useEffect(() => {
     let cancelled = false;
-    Storage.loadCaptions().then(map => {
-      if (cancelled || !map) return;
-      setData(prev => prev.map(m => (typeof map[m.key] === 'string' ? { ...m, heroCaption: map[m.key] } : m)));
+    Storage.loadMeta().then(meta => {
+      if (cancelled || !meta || !meta.years) return;
+      setData(prev => prev.map(m => ({
+        ...m,
+        locations: m.locations.map(l => (typeof meta.years[l.id] === 'string' ? { ...l, photoYear: meta.years[l.id] } : l)),
+      })));
     });
   }, []);
 
@@ -891,18 +963,19 @@ function App() {
     });
   };
 
-  const setHeroCaption = (text) => {
-    mutateData(d => { d[monthIdx].heroCaption = text; });
+  const setPhotoYear = (locId, year) => {
+    const y = (year || '').trim();
+    mutateData(d => { const loc = d[monthIdx].locations.find(l => l.id === locId); if (loc) loc.photoYear = y; });
     // Only the owner (whose browser holds the upload password) syncs to the
     // cloud; a viewer's edit stays local and never triggers a password prompt.
     const key = Storage.peekUploadKey();
     if (!key) return;
-    const map = {};
-    data.forEach((m, i) => {
-      const cap = (i === monthIdx ? text : m.heroCaption);
-      if (cap) map[m.key] = cap;
-    });
-    Storage.saveCaptions(map, key);
+    const years = {};
+    data.forEach(m => m.locations.forEach(l => {
+      const val = (l.id === locId ? y : (l.photoYear || '').trim());
+      if (val) years[l.id] = val;
+    }));
+    Storage.saveMeta({ years }, key);
   };
 
   const addEvent = () => {
@@ -1046,7 +1119,15 @@ function App() {
     e('div', { style:{ height:1, background:'#D2C7AC', margin:'22px 0 24px' } }),
     // Hero
     e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
-      e(HeroSlideshow, { months: data, boxStyle: { aspectRatio: '3 / 2' } })
+      e(PhotoSlideshow, {
+        epoch: imgEpoch,
+        intervalMs: 15000,
+        boxStyle: { aspectRatio: '3 / 2' },
+        items: data.flatMap(m => m.locations.map(loc => {
+          const yr = (loc.photoYear || '').trim();
+          return { key: m.key + '-' + loc.id, base: m.key + '-ref-' + loc.id, caption: loc.name + ' · ' + m.name + (yr ? ' ' + yr : '') };
+        })),
+      })
     ),
     e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
       e('div', { style:{ display:'flex', alignItems:'center', gap:10 } },
@@ -1128,8 +1209,15 @@ function App() {
 
       // Hero
       e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
-        e(ImageSlot, { id: month.heroId, placeholder: month.heroPlaceholder, style: { aspectRatio: '3 / 2' },
-          overlay: e(HeroCaption, { key: 'cap-' + month.key, value: month.heroCaption || '', onCommit: setHeroCaption }) })
+        e(PhotoSlideshow, {
+          epoch: imgEpoch,
+          intervalMs: 15000,
+          boxStyle: { aspectRatio: '3 / 2' },
+          items: month.locations.map(loc => {
+            const yr = (loc.photoYear || '').trim();
+            return { key: loc.id, base: month.key + '-ref-' + loc.id, caption: loc.name + ' · ' + month.name + (yr ? ' ' + yr : '') };
+          }),
+        })
       ),
       e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
         e('div', { style:{ display:'flex', alignItems:'center', gap:10 } },
@@ -1165,14 +1253,15 @@ function App() {
             l.id === selectedLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px solid #2A251E', pointerEvents:'none', zIndex:5 } }),
             l.id === dragOverLoc && l.id !== draggingLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px dashed #54632F', background:'rgba(84,99,47,0.08)', pointerEvents:'none', zIndex:5 } }),
             e('div', { style:{ height:4, background: l.region==='UK' ? '#54632F' : '#9E4B26' } }),
-            e('div', { style:{ position:'relative', height:76, backgroundImage:'repeating-linear-gradient(135deg,#EFE7D2 0,#EFE7D2 7px,#E6DCC2 7px,#E6DCC2 14px)', display:'flex', alignItems:'flex-end', padding:'8px 10px', borderBottom:'1px solid #E0D6BE' } },
-              e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#B7AD90', cursor:'grab' } }, '⠿'),
+            e('div', { style:{ position:'relative', height:76, overflow:'hidden', backgroundImage:'repeating-linear-gradient(135deg,#EFE7D2 0,#EFE7D2 7px,#E6DCC2 7px,#E6DCC2 14px)', borderBottom:'1px solid #E0D6BE' } },
+              e(LocThumb, { base: month.key + '-ref-' + l.id, epoch: imgEpoch }),
+              e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, zIndex:3, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#EFE7D2', textShadow:'0 1px 2px rgba(0,0,0,0.45)', cursor:'grab' } }, '⠿'),
               l.done
                 ? e('button', { onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as not done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, lineHeight:1, border:'1.5px solid #54632F', background:'#54632F', color:'#FBF7EC' } }, '✓')
-                : e('button', { className:'tick-btn', onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', border:'1.5px solid #B3A988', background:'#FCFAF1' } }),
-              e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71' } }, l.tag)
+                : e('button', { className:'tick-btn', onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', border:'1.5px solid #B3A988', background:'#FCFAF1' } })
             ),
             e('div', { style:{ padding:'10px 11px 12px' } },
+              e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71', marginBottom:5 } }, l.tag),
               e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:15, fontWeight:600, color:'#2A251E', lineHeight:'1.15', minHeight:34 } }, l.name),
               e('div', { style:{ marginTop:7, display:'flex', alignItems:'center', gap:7 } },
                 e('span', { style:{ width:7, height:7, borderRadius:'50%', background:regionColor(l.region), display:'inline-block' } }),
@@ -1199,8 +1288,11 @@ function App() {
               ),
               e('div', { style:{ display:'flex', gap:24, marginTop:18, flexWrap:'wrap' } },
                 e('div', { style:{ flex:'0 0 300px', maxWidth:'100%' } },
-                  e(ImageSlot, { id: month.key + '-ref-' + sel.id, placeholder:'Drop a ' + month.name + ' reference shot', height:206, style:{ borderRadius:4, border:'1px solid #D2C7AC' } }),
-                  e('div', { style:{ marginTop:7, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.06em', color:'#A89A7C' } }, 'Reference / inspiration shot')
+                  e(LocationPhoto, { base: month.key + '-ref-' + sel.id, placeholder:'Add a photo of ' + sel.name, onChange: bumpImg, style:{ height:206, borderRadius:4, border:'1px solid #D2C7AC' } }),
+                  e('div', { style:{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 } },
+                    e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71' } }, 'Year taken'),
+                    e(Editable, { key:'year-'+sel.id, tag:'span', value: sel.photoYear || '', onCommit:(t)=>setPhotoYear(sel.id, t), title:'Set the year this photo was taken', className:'year-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, padding:'4px 12px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:64, textAlign:'center', letterSpacing:'.1em', cursor:'text', outline:'none' } })
+                  )
                 ),
                 e('div', { style:{ flex:1, minWidth:280 } },
                   // Where
