@@ -49,6 +49,8 @@
     .slide-fade { animation: heroFade .9s ease; }
     @keyframes heroFade { from { opacity: 0; } to { opacity: 1; } }
     .year-input:empty::before { content: 'YY'; color: #B7AD90; }
+    .pause-btn:hover { background: rgba(42,37,30,0.78) !important; }
+    .pause-btn:active { transform: scale(0.94); }
 </style>
 </head>
 <body>
@@ -243,7 +245,9 @@ function HeroCaption({ value, onCommit }) {
 function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0 }) {
   const [keys, setKeys] = useState([]); // item keys that have a photo, in order
   const [pos, setPos] = useState(0);
+  const [paused, setPaused] = useState(false);
   const orderRef = useRef([]);
+  const posRef = useRef(0);
   const sig = items.map(it => it.key + ':' + it.base).join('|');
 
   // Work out which items actually have a photo uploaded (skip empty ones).
@@ -263,20 +267,26 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0 }) {
     return () => { cancelled = true; };
   }, [sig, epoch]);
 
-  // Cycle through the available photos in a fresh random order.
+  // Build a fresh random order whenever the set of photos changes; start playing.
   useEffect(() => {
-    if (keys.length === 0) { orderRef.current = []; setPos(0); return; }
+    if (keys.length === 0) { orderRef.current = []; posRef.current = 0; setPos(0); return; }
     orderRef.current = shuffle(keys.map((_, i) => i));
+    posRef.current = 0;
     setPos(orderRef.current[0]);
-    if (keys.length === 1) return;
-    let p = 0;
+    setPaused(false);
+  }, [keys]);
+
+  // Advance on a timer unless paused (or there's only one photo). Pausing freezes
+  // the photo on screen — it does not reshuffle or jump to a different image.
+  useEffect(() => {
+    if (paused || keys.length <= 1) return;
     const t = setInterval(() => {
-      p++;
-      if (p >= orderRef.current.length) { orderRef.current = shuffle(keys.map((_, i) => i)); p = 0; }
-      setPos(orderRef.current[p]);
+      posRef.current++;
+      if (posRef.current >= orderRef.current.length) { orderRef.current = shuffle(keys.map((_, i) => i)); posRef.current = 0; }
+      setPos(orderRef.current[posRef.current]);
     }, intervalMs);
     return () => clearInterval(t);
-  }, [keys, intervalMs]);
+  }, [keys, intervalMs, paused]);
 
   if (keys.length === 0) {
     return e('div', { className: 'image-slot', style: { ...boxStyle } },
@@ -293,7 +303,13 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0 }) {
   if (!cur) return e('div', { className: 'image-slot', style: { ...boxStyle } });
   return e('div', { className: 'image-slot', style: { ...boxStyle } },
     e('img', { key: cur.base, className: 'slide-fade', src: Storage.photoUrl(cur.base, epoch || undefined), alt: '' }),
-    cur.caption && e(HeroCaption, { key: 'show-' + cur.key, value: cur.caption, onCommit: null })
+    cur.caption && e(HeroCaption, { key: 'show-' + cur.key, value: cur.caption, onCommit: null }),
+    keys.length > 1 && e('button', {
+      className: 'pause-btn',
+      onClick: () => setPaused(p => !p),
+      title: paused ? 'Resume slideshow' : 'Pause slideshow',
+      style: { position: 'absolute', right: 10, bottom: 10, zIndex: 6, width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(42,37,30,0.55)', color: '#FBF7EC', fontSize: 13, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+    }, paused ? '▶︎' : '❚❚')
   );
 }
 
