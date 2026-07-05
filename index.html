@@ -51,6 +51,14 @@
     .year-input:empty::before { content: 'YY'; color: #B7AD90; }
     .pause-btn:hover { background: rgba(42,37,30,0.78) !important; }
     .pause-btn:active { transform: scale(0.94); }
+    .map-chip:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.14) !important; }
+    .map-monthchip:hover { border-color: #2A251E !important; }
+    .map-iconbtn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.18) !important; }
+    .map-iconbtn:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 rgba(42,37,30,0.12) !important; }
+    .map-shootrow:hover { background: #F1EAD6 !important; }
+    .map-close:hover { color: #2A251E !important; background: #EFE7D2 !important; border-color: #D2C7AC !important; }
+    .map-visitbtn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.16) !important; }
+    @keyframes mapPulse { 0%,100% { opacity: .45; } 50% { opacity: .9; } }
 </style>
 </head>
 <body>
@@ -867,10 +875,321 @@ function buildWeeks(month, weekStart = 'Monday') {
   return weeks;
 }
 
+// ─── Map coordinates ──────────────────────────────────────────────────────────
+// Real-world coordinates for each location (keyed by the calendar's location id).
+// These are accurate points — refine any individual pin here if needed.
+const LOCATION_COORDS = {
+  'lake-district':[54.60,-3.14], 'leith-hill':[51.18,-0.37], 'puzzlewood':[51.79,-2.60], 'lofoten':[67.93,13.09],
+  'glencoe':[56.68,-5.10], 'porthcawl':[51.48,-3.70], 'dolomites':[46.56,11.68],
+  'farndale':[54.35,-0.92], 'galloway':[55.05,-4.30], 'jokulsarlon':[64.05,-16.18],
+  'micheldever':[51.15,-1.25], 'brecon-falls':[51.77,-3.55], 'keukenhof':[52.27,4.55],
+  'skye':[57.51,-6.18], 'durdle-door':[50.62,-2.28], 'plitvice':[44.88,15.61],
+  'farne':[55.62,-1.65], 'glenfinnan':[56.87,-5.43], 'faroe':[62.07,-7.31],
+  'valensole':[43.84,5.98], 'kynance':[50.00,-5.23], 'malham':[54.07,-2.15],
+  'n-spain':[43.20,-4.85], 'stanage':[53.35,-1.63], 'harris':[57.88,-6.95],
+  'rothiemurchus':[57.15,-3.83], 'corfe':[50.64,-2.06], 'bled':[46.36,14.10],
+  'westonbirt':[51.61,-2.23], 'new-forest':[50.87,-1.60], 'dolomites-larch':[46.6945,12.0855],
+  'mam-tor':[53.35,-1.81], 'ham-wall':[51.15,-2.77], 'abisko':[68.35,18.83],
+  'castlerigg':[54.60,-3.10], 'loch-morlich':[57.16,-3.70], 'lapland':[68.42,27.42],
+};
+
+// Build one map pin per location (grouping any location that recurs across
+// months into a single pin with all its shoots), from the live calendar data.
+function buildMapPlaces(data) {
+  const byId = {};
+  data.forEach((m, mi) => m.locations.forEach(loc => {
+    const c = LOCATION_COORDS[loc.id];
+    if (!c) return; // no coordinates on record — skip (e.g. a brand-new location)
+    let p = byId[loc.id];
+    if (!p) p = byId[loc.id] = { id: loc.id, name: loc.name, where: loc.where, region: loc.region, lat: c[0], lng: c[1], shoots: [], visited: false };
+    p.shoots.push({ mi, monthName: m.name, tag: loc.tag });
+    if (loc.done) p.visited = true;
+  }));
+  return Object.values(byId);
+}
+
+// ─── Map view ─────────────────────────────────────────────────────────────────
+// A flat locator map of every location (ported from the design prototype): pins,
+// region/month/visited filters, zoom & pan, and a flip-side card whose month rows
+// deep-link into the calendar. d3 + country outlines load from a CDN on first open.
+const MAP_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MAP_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MAP_MONO = "'IBM Plex Mono',monospace";
+
+function ensureScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = Array.prototype.find.call(document.scripts, s => s.src === src);
+    if (existing) {
+      if (existing.getAttribute('data-loaded')) return resolve();
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', reject);
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => { s.setAttribute('data-loaded', '1'); resolve(); };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
+  const VW = 1000, VH = 640, VMIN = 1, VMAX = 8, PAPER = '#FCFAF1';
+  const [hoveredId, setHoveredId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [region, setRegion] = useState('All');
+  const [month, setMonth] = useState(null);
+  const [status, setStatus] = useState('All');
+  const [zoomK, setZoomK] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const [phase, setPhase] = useState('loading');
+  const [featVer, setFeatVer] = useState(0);
+  const featuresRef = useRef(null);
+  const panRef = useRef(null);
+
+  // Lazy-load d3 + topojson + the country outlines the first time the map opens.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!window.d3 || !window.d3.geoMercator) await ensureScript('https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js');
+        if (!window.topojson) await ensureScript('https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js');
+        if (cancelled) return;
+        if (!window.d3 || !window.d3.geoMercator) { setPhase('error'); return; }
+        setPhase('ready');
+        const topo = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json').then(r => r.json());
+        if (cancelled || !window.topojson) return;
+        const fc = window.topojson.feature(topo, topo.objects.countries);
+        featuresRef.current = fc.features;
+        setFeatVer(v => v + 1);
+      } catch (_) { if (!cancelled) setPhase('error'); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const colorFor = (r) => r === 'UK' ? '#54632F' : '#9E4B26';
+
+  // Project points + country paths. Recompute when the location set changes (so a
+  // newly added/moved pin reframes the map) or when the countries finish loading.
+  const sig = places.map(p => p.id + ',' + p.lat + ',' + p.lng).join(';');
+  const map = useMemo(() => {
+    const d3 = window.d3;
+    if (!d3 || !d3.geoMercator) return null;
+    const W = VW, H = VH, m = 44;
+    const pts = places.filter(p => p.lat != null).map(p => [p.lng, p.lat]);
+    if (!pts.length) return null;
+    const proj = d3.geoMercator();
+    proj.fitExtent([[m, m], [W - m, H - m]], { type: 'MultiPoint', coordinates: pts });
+    const path = d3.geoPath(proj);
+    let countries = [];
+    if (featuresRef.current) countries = featuresRef.current.map((f, i) => ({ id: 'c' + i, d: path(f) })).filter(c => c.d);
+    const graticule = path(d3.geoGraticule().step([10, 10])()) || '';
+    const geo = {};
+    places.forEach(l => { const xy = proj([l.lng, l.lat]); geo[l.id] = xy ? { x: +xy[0].toFixed(1), y: +xy[1].toFixed(1) } : null; });
+    return { W, H, countries, graticule, geo };
+  }, [sig, featVer, phase]);
+
+  const clampPan = (tx, ty, k) => { const minX = -VW * (k - 1), minY = -VH * (k - 1); return [Math.min(0, Math.max(minX, tx)), Math.min(0, Math.max(minY, ty))]; };
+  const zoomTo = (kNew, fx, fy) => {
+    kNew = Math.max(VMIN, Math.min(VMAX, kNew));
+    const ntx = fx - (kNew / zoomK) * (fx - pan.x), nty = fy - (kNew / zoomK) * (fy - pan.y);
+    const c = clampPan(ntx, nty, kNew);
+    setZoomK(kNew); setPan({ x: c[0], y: c[1] });
+  };
+  const svgPoint = (ev) => { const r = ev.currentTarget.getBoundingClientRect(); return { x: (ev.clientX - r.left) * (VW / r.width), y: (ev.clientY - r.top) * (VH / r.height), rect: r }; };
+  const zoomIn = () => zoomTo(zoomK * 1.6, VW / 2, VH / 2);
+  const zoomOut = () => zoomTo(zoomK / 1.6, VW / 2, VH / 2);
+  const resetView = () => { setZoomK(1); setPan({ x: 0, y: 0 }); };
+  const onMapDouble = (ev) => { if (ev.target.closest && ev.target.closest('[data-pin]')) return; const p = svgPoint(ev); zoomTo(zoomK * 1.8, p.x, p.y); };
+  const onMapDown = (ev) => {
+    if (zoomK <= 1 || (ev.target.closest && ev.target.closest('[data-pin]'))) return;
+    const p = svgPoint(ev);
+    panRef.current = { sx: ev.clientX, sy: ev.clientY, tx: pan.x, ty: pan.y, rw: p.rect.width, rh: p.rect.height };
+    try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch (_) {}
+    setDragging(true);
+  };
+  const onMapMove = (ev) => {
+    if (!panRef.current) return;
+    const d = panRef.current;
+    const c = clampPan(d.tx + (ev.clientX - d.sx) * (VW / d.rw), d.ty + (ev.clientY - d.sy) * (VH / d.rh), zoomK);
+    setPan({ x: c[0], y: c[1] });
+  };
+  const onMapUp = (ev) => { if (panRef.current) { try { ev.currentTarget.releasePointerCapture(ev.pointerId); } catch (_) {} } panRef.current = null; if (dragging) setDragging(false); };
+
+  const isReady = phase === 'ready' && !!map;
+  const isError = phase === 'error' && !map;
+  const isLoading = !isReady && !isError;
+  const activeId = hoveredId || selectedId;
+  const isV = (l) => !!l.visited;
+  const ukCount = places.filter(p => p.region === 'UK').length;
+  const intCount = places.length - ukCount;
+  const shootCount = places.reduce((n, p) => n + p.shoots.length, 0);
+  const visitedCount = places.filter(isV).length;
+  const toVisitCount = places.length - visitedCount;
+  const visitedPct = places.length ? Math.round(visitedCount / places.length * 100) + '%' : '0%';
+  const passes = (l) => {
+    const okR = region === 'All' || l.region === region;
+    const okM = month == null || l.shoots.some(s => s.mi === month);
+    const okS = status === 'All' || (status === 'Visited' ? isV(l) : !isV(l));
+    return okR && okM && okS;
+  };
+  const invK = +(1 / zoomK).toFixed(4);
+
+  const pins = places.map(l => {
+    const g = map ? map.geo[l.id] : null;
+    const active = l.id === activeId, dim = !passes(l) && !active, multi = l.shoots.length > 1, done = isV(l), color = colorFor(l.region);
+    return { id: l.id, color, x: g ? g.x : -9999, y: g ? g.y : -9999, active, multi, count: l.shoots.length,
+      opacity: dim ? 0.16 : 1, r: active ? 7.5 : (multi ? 6.5 : 5.5), rOuter: active ? 11 : 10,
+      fill: done ? color : PAPER, stroke: done ? PAPER : color, strokeW: done ? 2 : 2.4,
+      countFill: done ? PAPER : color, checkColor: done ? PAPER : color, showCheck: done && !multi, showCount: multi };
+  });
+  const activeLoc = places.find(l => l.id === activeId) || null;
+  const ap = (activeLoc && map) ? map.geo[activeLoc.id] : null;
+  const acColor = activeLoc ? colorFor(activeLoc.region) : '#C9BD9F';
+  const cardSide = (ap && ap.x < 500) ? { right: 14 } : { left: 14 };
+
+  const lbl = { fontFamily: MAP_MONO, fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#9C8F71' };
+  const mkChip = (on) => ({ bg: on ? '#54632F' : '#FBF7EC', fg: on ? '#FBF7EC' : '#5A513B', border: on ? '#2A251E' : '#C9BD9F' });
+  const chipBtn = (c) => e('button', { key: c.key, className: 'map-chip', onClick: c.onClick,
+    style: { display: 'inline-flex', alignItems: 'center', gap: 8, height: 34, padding: '0 13px', background: c.bg, color: c.fg, border: '1px solid ' + c.border, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '2px 2px 0 rgba(42,37,30,0.10)' } },
+    c.dot ? e('span', { style: { display: 'inline-flex', width: 8, height: 8, borderRadius: '50%', background: c.dot, border: '1.5px solid ' + c.dotBorder } }) : null,
+    c.label, ' ', e('span', { style: { opacity: .55 } }, c.count));
+
+  const regionChips = [{ key: 'All', label: 'All', count: places.length }, { key: 'UK', label: 'UK', count: ukCount }, { key: 'INT', label: 'International', count: intCount }]
+    .map(c => ({ ...c, ...mkChip(region === c.key), onClick: () => setRegion(c.key) }));
+  const statusChips = [{ key: 'All', label: 'All', count: places.length, dot: '#B7AD90', dotBorder: '#B7AD90' }, { key: 'Visited', label: 'Visited', count: visitedCount, dot: '#54632F', dotBorder: '#54632F' }, { key: 'To visit', label: 'To visit', count: toVisitCount, dot: '#FCFAF1', dotBorder: '#54632F' }]
+    .map(c => ({ ...c, ...mkChip(status === c.key), onClick: () => setStatus(c.key) }));
+  const monthChips = [{ key: null, label: 'All', count: places.length, title: 'All months' }]
+    .concat(MAP_ABBR.map((ab, mi) => ({ key: mi, label: ab, title: MAP_MONTHS[mi] + ' 2026', count: places.filter(p => p.shoots.some(s => s.mi === mi)).length })))
+    .map(c => ({ ...c, ...mkChip(month === c.key), border: month === c.key ? '#2A251E' : '#D5CBB0', onClick: () => setMonth(month === c.key ? null : c.key) }));
+
+  const readoutShoots = activeLoc ? activeLoc.shoots.slice().sort((a, b) => a.mi - b.mi) : [];
+  const zoomBtnStyle = { width: 36, height: 36, background: '#FBF7EC', border: '1px solid #2A251E', color: '#2A251E', fontSize: 21, lineHeight: 1, cursor: 'pointer', fontFamily: "'Spectral',serif", boxShadow: '2px 2px 0 rgba(42,37,30,0.14)' };
+
+  return e('div', { style: { paddingBottom: 6 } },
+    // back nav
+    e('div', { style: { display: 'flex', gap: 9, alignItems: 'center', marginBottom: 24 } },
+      e('button', { className: 'btn-hover', onClick: onBack, style: { height: 40, border: '1px solid #2A251E', cursor: 'pointer', fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', boxShadow: '3px 3px 0 rgba(42,37,30,0.12)', background: '#54632F', color: '#FBF7EC', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '0 17px' } }, e('span', { style: { fontSize: 15, lineHeight: 1, marginTop: -1 } }, '←'), ' 2026')
+    ),
+    // header
+    e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' } },
+      e('div', null,
+        e('div', { style: { fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.22em', textTransform: 'uppercase', color: '#8A7D63' } }, 'Photo Location Calendar'),
+        e('div', { style: { display: 'flex', alignItems: 'flex-end', gap: 18, marginTop: 4 } },
+          e('h1', { style: { margin: 0, fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: 'clamp(40px,6vw,64px)', lineHeight: 0.82, color: '#2A251E', letterSpacing: '-0.015em' } }, 'The 2026 Map'),
+          e('div', { style: { display: 'flex', flexDirection: 'column', gap: 3, paddingBottom: 9, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', color: '#8A7D63' } },
+            e('span', null, places.length + ' locations'),
+            e('span', null, shootCount + ' shoots · UK & Europe'),
+            e('span', { style: { color: '#A89A7C' } }, 'Flat locator · fit to points')
+          )
+        ),
+        e('div', { style: { marginTop: 12, fontSize: 16, color: '#6E6450', maxWidth: '56ch', lineHeight: 1.5 } }, "Every shoot in the calendar on one map — UK spots in green, the international trips in terracotta. Filter by region, month or whether you've ticked it off, then hover a pin for the details.")
+      ),
+      e('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 } },
+        e('div', { style: { display: 'flex', gap: 16, alignItems: 'center', fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.08em', color: '#6E6450' } },
+          e('span', { style: { display: 'flex', alignItems: 'center', gap: 7 } }, e('span', { style: { width: 10, height: 10, borderRadius: '50%', background: '#54632F', display: 'inline-block' } }), 'UK · ' + ukCount),
+          e('span', { style: { display: 'flex', alignItems: 'center', gap: 7 } }, e('span', { style: { width: 10, height: 10, borderRadius: '50%', background: '#9E4B26', display: 'inline-block' } }), 'INTERNATIONAL · ' + intCount)
+        ),
+        e('div', { style: { width: 210 } },
+          e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontFamily: MAP_MONO, fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#8A7D63', marginBottom: 5 } },
+            e('span', null, 'Ticked off'), e('span', { style: { color: '#54632F' } }, visitedCount + ' / ' + places.length)),
+          e('div', { style: { height: 7, background: '#E1D5B7', border: '1px solid #CBBF9F', position: 'relative', overflow: 'hidden' } },
+            e('div', { style: { position: 'absolute', inset: '0 auto 0 0', width: visitedPct, background: '#54632F' } }))
+        )
+      )
+    ),
+    e('div', { style: { height: 1, background: '#D2C7AC', margin: '22px 0 20px' } }),
+    // controls
+    e('div', { style: { display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16 } },
+      e('div', { style: { display: 'flex', gap: '20px 34px', flexWrap: 'wrap', alignItems: 'center' } },
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 11 } }, e('span', { style: lbl }, 'Region'), e('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, regionChips.map(chipBtn))),
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 11 } }, e('span', { style: lbl }, 'Status'), e('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, statusChips.map(chipBtn)))
+      ),
+      e('div', { style: { display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 } },
+        e('span', { style: { ...lbl, flex: '0 0 auto' } }, 'When'),
+        e('div', { style: { display: 'flex', gap: 5, flexWrap: 'wrap' } }, monthChips.map((mc, i) => e('button', { key: i, className: 'map-monthchip', onClick: mc.onClick, title: mc.title, style: { position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, height: 32, padding: '0 10px', background: mc.bg, color: mc.fg, border: '1px solid ' + mc.border, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.05em', cursor: 'pointer' } }, mc.label, e('span', { style: { fontSize: 9, opacity: .55 } }, mc.count))))
+      )
+    ),
+    // map panel
+    e('div', { style: { background: '#FCFAF1', border: '1px solid #2A251E', padding: 10, boxShadow: '8px 8px 0 rgba(42,37,30,0.10)' } },
+      e('div', { style: { position: 'relative', width: '100%', aspectRatio: '1000 / 640', border: '1px solid #D8CDB0', overflow: 'hidden', background: '#EAE0C8' } },
+        isReady && e('svg', { viewBox: '0 0 1000 640', onPointerDown: onMapDown, onPointerMove: onMapMove, onPointerUp: onMapUp, onPointerLeave: onMapUp, onDoubleClick: onMapDouble, style: { display: 'block', position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: zoomK > 1 ? (dragging ? 'grabbing' : 'grab') : 'default', touchAction: 'none', userSelect: 'none' } },
+          e('rect', { x: 0, y: 0, width: 1000, height: 640, style: { fill: '#EAE0C8' } }),
+          e('g', { transform: 'translate(' + pan.x.toFixed(2) + ' ' + pan.y.toFixed(2) + ') scale(' + zoomK.toFixed(4) + ')' },
+            map && e('path', { d: map.graticule, style: { fill: 'none', stroke: '#D6CAAC', strokeWidth: '0.6px', opacity: .5, vectorEffect: 'non-scaling-stroke' } }),
+            map && map.countries.map(c => e('path', { key: c.id, d: c.d, style: { fill: '#E1D5B7', stroke: '#C5B78F', strokeWidth: '0.8px', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } })),
+            pins.map(p => e('g', { key: p.id, 'data-pin': '1', transform: 'translate(' + p.x + ' ' + p.y + ') scale(' + invK + ')', onMouseEnter: () => setHoveredId(p.id), onMouseLeave: () => setHoveredId(null), onClick: () => setSelectedId(s => s === p.id ? null : p.id), style: { cursor: 'pointer', opacity: p.opacity, transition: 'opacity .15s ease' } },
+              p.active && e('circle', { r: 14, style: { fill: 'none', stroke: p.color, strokeWidth: '1.5px', opacity: .5 } }),
+              p.multi && e('circle', { r: p.rOuter, style: { fill: 'none', stroke: p.color, strokeWidth: '1.5px', opacity: .9 } }),
+              e('circle', { r: p.r, style: { fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeW + 'px' } }),
+              p.showCheck && e('path', { d: 'M -2.6 0 L -0.7 2 L 3 -2.4', style: { fill: 'none', stroke: p.checkColor, strokeWidth: '1.5px', strokeLinecap: 'round', strokeLinejoin: 'round', pointerEvents: 'none' } }),
+              p.showCount && e('text', { x: 0, y: 0.5, style: { textAnchor: 'middle', dominantBaseline: 'middle', fontFamily: MAP_MONO, fontSize: '8px', fontWeight: 600, fill: p.countFill, pointerEvents: 'none' } }, p.count)
+            )),
+            ap && activeLoc && e('g', { transform: 'translate(' + ap.x + ' ' + ap.y + ') scale(' + invK + ')', style: { pointerEvents: 'none' } },
+              e('text', { x: 0, y: -30, style: { textAnchor: 'middle', fontFamily: MAP_MONO, fontSize: '12.5px', fontWeight: 500, fill: '#2A251E', paintOrder: 'stroke', stroke: '#FCFAF1', strokeWidth: '4px', strokeLinejoin: 'round' } }, activeLoc.name)
+            )
+          )
+        ),
+        // card
+        activeLoc && e('div', { style: { position: 'absolute', top: 14, ...cardSide, zIndex: 4, width: 300, maxWidth: 'calc(100% - 28px)', background: '#FBF7EC', border: '1px solid #2A251E', boxShadow: '5px 5px 0 rgba(42,37,30,0.16)' } },
+          e('button', { className: 'map-close', onClick: () => { setSelectedId(null); setHoveredId(null); }, title: 'Close', style: { position: 'absolute', top: 8, right: 8, zIndex: 5, width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, background: 'rgba(251,247,236,0.92)', border: '1px solid transparent', borderRadius: 3, color: '#9C8F71', fontFamily: "'Spectral',serif", fontSize: 18, lineHeight: 1, cursor: 'pointer' } }, '×'),
+          e('div', { style: { height: 5, background: acColor } }),
+          e('div', { style: { padding: '14px 16px 16px' } },
+            e('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', paddingRight: 22 } },
+              e('span', { style: { fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: 21, color: '#2A251E', lineHeight: 1.02 } }, activeLoc.name),
+              activeLoc.region === 'UK'
+                ? e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.12em', textTransform: 'uppercase', padding: '3px 7px', background: '#E4E8D0', color: '#54632F', border: '1px solid #54632F' } }, 'UK')
+                : e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.12em', textTransform: 'uppercase', padding: '3px 7px', background: '#F1DECF', color: '#9E4B26', border: '1px solid #9E4B26' } }, "Int'l")
+            ),
+            e('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 9 } },
+              e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9C8F71', flex: '0 0 auto' } }, 'Where'),
+              e('span', { style: { fontSize: 14.5, color: '#2A251E' } }, activeLoc.where)
+            ),
+            e('div', { style: { marginTop: 12, paddingTop: 11, borderTop: '1px solid #E6DECA' } },
+              e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 } },
+                e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9C8F71' } }, 'Shoots'),
+                activeLoc.shoots.length > 1 && e('span', { style: { fontFamily: MAP_MONO, fontSize: 9, letterSpacing: '.06em', color: '#9E4B26' } }, activeLoc.shoots.length + ' visits')
+              ),
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+                readoutShoots.map(s => e('div', { key: s.mi, className: 'map-shootrow', onClick: () => onOpenMonth(s.mi, activeLoc.id), role: 'button', tabIndex: 0, title: 'Open ' + s.monthName + ' 2026 in the calendar', style: { display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 10, alignItems: 'center', padding: '6px 7px', margin: '0 -7px', borderRadius: 3, cursor: 'pointer', background: 'transparent', transition: 'background .12s ease' } },
+                  e('span', { style: { fontFamily: MAP_MONO, fontSize: 11, fontWeight: 600, letterSpacing: '.04em', color: acColor } }, MAP_ABBR[s.mi]),
+                  e('span', { style: { fontSize: 14, color: '#3B3528', lineHeight: 1.3 } }, s.tag),
+                  e('span', { style: { fontFamily: MAP_MONO, fontSize: 10.5, fontWeight: 600, color: '#B7AD90', whiteSpace: 'nowrap' } }, '→')
+                ))
+              ),
+              e('div', { style: { marginTop: 9, fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.05em', color: '#B0A487', lineHeight: 1.4 } }, '↳ Tap a month to open its page in the calendar.')
+            ),
+            e('button', { className: 'map-visitbtn', onClick: () => onToggleVisited(activeLoc.id), style: { marginTop: 14, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 38, background: activeLoc.visited ? '#54632F' : '#FBF7EC', color: activeLoc.visited ? '#FBF7EC' : '#54632F', border: '1px solid ' + (activeLoc.visited ? '#2A251E' : '#54632F'), fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '2px 2px 0 rgba(42,37,30,0.12)' } }, activeLoc.visited ? '✓ Visited — tap to undo' : 'Mark as visited')
+          )
+        ),
+        isLoading && e('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#EAE0C8', backgroundImage: 'radial-gradient(#d6c8a5 0.9px, transparent 0.9px)', backgroundSize: '20px 20px' } },
+          e('div', { style: { fontFamily: MAP_MONO, fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase', color: '#8A7D63', animation: 'mapPulse 1.4s ease-in-out infinite' } }, "Plotting the year's locations…")),
+        isError && e('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', background: '#EAE0C8' } },
+          e('div', { style: { fontFamily: MAP_MONO, fontSize: 12, color: '#9C3B22', letterSpacing: '.03em', lineHeight: 1.7 } }, "Map libraries didn't load. Check the connection and reload the page.")),
+        isReady && e('div', { style: { position: 'absolute', right: 12, bottom: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 3 } },
+          e('button', { className: 'map-iconbtn', onClick: zoomIn, title: 'Zoom in', style: { ...zoomBtnStyle, opacity: zoomK >= VMAX ? 0.4 : 1 } }, '+'),
+          e('button', { className: 'map-iconbtn', onClick: zoomOut, title: 'Zoom out', style: { ...zoomBtnStyle, opacity: zoomK <= VMIN ? 0.4 : 1 } }, '−'),
+          e('button', { className: 'map-iconbtn', onClick: resetView, title: 'Fit all locations', style: { ...zoomBtnStyle, marginTop: 2, color: '#54632F', fontSize: 15, fontFamily: MAP_MONO } }, '⤢')
+        ),
+        isReady && e('div', { style: { position: 'absolute', left: 12, bottom: 12, zIndex: 3, fontFamily: MAP_MONO, fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#6E6450', background: 'rgba(251,247,236,0.86)', border: '1px solid #D2C7AC', padding: '5px 9px' } }, zoomK > 1 ? (zoomK.toFixed(1) + '× · drag to pan') : ('Fit · ' + zoomK.toFixed(1) + '×'))
+      )
+    ),
+    // legend
+    e('div', { style: { marginTop: 12, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.03em', color: '#9C8F71', display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' } },
+      e('span', null, 'Hover a pin for details · click to keep it open, then tick it off.'),
+      e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, e('circle', { cx: 7, cy: 7, r: 5, fill: '#54632F', stroke: '#FBF7EC', strokeWidth: 1.5 })), ' Visited'),
+      e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, e('circle', { cx: 7, cy: 7, r: 4.4, fill: '#FCFAF1', stroke: '#54632F', strokeWidth: 2 })), ' To visit'),
+      e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 16, height: 14, viewBox: '0 0 16 14' }, e('circle', { cx: 8, cy: 7, r: 6.2, fill: 'none', stroke: '#54632F', strokeWidth: 1.3 }), e('circle', { cx: 8, cy: 7, r: 4, fill: '#54632F' })), ' Shot in 2+ months')
+    )
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function App() {
   const [data, setData] = useState(() => Storage.loadData() || makeData());
   const [yearView, setYearView] = useState(true);
+  const [mapView, setMapView] = useState(false);
   const [monthIdx, setMonthIdx] = useState(0);
   const [selectedLoc, setSelectedLoc] = useState('lake-district');
   const [editingEvent, setEditingEvent] = useState(null);
@@ -902,11 +1221,14 @@ function App() {
 
   const month = data[Math.min(monthIdx, data.length - 1)];
   const matted = heroFraming === 'Matted print';
+  const mapPlaces = useMemo(() => buildMapPlaces(data), [data]);
 
-  const goToYear = () => setYearView(true);
+  const goToYear = () => { setMapView(false); setYearView(true); };
+  const goToMap = () => setMapView(true);
   const goToMonth = (idx, locId) => {
     const m = data[idx];
     if (!m) return;
+    setMapView(false);
     setYearView(false);
     setMonthIdx(idx);
     setSelectedLoc(locId || (m.locations[0] ? m.locations[0].id : null));
@@ -916,6 +1238,7 @@ function App() {
     const n = data.length;
     const pos = yearView ? 0 : (monthIdx + 1);
     const next = (pos + dir + n + 1) % (n + 1);
+    setMapView(false);
     if (next === 0) { setYearView(true); return; }
     const idx = next - 1;
     const first = data[idx].locations[0];
@@ -925,6 +1248,12 @@ function App() {
   };
 
   const mutateData = (fn) => setData(prev => { const d = prev.map(m => ({ ...m, locations: m.locations.map(l => ({ ...l })), events: m.events.map(e2 => ({ ...e2 })) })); fn(d); return d; });
+
+  // Toggle a location's "done"/visited state wherever it lives (used by the map,
+  // whose pins can belong to any month, not just the current one).
+  const toggleVisitedById = (locId) => {
+    mutateData(d => { for (const m of d) { const loc = m.locations.find(l => l.id === locId); if (loc) { loc.done = !loc.done; break; } } });
+  };
 
   const addLocation = () => {
     uidRef.current++;
@@ -1102,6 +1431,8 @@ function App() {
     showYearBtn && e(Divider),
     e('button', { className:'btn-hover', onClick:()=>changeMonth(-1), style:WhiteBtn }, '‹'),
     e('button', { className:'btn-hover', onClick:()=>changeMonth(1), style:WhiteBtn }, '›'),
+    e(Divider),
+    e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map'),
     !showYearBtn && e(Divider),
     !showYearBtn && e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→')),
     showYearBtn && e(Divider),
@@ -1505,7 +1836,9 @@ function App() {
 
   return e('div', { style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
-      yearView ? renderYearPage() : renderMonthPage(),
+      mapView
+        ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear })
+        : (yearView ? renderYearPage() : renderMonthPage()),
       renderEventModal()
     )
   );
