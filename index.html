@@ -52,10 +52,16 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const e = React.createElement;
 
 // ─── Storage ────────────────────────────────────────────────────────────────
-// This is the single "switch" for where saved data lives. Today it points at
-// the browser's local storage. To move to the cloud (Cloudflare R2) later, only
-// the insides of these functions change — nothing else in the app needs to.
+// The single "switch" for where saved data lives. Calendar text (locations,
+// events, edits) is kept in the browser's local storage. PHOTOS now live in the
+// cloud (Cloudflare R2), reached through the storage Worker below, so they are
+// shared across devices and visible to anyone viewing the calendar.
 const STORAGE_VERSION = 1;
+
+// The web address of your storage Worker — the safe gatekeeper in front of R2.
+// Photos are read from / written to `${PHOTO_STORAGE_BASE}/photo/<name>`.
+const PHOTO_STORAGE_BASE = 'https://photo-calendar-storage.taledd95.workers.dev';
+
 const Storage = {
   loadData() {
     try {
@@ -72,14 +78,41 @@ const Storage = {
   clearData() {
     try { localStorage.removeItem('calendar:data'); } catch (_) {}
   },
-  loadImage(id) {
-    try { return localStorage.getItem('img:' + id); } catch (_) { return null; }
+  // ── Photos: stored in R2 via the Worker. Anyone can view; uploading or ──────
+  // removing requires the upload password (kept only in the owner's browser).
+  photoUrl(id, bust) {
+    return PHOTO_STORAGE_BASE + '/photo/' + encodeURIComponent(id) + (bust ? ('?t=' + bust) : '');
   },
-  saveImage(id, dataUrl) {
-    try { localStorage.setItem('img:' + id, dataUrl); return true; } catch (_) { return false; }
+  getUploadKey() {
+    let k = null;
+    try { k = localStorage.getItem('calendar:uploadKey'); } catch (_) {}
+    if (!k) {
+      k = window.prompt('Enter your upload password to add or change photos:');
+      if (k) { try { localStorage.setItem('calendar:uploadKey', k); } catch (_) {} }
+    }
+    return k;
   },
-  removeImage(id) {
-    try { localStorage.removeItem('img:' + id); } catch (_) {}
+  clearUploadKey() {
+    try { localStorage.removeItem('calendar:uploadKey'); } catch (_) {}
+  },
+  async saveImage(id, file, key) {
+    try {
+      const res = await fetch(this.photoUrl(id), {
+        method: 'PUT',
+        headers: { 'x-upload-key': key, 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+      if (res.status === 401) { this.clearUploadKey(); alert('That upload password was not accepted — please try again.'); return false; }
+      if (!res.ok) { alert('Upload failed (' + res.status + '). Please try again.'); return false; }
+      return true;
+    } catch (_) { alert('Could not reach photo storage. Check your connection and try again.'); return false; }
+  },
+  async removeImage(id, key) {
+    try {
+      const res = await fetch(this.photoUrl(id), { method: 'DELETE', headers: { 'x-upload-key': key } });
+      if (res.status === 401) { this.clearUploadKey(); alert('That upload password was not accepted — please try again.'); return false; }
+      return res.ok;
+    } catch (_) { alert('Could not reach photo storage to remove the photo.'); return false; }
   },
 };
 
@@ -87,46 +120,64 @@ const Storage = {
 function ImageSlot({ id, placeholder, height, style = {} }) {
   const [src, setSrc] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
 
+  // Check whether a photo already exists for this slot, without ever flashing a
+  // broken-image icon: quietly pre-load it and only show it once it has loaded.
   useEffect(() => {
-    const s = Storage.loadImage(id);
-    setSrc(s || null);
+    let cancelled = false;
+    const probe = new Image();
+    probe.onload = () => { if (!cancelled) setSrc(Storage.photoUrl(id)); };
+    probe.onerror = () => { if (!cancelled) setSrc(null); };
+    probe.src = Storage.photoUrl(id);
+    return () => { cancelled = true; };
+  }, [id]);
+
+  const uploadFile = useCallback(async (file) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const key = Storage.getUploadKey();
+    if (!key) return;
+    setBusy(true);
+    const ok = await Storage.saveImage(id, file, key);
+    setBusy(false);
+    if (ok) setSrc(Storage.photoUrl(id, Date.now())); // cache-bust so the new photo shows immediately
   }, [id]);
 
   const handleDrop = useCallback((ev) => {
     ev.preventDefault(); setDragOver(false);
-    const file = ev.dataTransfer.files[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e2) => {
-      const dataUrl = e2.target.result;
-      setSrc(dataUrl);
-      Storage.saveImage(id, dataUrl);
-    };
-    reader.readAsDataURL(file);
-  }, [id]);
+    uploadFile(ev.dataTransfer.files[0]);
+  }, [uploadFile]);
 
-  const handleClear = useCallback((ev) => {
+  const handleClear = useCallback(async (ev) => {
     ev.stopPropagation();
-    setSrc(null);
-    Storage.removeImage(id);
+    const key = Storage.getUploadKey();
+    if (!key) return;
+    setBusy(true);
+    const ok = await Storage.removeImage(id, key);
+    setBusy(false);
+    if (ok) setSrc(null);
   }, [id]);
 
   return e('div', {
     className: 'image-slot' + (dragOver ? ' drag-over' : ''),
-    style: { height, ...style },
+    style: { height, cursor: (src || busy) ? 'default' : 'pointer', ...style },
     onDragOver: (ev) => { ev.preventDefault(); setDragOver(true); },
     onDragLeave: () => setDragOver(false),
     onDrop: handleDrop,
+    onClick: () => { if (!src && !busy && fileRef.current) fileRef.current.click(); },
   },
+    e('input', { ref: fileRef, type: 'file', accept: 'image/*', style: { display: 'none' },
+      onChange: (ev) => { const f = ev.target.files[0]; ev.target.value = ''; uploadFile(f); } }),
     src && e('img', { src, alt: '' }),
-    src && e('button', {
+    src && !busy && e('button', {
       onClick: handleClear,
       title: 'Remove image',
       style: { position: 'absolute', top: 6, right: 6, zIndex: 10, width: 24, height: 24, background: 'rgba(42,37,30,0.6)', border: 'none', color: '#FBF7EC', borderRadius: '50%', cursor: 'pointer', fontSize: 13, lineHeight: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' }
     }, '×'),
-    !src && e('div', { className: 'placeholder-text' },
-      e('div', null, '↓ drop a photo'),
+    busy && e('div', { className: 'placeholder-text', style: { zIndex: 2 } }, 'Uploading…'),
+    !src && !busy && e('div', { className: 'placeholder-text' },
+      e('div', null, '↓ drop or click to add a photo'),
       e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } }, placeholder)
     )
   );
