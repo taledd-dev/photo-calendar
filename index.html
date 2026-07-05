@@ -48,7 +48,7 @@
     .hero-caption:focus { outline: none; background: #000 !important; color: #fff !important; border-radius: 0 !important; box-shadow: 0 0 0 2px rgba(84,99,47,0.6); }
     .slide-fade { animation: heroFade .9s ease; }
     @keyframes heroFade { from { opacity: 0; } to { opacity: 1; } }
-    .year-input:empty::before { content: 'YYYY'; color: #B7AD90; }
+    .year-input:empty::before { content: 'YY'; color: #B7AD90; }
 </style>
 </head>
 <body>
@@ -210,11 +210,13 @@ async function resizeImage(file, maxEdge, quality) {
 // while empty. (Purely a display box on the slideshow, where `onCommit` is null.)
 function HeroCaption({ value, onCommit }) {
   const ref = useRef(null);
+  // Keep the displayed text in sync with the caption, but never overwrite it
+  // while the user is actively typing (which would jump the cursor around).
   useEffect(() => {
-    if (ref.current && ref.current.textContent !== (value || '')) {
+    if (ref.current && document.activeElement !== ref.current && ref.current.textContent !== (value || '')) {
       ref.current.textContent = value || '';
     }
-  }, []);
+  }, [value]);
   const editable = typeof onCommit === 'function';
   const handleBlur = () => {
     const t = ref.current ? ref.current.textContent.trim() : '';
