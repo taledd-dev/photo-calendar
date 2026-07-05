@@ -119,6 +119,31 @@ const Storage = {
       return res.ok;
     } catch (_) { alert('Could not reach photo storage to remove the photo.'); return false; }
   },
+  // Read the stored upload password WITHOUT prompting (used to tell whether
+  // this browser is the owner's, so viewers never get asked for a password).
+  peekUploadKey() {
+    try { return localStorage.getItem('calendar:uploadKey'); } catch (_) { return null; }
+  },
+  // Hero captions are shared via a tiny JSON file in R2, so everyone viewing the
+  // calendar sees the same captions (not just the browser that typed them).
+  async loadCaptions() {
+    try {
+      const res = await fetch(this.photoUrl('captions.json', Date.now()), { cache: 'no-store' });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (_) { return null; }
+  },
+  async saveCaptions(map, key) {
+    try {
+      const res = await fetch(this.photoUrl('captions.json'), {
+        method: 'PUT',
+        headers: { 'x-upload-key': key, 'Content-Type': 'application/json' },
+        body: JSON.stringify(map),
+      });
+      if (res.status === 401) { this.clearUploadKey(); alert('That upload password was not accepted — please try again.'); return false; }
+      return res.ok;
+    } catch (_) { return false; }
+  },
 };
 
 // ─── Image Slot ───────────────────────────────────────────────────────────────
@@ -232,7 +257,7 @@ function HeroCaption({ value, onCommit }) {
 // ─── Hero slideshow (year cover) ────────────────────────────────────────────────
 // The 2026 cover isn't uploadable. Instead it cycles through whichever months
 // already have a hero photo, in random order, changing every 30 seconds.
-function HeroSlideshow({ months, height }) {
+function HeroSlideshow({ months, boxStyle }) {
   const [slides, setSlides] = useState([]); // [{ key, heroId, caption }]
   const [pos, setPos] = useState(0);
   const orderRef = useRef([]);
@@ -272,7 +297,7 @@ function HeroSlideshow({ months, height }) {
   }, [slides]);
 
   if (slides.length === 0) {
-    return e('div', { className: 'image-slot', style: { height } },
+    return e('div', { className: 'image-slot', style: { ...boxStyle } },
       e('div', { className: 'placeholder-text' },
         e('div', null, 'Monthly hero slideshow'),
         e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } },
@@ -282,7 +307,7 @@ function HeroSlideshow({ months, height }) {
   }
 
   const cur = slides[pos] || slides[0];
-  return e('div', { className: 'image-slot', style: { height } },
+  return e('div', { className: 'image-slot', style: { ...boxStyle } },
     e('img', { key: cur.heroId, className: 'slide-fade', src: Storage.photoUrl(cur.heroId), alt: '' }),
     cur.caption && e(HeroCaption, { key: 'show-' + cur.key, value: cur.caption, onCommit: null })
   );
@@ -775,6 +800,16 @@ function App() {
   // every time anything changes, so it survives a page reload.
   useEffect(() => { Storage.saveData(data); }, [data]);
 
+  // Pull the shared hero captions from the cloud on load, so everyone viewing
+  // the calendar sees the captions the owner typed (not just their own browser).
+  useEffect(() => {
+    let cancelled = false;
+    Storage.loadCaptions().then(map => {
+      if (cancelled || !map) return;
+      setData(prev => prev.map(m => (typeof map[m.key] === 'string' ? { ...m, heroCaption: map[m.key] } : m)));
+    });
+  }, []);
+
   const month = data[Math.min(monthIdx, data.length - 1)];
   const matted = heroFraming === 'Matted print';
 
@@ -858,6 +893,16 @@ function App() {
 
   const setHeroCaption = (text) => {
     mutateData(d => { d[monthIdx].heroCaption = text; });
+    // Only the owner (whose browser holds the upload password) syncs to the
+    // cloud; a viewer's edit stays local and never triggers a password prompt.
+    const key = Storage.peekUploadKey();
+    if (!key) return;
+    const map = {};
+    data.forEach((m, i) => {
+      const cap = (i === monthIdx ? text : m.heroCaption);
+      if (cap) map[m.key] = cap;
+    });
+    Storage.saveCaptions(map, key);
   };
 
   const addEvent = () => {
@@ -1001,7 +1046,7 @@ function App() {
     e('div', { style:{ height:1, background:'#D2C7AC', margin:'22px 0 24px' } }),
     // Hero
     e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
-      e(HeroSlideshow, { months: data, height: matted ? 404 : 430 })
+      e(HeroSlideshow, { months: data, boxStyle: { aspectRatio: '3 / 2' } })
     ),
     e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
       e('div', { style:{ display:'flex', alignItems:'center', gap:10 } },
@@ -1083,7 +1128,7 @@ function App() {
 
       // Hero
       e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
-        e(ImageSlot, { id: month.heroId, placeholder: month.heroPlaceholder, height: matted ? 358 : 380,
+        e(ImageSlot, { id: month.heroId, placeholder: month.heroPlaceholder, style: { aspectRatio: '3 / 2' },
           overlay: e(HeroCaption, { key: 'cap-' + month.key, value: month.heroCaption || '', onCommit: setHeroCaption }) })
       ),
       e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
