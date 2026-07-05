@@ -43,7 +43,12 @@
     input:focus { border-color: #54632F !important; box-shadow: 0 0 0 2px rgba(84,99,47,0.22) !important; }
     .kind-btn:hover { filter: brightness(0.97); }
     .loc-pick:hover { border-color: #54632F !important; }
-  </style>
+    .hero-caption { position: absolute; left: 0; bottom: 0; z-index: 5; max-width: 88%; background: #000; color: #fff; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.4; padding: 6px 11px; letter-spacing: .02em; }
+    .hero-caption:empty::before { content: attr(data-ph); color: #B7B0A2; }
+    .hero-caption:focus { outline: none; background: #000 !important; color: #fff !important; border-radius: 0 !important; box-shadow: 0 0 0 2px rgba(84,99,47,0.6); }
+    .slide-fade { animation: heroFade .9s ease; }
+    @keyframes heroFade { from { opacity: 0; } to { opacity: 1; } }
+</style>
 </head>
 <body>
 <div id="root"></div>
@@ -117,7 +122,7 @@ const Storage = {
 };
 
 // ─── Image Slot ───────────────────────────────────────────────────────────────
-function ImageSlot({ id, placeholder, height, style = {} }) {
+function ImageSlot({ id, placeholder, height, style = {}, overlay = null }) {
   const [src, setSrc] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -170,6 +175,7 @@ function ImageSlot({ id, placeholder, height, style = {} }) {
     e('input', { ref: fileRef, type: 'file', accept: 'image/*', style: { display: 'none' },
       onChange: (ev) => { const f = ev.target.files[0]; ev.target.value = ''; uploadFile(f); } }),
     src && e('img', { src, alt: '' }),
+    src && overlay,
     src && !busy && e('button', {
       onClick: handleClear,
       title: 'Remove image',
@@ -180,6 +186,105 @@ function ImageSlot({ id, placeholder, height, style = {} }) {
       e('div', null, '↓ drop or click to add a photo'),
       e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } }, placeholder)
     )
+  );
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+// Fisher–Yates shuffle — returns a new array in random order.
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ─── Hero caption ─────────────────────────────────────────────────────────────
+// A black caption box in the bottom-left of a hero photo. Click to type the
+// location and month-year; it saves when you click away. Shows a faint prompt
+// while empty. (Purely a display box on the slideshow, where `onCommit` is null.)
+function HeroCaption({ value, onCommit }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && ref.current.textContent !== (value || '')) {
+      ref.current.textContent = value || '';
+    }
+  }, []);
+  const editable = typeof onCommit === 'function';
+  const handleBlur = () => {
+    const t = ref.current ? ref.current.textContent.trim() : '';
+    if (t !== (value || '')) onCommit(t);
+  };
+  return e('div', {
+    ref,
+    className: 'hero-caption',
+    contentEditable: editable,
+    suppressContentEditableWarning: true,
+    'data-ph': 'Location · Month Year',
+    title: editable ? 'Click to caption this photo' : undefined,
+    style: { cursor: editable ? 'text' : 'default' },
+    onBlur: editable ? handleBlur : undefined,
+    onClick: (ev) => ev.stopPropagation(),
+  });
+}
+
+// ─── Hero slideshow (year cover) ────────────────────────────────────────────────
+// The 2026 cover isn't uploadable. Instead it cycles through whichever months
+// already have a hero photo, in random order, changing every 30 seconds.
+function HeroSlideshow({ months, height }) {
+  const [slides, setSlides] = useState([]); // [{ key, heroId, caption }]
+  const [pos, setPos] = useState(0);
+  const orderRef = useRef([]);
+
+  // Work out which months actually have a hero photo uploaded (skip empty ones).
+  useEffect(() => {
+    let cancelled = false;
+    const candidates = months.filter(m => m.heroId).map(m => ({
+      key: m.key, heroId: m.heroId, caption: (m.heroCaption || '').trim(),
+    }));
+    if (!candidates.length) { setSlides([]); return; }
+    let pending = candidates.length;
+    const okKeys = new Set();
+    const finish = () => { if (!cancelled) setSlides(candidates.filter(c => okKeys.has(c.key))); };
+    candidates.forEach(c => {
+      const img = new Image();
+      img.onload = () => { okKeys.add(c.key); if (--pending === 0) finish(); };
+      img.onerror = () => { if (--pending === 0) finish(); };
+      img.src = Storage.photoUrl(c.heroId);
+    });
+    return () => { cancelled = true; };
+  }, [months]);
+
+  // Cycle through the available photos in a fresh random order, 30s each.
+  useEffect(() => {
+    if (slides.length === 0) { orderRef.current = []; setPos(0); return; }
+    orderRef.current = shuffle(slides.map((_, i) => i));
+    setPos(orderRef.current[0]);
+    if (slides.length === 1) return;
+    let p = 0;
+    const t = setInterval(() => {
+      p++;
+      if (p >= orderRef.current.length) { orderRef.current = shuffle(slides.map((_, i) => i)); p = 0; }
+      setPos(orderRef.current[p]);
+    }, 30000);
+    return () => clearInterval(t);
+  }, [slides]);
+
+  if (slides.length === 0) {
+    return e('div', { className: 'image-slot', style: { height } },
+      e('div', { className: 'placeholder-text' },
+        e('div', null, 'Monthly hero slideshow'),
+        e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } },
+          'Add hero photos to the months and they’ll cycle here every 30 seconds')
+      )
+    );
+  }
+
+  const cur = slides[pos] || slides[0];
+  return e('div', { className: 'image-slot', style: { height } },
+    e('img', { key: cur.heroId, className: 'slide-fade', src: Storage.photoUrl(cur.heroId), alt: '' }),
+    cur.caption && e(HeroCaption, { key: 'show-' + cur.key, value: cur.caption, onCommit: null })
   );
 }
 
@@ -751,6 +856,10 @@ function App() {
     });
   };
 
+  const setHeroCaption = (text) => {
+    mutateData(d => { d[monthIdx].heroCaption = text; });
+  };
+
   const addEvent = () => {
     uidRef.current++;
     const id = 'ev-new-' + uidRef.current;
@@ -892,7 +1001,7 @@ function App() {
     e('div', { style:{ height:1, background:'#D2C7AC', margin:'22px 0 24px' } }),
     // Hero
     e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
-      e(ImageSlot, { id:'hero-2026', placeholder:'Your standout frame of 2026 — drop a hero shot', height: matted ? 404 : 430 })
+      e(HeroSlideshow, { months: data, height: matted ? 404 : 430 })
     ),
     e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
       e('div', { style:{ display:'flex', alignItems:'center', gap:10 } },
@@ -974,7 +1083,8 @@ function App() {
 
       // Hero
       e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
-        e(ImageSlot, { id: month.heroId, placeholder: month.heroPlaceholder, height: matted ? 358 : 380 })
+        e(ImageSlot, { id: month.heroId, placeholder: month.heroPlaceholder, height: matted ? 358 : 380,
+          overlay: e(HeroCaption, { key: 'cap-' + month.key, value: month.heroCaption || '', onCommit: setHeroCaption }) })
       ),
       e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
         e('div', { style:{ display:'flex', alignItems:'center', gap:10 } },
