@@ -1265,6 +1265,22 @@ function App() {
   const matted = heroFraming === 'Matted print';
   const mapPlaces = useMemo(() => buildMapPlaces(data), [data]);
 
+  // Backfill each built-in location's own map coordinates from the table, so the
+  // coordinates field is populated now that the postcode has been retired.
+  useEffect(() => {
+    setData(prev => {
+      let changed = false;
+      const d = prev.map(m => ({ ...m, locations: m.locations.map(l => {
+        if ((typeof l.lat !== 'number' || typeof l.lng !== 'number') && LOCATION_COORDS[l.id]) {
+          changed = true;
+          return { ...l, lat: LOCATION_COORDS[l.id][0], lng: LOCATION_COORDS[l.id][1] };
+        }
+        return l;
+      }) }));
+      return changed ? d : prev;
+    });
+  }, []);
+
   const goToYear = () => { setMapView(false); setYearView(true); };
   const goToMap = () => setMapView(true);
   const goToMonth = (idx, locId) => {
@@ -1709,8 +1725,7 @@ function App() {
                   e('div', { style:{ display:'grid', gridTemplateColumns:'74px 1fr', gap:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
                     e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Where'),
                     e('div', null,
-                      e(Editable, { key:'where-'+sel.id, tag:'div', value:sel.where, onCommit:(t)=>editField(sel.id,'where',t), title:'Click to edit', style:{ fontSize:15, color:'#2A251E', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } }),
-                      e(Editable, { key:'postcode-'+sel.id, tag:'span', value:sel.postcode, onCommit:(t)=>editField(sel.id,'postcode',t), title:'Click to edit', style:{ display:'inline-block', marginTop:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, padding:'3px 8px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#6E6450', letterSpacing:'.06em', cursor:'text', outline:'none' } })
+                      e(Editable, { key:'where-'+sel.id, tag:'div', value:sel.where, onCommit:(t)=>editField(sel.id,'where',t), title:'Click to edit', style:{ fontSize:15, color:'#2A251E', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
                     )
                   ),
                   // Idea
