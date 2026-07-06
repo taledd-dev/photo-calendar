@@ -49,6 +49,7 @@
     .slide-fade { animation: heroFade .9s ease; }
     @keyframes heroFade { from { opacity: 0; } to { opacity: 1; } }
     .year-input:empty::before { content: 'YY'; color: #B7AD90; }
+    .coord-input:empty::before { content: 'paste latitude, longitude'; color: #B7AD90; }
     .pause-btn:hover { background: rgba(42,37,30,0.78) !important; }
     .pause-btn:active { transform: scale(0.94); }
     .map-chip:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.14) !important; }
@@ -898,14 +899,24 @@ const LOCATION_COORDS = {
 function buildMapPlaces(data) {
   const byId = {};
   data.forEach((m, mi) => m.locations.forEach(loc => {
-    const c = LOCATION_COORDS[loc.id];
-    if (!c) return; // no coordinates on record — skip (e.g. a brand-new location)
+    const own = (typeof loc.lat === 'number' && typeof loc.lng === 'number');
+    const c = own ? [loc.lat, loc.lng] : LOCATION_COORDS[loc.id];
+    if (!c) return; // no coordinates yet — skip until one is set in the detail panel
     let p = byId[loc.id];
     if (!p) p = byId[loc.id] = { id: loc.id, name: loc.name, where: loc.where, region: loc.region, lat: c[0], lng: c[1], shoots: [], visited: false };
     p.shoots.push({ mi, monthName: m.name, tag: loc.tag });
     if (loc.done) p.visited = true;
   }));
   return Object.values(byId);
+}
+
+// The "lat, lng" text shown in a location's detail panel — its own coordinates if
+// set, otherwise the built-in ones, otherwise blank (so it can be added).
+function locCoordText(loc) {
+  let la = (typeof loc.lat === 'number') ? loc.lat : null;
+  let lo = (typeof loc.lng === 'number') ? loc.lng : null;
+  if (la == null) { const fb = LOCATION_COORDS[loc.id]; if (fb) { la = fb[0]; lo = fb[1]; } }
+  return (la != null && lo != null) ? (la.toFixed(5) + ', ' + lo.toFixed(5)) : '';
 }
 
 // ─── Map view ─────────────────────────────────────────────────────────────────
@@ -1325,6 +1336,19 @@ function App() {
     Storage.saveMeta({ years }, key);
   };
 
+  // Set a location's map coordinates from pasted "latitude, longitude" text.
+  // Clearing the field removes them (so it falls back to any built-in coords).
+  const setLocCoords = (locId, text) => {
+    const nums = (text || '').split(/[,\s]+/).map(x => parseFloat(x)).filter(x => !isNaN(x));
+    const has = nums.length >= 2;
+    mutateData(d => {
+      for (const m of d) {
+        const loc = m.locations.find(l => l.id === locId);
+        if (loc) { if (has) { loc.lat = nums[0]; loc.lng = nums[1]; } else { delete loc.lat; delete loc.lng; } break; }
+      }
+    });
+  };
+
   const addEvent = () => {
     uidRef.current++;
     const id = 'ev-new-' + uidRef.current;
@@ -1641,6 +1665,13 @@ function App() {
                   e('div', { style:{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 } },
                     e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71' } }, 'Year taken'),
                     e(Editable, { key:'year-'+sel.id, tag:'span', value: sel.photoYear || '', onCommit:(t)=>setPhotoYear(sel.id, t), title:'Set the year this photo was taken', className:'year-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, padding:'4px 12px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:64, textAlign:'center', letterSpacing:'.1em', cursor:'text', outline:'none' } })
+                  ),
+                  e('div', { style:{ marginTop:8 } },
+                    e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:5 } },
+                      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71' } }, 'Map coordinates'),
+                      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#B7AD90' } }, 'lat, lng')
+                    ),
+                    e(Editable, { key:'coords-'+sel.id, tag:'div', value: locCoordText(sel), onCommit:(t)=>setLocCoords(sel.id, t), title:'Paste "latitude, longitude" to place this location on the map', className:'coord-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11.5, padding:'6px 10px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', letterSpacing:'.02em', cursor:'text', outline:'none', wordBreak:'break-all' } })
                   )
                 ),
                 e('div', { style:{ flex:1, minWidth:280 } },
