@@ -1324,6 +1324,11 @@ function App() {
   };
 
   const deleteLocation = (id) => {
+    // Also remove this location's photo (hero + thumbnail) from R2, so deleting a
+    // spot doesn't leave orphaned images in the bucket. Only the owner (who holds
+    // the upload password) can delete; a viewer's delete just changes their view.
+    const key = Storage.peekUploadKey();
+    if (key) Storage.removePhotoVariants(month.key + '-ref-' + id, key);
     let nextSel = null;
     mutateData(d => {
       const locs = d[monthIdx].locations;
