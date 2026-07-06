@@ -51,6 +51,7 @@
     .year-input:empty::before { content: 'YY'; color: #B7AD90; }
     .coord-input:empty::before { content: 'paste latitude, longitude'; color: #B7AD90; }
     .kit-view:hover span { border-color: #54632F; }
+    .tag-input:empty::before { content: 'Label'; color: #B7AD90; }
     .pause-btn:hover { background: rgba(42,37,30,0.78) !important; }
     .pause-btn:active { transform: scale(0.94); }
     .map-chip:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.14) !important; }
@@ -1697,11 +1698,14 @@ function App() {
             e('div', { style:{ height:5, background:regionColor(sel.region) } }),
             e('div', { style:{ padding:'20px 22px 22px' } },
               e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16 } },
-                e('div', { style:{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' } },
-                  e(Editable, { key:'name-'+sel.id, tag:'h2', value:sel.name, onCommit:(t)=>editField(sel.id,'name',t), title:'Click to edit', style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:27, color:'#2A251E', lineHeight:1, cursor:'text', outline:'none', borderRadius:3, padding:'2px 6px', margin:'-2px -6px' } }),
-                  sel.region==='UK'
-                    ? e('button', { className:'region-uk', onClick:()=>toggleRegion(sel.id), title:'Switch to International', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.12em', textTransform:'uppercase', padding:'4px 9px', background:'#E4E8D0', color:'#54632F', border:'1px solid #54632F', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 } }, 'UK ', e('span', { style:{ opacity:.6 } }, '⇄'))
-                    : e('button', { className:'region-int', onClick:()=>toggleRegion(sel.id), title:'Switch to UK', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.12em', textTransform:'uppercase', padding:'4px 9px', background:'#F1DECF', color:'#9E4B26', border:'1px solid #9E4B26', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 } }, 'International ', e('span', { style:{ opacity:.6 } }, '⇄'))
+                e('div', { style:{ display:'flex', flexDirection:'column', gap:6, minWidth:0 } },
+                  e(Editable, { key:'tag-'+sel.id, tag:'div', value:sel.tag, onCommit:(t)=>editField(sel.id,'tag',t), title:'Click to edit the label', className:'tag-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px', alignSelf:'flex-start' } }),
+                  e('div', { style:{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' } },
+                    e(Editable, { key:'name-'+sel.id, tag:'h2', value:sel.name, onCommit:(t)=>editField(sel.id,'name',t), title:'Click to edit', style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:27, color:'#2A251E', lineHeight:1, cursor:'text', outline:'none', borderRadius:3, padding:'2px 6px', margin:'-2px -6px' } }),
+                    sel.region==='UK'
+                      ? e('button', { className:'region-uk', onClick:()=>toggleRegion(sel.id), title:'Switch to International', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.12em', textTransform:'uppercase', padding:'4px 9px', background:'#E4E8D0', color:'#54632F', border:'1px solid #54632F', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 } }, 'UK ', e('span', { style:{ opacity:.6 } }, '⇄'))
+                      : e('button', { className:'region-int', onClick:()=>toggleRegion(sel.id), title:'Switch to UK', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.12em', textTransform:'uppercase', padding:'4px 9px', background:'#F1DECF', color:'#9E4B26', border:'1px solid #9E4B26', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 } }, 'International ', e('span', { style:{ opacity:.6 } }, '⇄'))
+                  )
                 ),
                 e('button', { className:'close-btn', onClick:()=>setSelectedLoc(null), style:{ flex:'none', width:30, height:30, background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontSize:17, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
               ),
