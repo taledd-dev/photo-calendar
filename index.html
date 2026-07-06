@@ -1498,18 +1498,21 @@ function App() {
   const Divider = () => e('span', { style:{ width:1, height:28, background:'#D2C7AC', margin:'0 4px' } });
 
   // Nav buttons shared
-  const navRow = (showYearBtn) => e('div', { style:{ display:'flex', gap:9, alignItems:'center' } },
-    showYearBtn && e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' 2026'),
-    showYearBtn && e(Divider),
-    e('button', { className:'btn-hover', onClick:()=>changeMonth(-1), style:WhiteBtn }, '‹'),
-    e('button', { className:'btn-hover', onClick:()=>changeMonth(1), style:WhiteBtn }, '›'),
-    e(Divider),
-    e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map'),
-    !showYearBtn && e(Divider),
-    !showYearBtn && e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→')),
-    showYearBtn && e(Divider),
-    showYearBtn && e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), ' Add location')
-  );
+  const prevBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(-1), style:WhiteBtn }, '‹');
+  const nextBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(1), style:WhiteBtn }, '›');
+  const mapBtn = e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map');
+  // Month view keeps both arrows; the year view drops the right arrow (it's the
+  // same as the January button) and sits the left arrow just before January.
+  const navRow = (showYearBtn) => showYearBtn
+    ? e('div', { style:{ display:'flex', gap:9, alignItems:'center' } },
+        e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' 2026'),
+        e(Divider), prevBtn, nextBtn, e(Divider), mapBtn, e(Divider),
+        e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), ' Add location')
+      )
+    : e('div', { style:{ display:'flex', gap:9, alignItems:'center' } },
+        mapBtn, e(Divider), prevBtn,
+        e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
+      );
 
   const regionLegend = () => e('div', { style:{ display:'flex', gap:16, alignItems:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', color:'#6E6450' } },
     e('span', { style:{ display:'flex', alignItems:'center', gap:7 } }, dot('#54632F'), 'UK'),
