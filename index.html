@@ -50,6 +50,7 @@
     @keyframes heroFade { from { opacity: 0; } to { opacity: 1; } }
     .year-input:empty::before { content: 'YY'; color: #B7AD90; }
     .coord-input:empty::before { content: 'paste latitude, longitude'; color: #B7AD90; }
+    .kit-view:hover span { border-color: #54632F; }
     .pause-btn:hover { background: rgba(42,37,30,0.78) !important; }
     .pause-btn:active { transform: scale(0.94); }
     .map-chip:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.14) !important; }
@@ -430,6 +431,36 @@ function Editable({ tag = 'div', value, onCommit, title, style, className }) {
     suppressContentEditableWarning: true,
     onBlur: handleBlur,
     title, style, className,
+  });
+}
+
+// ─── Kit field ────────────────────────────────────────────────────────────────
+// Shows the kit as pill chips; click to edit as a single text line. Items can be
+// separated by a "·" or just commas — both are normalised back to "·" chips.
+function KitField({ value, onCommit }) {
+  const [editing, setEditing] = useState(false);
+  const mono = "'IBM Plex Mono',monospace";
+  const items = (value || '').split(/[·,\n]/).map(s => s.trim()).filter(Boolean);
+  const commit = (text) => {
+    const parts = (text || '').split(/[·,\n]/).map(s => s.trim()).filter(Boolean);
+    const joined = parts.join(' · ');
+    if (joined !== (value || '')) onCommit(joined);
+    setEditing(false);
+  };
+  if (!editing) {
+    return e('div', { className: 'kit-view', onClick: () => setEditing(true), title: 'Click to edit', style: { display: 'flex', flexWrap: 'wrap', gap: 7, cursor: 'pointer' } },
+      items.length
+        ? items.map((k, i) => e('span', { key: i, style: { fontFamily: mono, fontSize: 11, padding: '4px 9px', background: '#EFE7D2', border: '1px solid #DDD2B8', color: '#5A513B' } }, k))
+        : e('span', { style: { fontFamily: mono, fontSize: 11, color: '#B7AD90' } }, 'Click to add kit')
+    );
+  }
+  return e('textarea', {
+    autoFocus: true,
+    defaultValue: items.join(' · '),
+    onBlur: (ev) => commit(ev.target.value),
+    onKeyDown: (ev) => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); ev.target.blur(); } else if (ev.key === 'Escape') { setEditing(false); } },
+    placeholder: 'e.g. 24–70mm, Tripod, Polariser',
+    style: { width: '100%', minHeight: 62, fontFamily: mono, fontSize: 12, lineHeight: 1.6, color: '#2A251E', background: '#FFFDF5', border: '1px solid #C9BD9F', borderRadius: 3, padding: '8px 10px', outline: 'none', resize: 'vertical' },
   });
 }
 
@@ -1695,7 +1726,7 @@ function App() {
                   // Kit
                   e('div', { style:{ display:'grid', gridTemplateColumns:'74px 1fr', gap:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
                     e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Kit'),
-                    e(Editable, { key:'kit-'+sel.id, tag:'div', value:sel.kit, onCommit:(t)=>editField(sel.id,'kit',t), title:'Click to edit — separate items with ·', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, color:'#5A513B', lineHeight:1.75, cursor:'text', outline:'none', borderRadius:3, padding:'2px 6px', margin:'-2px -6px' } })
+                    e(KitField, { key:'kit-'+sel.id, value:sel.kit, onCommit:(t)=>editField(sel.id,'kit',t) })
                   )
                 )
               ),
