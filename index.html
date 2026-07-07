@@ -1023,7 +1023,9 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
   const [phase, setPhase] = useState('loading');
   const [featVer, setFeatVer] = useState(0);
   const featuresRef = useRef(null);
-  const panRef = useRef(null);
+  const ptrsRef = useRef({});                    // active pointers (touch/mouse) by id, in SVG coords
+  const gestureRef = useRef(null);               // current gesture: pan or pinch, with its start state
+  const viewRef = useRef({ k: 1, x: 0, y: 0 });  // live view, mirrors zoomK/pan for gesture maths
 
   // Lazy-load d3 + topojson + the country outlines the first time the map opens.
   useEffect(() => {
@@ -1068,31 +1070,79 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
   }, [sig, featVer, phase]);
 
   const clampPan = (tx, ty, k) => { const minX = -VW * (k - 1), minY = -VH * (k - 1); return [Math.min(0, Math.max(minX, tx)), Math.min(0, Math.max(minY, ty))]; };
-  const zoomTo = (kNew, fx, fy) => {
-    kNew = Math.max(VMIN, Math.min(VMAX, kNew));
-    const ntx = fx - (kNew / zoomK) * (fx - pan.x), nty = fy - (kNew / zoomK) * (fy - pan.y);
-    const c = clampPan(ntx, nty, kNew);
-    setZoomK(kNew); setPan({ x: c[0], y: c[1] });
+  const clampZoom = (k) => Math.max(VMIN, Math.min(VMAX, k));
+  // Apply a new view (zoom + pan), clamped, keeping the live ref and state in sync.
+  const applyView = (k, x, y) => {
+    k = clampZoom(k);
+    const c = clampPan(x, y, k);
+    viewRef.current = { k, x: c[0], y: c[1] };
+    setZoomK(k); setPan({ x: c[0], y: c[1] });
   };
-  const svgPoint = (ev) => { const r = ev.currentTarget.getBoundingClientRect(); return { x: (ev.clientX - r.left) * (VW / r.width), y: (ev.clientY - r.top) * (VH / r.height), rect: r }; };
-  const zoomIn = () => zoomTo(zoomK * 1.6, VW / 2, VH / 2);
-  const zoomOut = () => zoomTo(zoomK / 1.6, VW / 2, VH / 2);
-  const resetView = () => { setZoomK(1); setPan({ x: 0, y: 0 }); };
-  const onMapDouble = (ev) => { if (ev.target.closest && ev.target.closest('[data-pin]')) return; const p = svgPoint(ev); zoomTo(zoomK * 1.8, p.x, p.y); };
+  const zoomTo = (kNew, fx, fy) => {
+    const v = viewRef.current;
+    kNew = clampZoom(kNew);
+    applyView(kNew, fx - (kNew / v.k) * (fx - v.x), fy - (kNew / v.k) * (fy - v.y));
+  };
+  const zoomIn = () => zoomTo(viewRef.current.k * 1.6, VW / 2, VH / 2);
+  const zoomOut = () => zoomTo(viewRef.current.k / 1.6, VW / 2, VH / 2);
+  const resetView = () => applyView(1, 0, 0);
+
+  // Pointer position in SVG (viewBox) coordinates; helpers for pinch maths.
+  const toSvg = (ev) => { const r = ev.currentTarget.getBoundingClientRect(); return { x: (ev.clientX - r.left) * (VW / r.width), y: (ev.clientY - r.top) * (VH / r.height) }; };
+  const ptDist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const ptMid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+  const onMapDouble = (ev) => { if (ev.target.closest && ev.target.closest('[data-pin]')) return; const p = toSvg(ev); zoomTo(viewRef.current.k * 1.8, p.x, p.y); };
+
   const onMapDown = (ev) => {
-    if (zoomK <= 1 || (ev.target.closest && ev.target.closest('[data-pin]'))) return;
-    const p = svgPoint(ev);
-    panRef.current = { sx: ev.clientX, sy: ev.clientY, tx: pan.x, ty: pan.y, rw: p.rect.width, rh: p.rect.height };
+    if (ev.target.closest && ev.target.closest('[data-pin]')) return; // let pins take the tap
     try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch (_) {}
-    setDragging(true);
+    ptrsRef.current[ev.pointerId] = toSvg(ev);
+    const ids = Object.keys(ptrsRef.current);
+    const v = viewRef.current;
+    if (ids.length >= 2) {
+      const [a, b] = ids.slice(0, 2).map(id => ptrsRef.current[id]);
+      gestureRef.current = { mode: 'pinch', startDist: ptDist(a, b) || 1, startZoom: v.k, startPan: { x: v.x, y: v.y }, startMid: ptMid(a, b) };
+      setDragging(true);
+    } else {
+      gestureRef.current = { mode: 'pan', startPt: ptrsRef.current[ev.pointerId], startPan: { x: v.x, y: v.y } };
+      if (v.k > 1) setDragging(true);
+    }
   };
   const onMapMove = (ev) => {
-    if (!panRef.current) return;
-    const d = panRef.current;
-    const c = clampPan(d.tx + (ev.clientX - d.sx) * (VW / d.rw), d.ty + (ev.clientY - d.sy) * (VH / d.rh), zoomK);
-    setPan({ x: c[0], y: c[1] });
+    if (!ptrsRef.current[ev.pointerId]) return;
+    ptrsRef.current[ev.pointerId] = toSvg(ev);
+    const g = gestureRef.current;
+    if (!g) return;
+    const ids = Object.keys(ptrsRef.current);
+    if (g.mode === 'pinch' && ids.length >= 2) {
+      // Two fingers: scale by how much they spread, recentred on the pinch midpoint,
+      // and follow the midpoint so two-finger drag also pans.
+      const [a, b] = ids.slice(0, 2).map(id => ptrsRef.current[id]);
+      const kNew = clampZoom(g.startZoom * (ptDist(a, b) / g.startDist));
+      const m = ptMid(a, b);
+      const ntx = g.startMid.x - (kNew / g.startZoom) * (g.startMid.x - g.startPan.x) + (m.x - g.startMid.x);
+      const nty = g.startMid.y - (kNew / g.startZoom) * (g.startMid.y - g.startPan.y) + (m.y - g.startMid.y);
+      applyView(kNew, ntx, nty);
+    } else if (g.mode === 'pan' && ids.length === 1) {
+      if (viewRef.current.k <= 1) return; // nothing to pan at the fit level
+      const p = ptrsRef.current[ev.pointerId];
+      applyView(viewRef.current.k, g.startPan.x + (p.x - g.startPt.x), g.startPan.y + (p.y - g.startPt.y));
+    }
   };
-  const onMapUp = (ev) => { if (panRef.current) { try { ev.currentTarget.releasePointerCapture(ev.pointerId); } catch (_) {} } panRef.current = null; if (dragging) setDragging(false); };
+  const onMapUp = (ev) => {
+    try { ev.currentTarget.releasePointerCapture(ev.pointerId); } catch (_) {}
+    delete ptrsRef.current[ev.pointerId];
+    const ids = Object.keys(ptrsRef.current);
+    const v = viewRef.current;
+    if (ids.length === 1) {
+      // Lifting one finger of a pinch: hand over to a single-finger pan cleanly.
+      gestureRef.current = { mode: 'pan', startPt: ptrsRef.current[ids[0]], startPan: { x: v.x, y: v.y } };
+    } else if (ids.length === 0) {
+      gestureRef.current = null;
+      setDragging(false);
+    }
+  };
 
   const isReady = phase === 'ready' && !!map;
   const isError = phase === 'error' && !map;
@@ -1188,7 +1238,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
     // map panel
     e('div', { style: { background: '#FCFAF1', border: '1px solid #2A251E', padding: 10, boxShadow: '8px 8px 0 rgba(42,37,30,0.10)' } },
       e('div', { style: { position: 'relative', width: '100%', aspectRatio: '1000 / 640', border: '1px solid #D8CDB0', overflow: 'hidden', background: '#EAE0C8' } },
-        isReady && e('svg', { viewBox: '0 0 1000 640', onPointerDown: onMapDown, onPointerMove: onMapMove, onPointerUp: onMapUp, onPointerLeave: onMapUp, onDoubleClick: onMapDouble, style: { display: 'block', position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: zoomK > 1 ? (dragging ? 'grabbing' : 'grab') : 'default', touchAction: 'none', userSelect: 'none' } },
+        isReady && e('svg', { viewBox: '0 0 1000 640', onPointerDown: onMapDown, onPointerMove: onMapMove, onPointerUp: onMapUp, onPointerCancel: onMapUp, onDoubleClick: onMapDouble, style: { display: 'block', position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: zoomK > 1 ? (dragging ? 'grabbing' : 'grab') : 'default', touchAction: 'none', userSelect: 'none' } },
           e('rect', { x: 0, y: 0, width: 1000, height: 640, style: { fill: '#EAE0C8' } }),
           e('g', { transform: 'translate(' + pan.x.toFixed(2) + ' ' + pan.y.toFixed(2) + ') scale(' + zoomK.toFixed(4) + ')' },
             map && e('path', { d: map.graticule, style: { fill: 'none', stroke: '#D6CAAC', strokeWidth: '0.6px', opacity: .5, vectorEffect: 'non-scaling-stroke' } }),
