@@ -17,21 +17,30 @@ spot. It's a personal planning tool for the owner; family can view it.
     `x-upload-key` matching the Worker secret `UPLOAD_PASSWORD`.
   - Each photo is stored twice: `<base>` (hero, ~1600px) and `<base>-thumb`
     (~500px). `base = "<monthKey>-ref-<locId>"`, e.g. `jan-ref-lake-district`.
-  - Shared metadata (the per-location "year taken") is a JSON file in R2:
-    `photo-meta.json` → `{ years: { <locId>: "YY" } }`.
+  - The **whole calendar dataset** (locations, events, edits, coordinates, years,
+    done/visited ticks) is shared via `calendar-data.json` in R2, shaped
+    `{ version, savedAt, data }`. Everyone reads it; only the owner (password)
+    writes it, debounced.
 - **What's cloud-shared vs local:**
-  - **Cloud (everyone sees):** the photos, and the caption *years* (photo-meta.json).
-  - **Local per browser (`localStorage`):** the calendar text data — locations,
-    events, edits, coordinates, done/visited ticks (`calendar:data`), plus the
-    owner's upload password (`calendar:uploadKey`). So locations the owner *adds*
-    or *edits* show only in their browser; family see the default 12-month set.
+  - **Cloud (everyone sees the same):** the photos **and** the entire calendar
+    dataset (`calendar-data.json`). Owner writes, everyone reads — so all devices
+    and viewers see the same locations, edits, ticks, map markers, etc.
+  - **Local only:** the owner's upload password (`calendar:uploadKey`), plus a
+    `localStorage` cache of the data (`calendar:data`) for instant/offline render,
+    which the cloud copy overrides on load.
+  - `App` gates cloud *saving* behind a `cloudReady` flag (set once the load
+    settles) so a fresh device can't overwrite the cloud with defaults; a
+    `cloudEcho` ref stops the load from immediately re-saving. The old per-year
+    `photo-meta.json` is superseded (years live in `calendar-data.json`;
+    `loadMeta`/`saveMeta` remain in `Storage` but are unused).
 
 ## Key pieces in `index.html`
 
 - **`Storage`** — the single seam to persistence. `photoUrl`, `getUploadKey`
   (prompts) / `peekUploadKey` (silent), `saveImage`/`removeImage`,
   `savePhotoVariants`/`removePhotoVariants` (resize + upload/delete both sizes),
-  `loadMeta`/`saveMeta` (the years file), `loadData`/`saveData` (localStorage).
+  `loadCloudData`/`saveCloudData` (the shared `calendar-data.json`),
+  `loadData`/`saveData` (localStorage cache).
 - **`resizeImage(file, maxEdge, quality)`** — canvas downscale to a JPEG blob
   (respects EXIF orientation).
 - **Components:** `HeroCaption` (read-only caption overlay), `PhotoSlideshow`

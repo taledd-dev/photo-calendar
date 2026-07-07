@@ -159,6 +159,29 @@ const Storage = {
       return res.ok;
     } catch (_) { return false; }
   },
+  // The whole calendar dataset (locations, events, edits, coordinates, ticks) is
+  // shared via calendar-data.json in R2 — everyone reads it, only the owner (with
+  // the upload password) writes it. Local storage stays a fast, offline cache.
+  async loadCloudData() {
+    try {
+      const res = await fetch(this.photoUrl('calendar-data.json', Date.now()), { cache: 'no-store' });
+      if (!res.ok) return null;
+      const parsed = await res.json();
+      if (!parsed || parsed.version !== STORAGE_VERSION || !parsed.data) return null;
+      return parsed.data;
+    } catch (_) { return null; }
+  },
+  async saveCloudData(data, key) {
+    try {
+      const res = await fetch(this.photoUrl('calendar-data.json'), {
+        method: 'PUT',
+        headers: { 'x-upload-key': key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: STORAGE_VERSION, savedAt: Date.now(), data }),
+      });
+      if (res.status === 401) { this.clearUploadKey(); return false; }
+      return res.ok;
+    } catch (_) { return false; }
+  },
   // Save an uploaded photo as two sizes: a small thumbnail (<base>-thumb) for the
   // location cards and a larger hero version (<base>) for the slideshows.
   async savePhotoVariants(base, file, key) {
@@ -1244,23 +1267,40 @@ function App() {
   const [imgEpoch, setImgEpoch] = useState(0); // bumped after an upload so tiles + slideshows refresh
   const bumpImg = () => setImgEpoch(n => n + 1);
   const uidRef = useRef(100);
+  const cloudEcho = useRef(false);      // true when data was just set from the cloud (don't re-save it)
+  const cloudSaveTimer = useRef(null);
+  const [cloudReady, setCloudReady] = useState(false); // true once the cloud load has settled (gates saving)
 
   // Save the calendar (locations, events, edits, ordering, ticked-off spots)
   // every time anything changes, so it survives a page reload.
   useEffect(() => { Storage.saveData(data); }, [data]);
 
-  // Pull shared photo metadata (the "year taken" for each location) from the
-  // cloud on load, so everyone viewing the calendar sees the same caption years.
+  // Load the shared calendar from the cloud on startup so every device and every
+  // viewer sees the same data. Local storage shows instantly; the cloud copy (if
+  // present) then overrides it. `cloudReady` flips on only once this has settled,
+  // which gates saving so a fresh device can't overwrite the cloud with defaults
+  // before the load lands.
   useEffect(() => {
     let cancelled = false;
-    Storage.loadMeta().then(meta => {
-      if (cancelled || !meta || !meta.years) return;
-      setData(prev => prev.map(m => ({
-        ...m,
-        locations: m.locations.map(l => (typeof meta.years[l.id] === 'string' ? { ...l, photoYear: meta.years[l.id] } : l)),
-      })));
+    Storage.loadCloudData().then(cloud => {
+      if (cancelled) return;
+      if (cloud) { cloudEcho.current = true; setData(cloud); }
+      setCloudReady(true);
     });
   }, []);
+
+  // Push the shared calendar back to the cloud whenever it changes — owner only
+  // (whoever holds the upload password). Debounced; only after the load has
+  // settled; and skips the echo from the load itself.
+  useEffect(() => {
+    if (!cloudReady) return;
+    if (cloudEcho.current) { cloudEcho.current = false; return; }
+    const key = Storage.peekUploadKey();
+    if (!key) return;
+    clearTimeout(cloudSaveTimer.current);
+    cloudSaveTimer.current = setTimeout(() => { Storage.saveCloudData(data, key); }, 800);
+    return () => clearTimeout(cloudSaveTimer.current);
+  }, [data, cloudReady]);
 
   const month = data[Math.min(monthIdx, data.length - 1)];
   const matted = heroFraming === 'Matted print';
@@ -1377,16 +1417,6 @@ function App() {
   const setPhotoYear = (locId, year) => {
     const y = (year || '').trim();
     mutateData(d => { const loc = d[monthIdx].locations.find(l => l.id === locId); if (loc) loc.photoYear = y; });
-    // Only the owner (whose browser holds the upload password) syncs to the
-    // cloud; a viewer's edit stays local and never triggers a password prompt.
-    const key = Storage.peekUploadKey();
-    if (!key) return;
-    const years = {};
-    data.forEach(m => m.locations.forEach(l => {
-      const val = (l.id === locId ? y : (l.photoYear || '').trim());
-      if (val) years[l.id] = val;
-    }));
-    Storage.saveMeta({ years }, key);
   };
 
   // Set a location's map coordinates from pasted "latitude, longitude" text.
