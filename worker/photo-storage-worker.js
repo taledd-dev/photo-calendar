@@ -40,8 +40,9 @@ export default {
       return json({ error: 'Not found' }, 404);
     }
 
-    // Keep the storage name simple and safe (letters, numbers, dot, dash, _).
-    const key = decodeURIComponent(match[1]).replace(/[^a-zA-Z0-9._-]/g, '_');
+    // Keep the storage name simple and safe (letters, numbers, dot, dash, _, and
+    // "/" so photos can live in a "photos/" folder). Collapse any ".." segments.
+    const key = decodeURIComponent(match[1]).replace(/[^a-zA-Z0-9._/-]/g, '_').replace(/\.{2,}/g, '_');
 
     // ── Public: view a photo ──────────────────────────────────────────────────
     if (request.method === 'GET') {

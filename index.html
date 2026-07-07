@@ -974,6 +974,17 @@ function locCoordText(loc) {
   return (la != null && lo != null) ? (la.toFixed(5) + ', ' + lo.toFixed(5)) : '';
 }
 
+// Photos live under a "photos/" folder in R2, keyed by month + location id, kept
+// separate from the calendar-data.json file at the bucket root.
+function photoBase(monthKey, locId) { return 'photos/' + monthKey + '-ref-' + locId; }
+
+// Turn a name into a filename-friendly slug — used as the id for new locations so
+// their photos get readable names like photos/apr-ref-jasper.
+function slugify(s) {
+  return (s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+
 // ─── Map view ─────────────────────────────────────────────────────────────────
 // A flat locator map of every location (ported from the design prototype): pins,
 // region/month/visited filters, zoom & pan, and a flip-side card whose month rows
@@ -1355,10 +1366,16 @@ function App() {
   };
 
   const addLocation = () => {
-    uidRef.current++;
-    const id = 'loc-' + Date.now() + '-' + uidRef.current;
+    const nameInput = window.prompt('Name of the new location:', '');
+    if (nameInput === null) return; // cancelled
+    const name = nameInput.trim() || 'New location';
+    // Readable, unique id derived from the name — this becomes part of the photo filename.
+    const existing = new Set(data.flatMap(m => m.locations.map(l => l.id)));
+    const slugBase = slugify(name) || 'location';
+    let id = slugBase, n = 2;
+    while (existing.has(id)) { id = slugBase + '-' + (n++); }
     mutateData(d => {
-      d[monthIdx].locations.push({ id, region:'UK', name:'New location', tag:'New spot', done:false, where:'Where is it?', postcode:'—', idea:'Describe the shot you have in mind — what makes this spot worth the trip.', when:'Best season, time of day and conditions to aim for.', kit:'Lens · Tripod' });
+      d[monthIdx].locations.push({ id, region:'UK', name, tag:'New spot', done:false, where:'Where is it?', idea:'Describe the shot you have in mind — what makes this spot worth the trip.', when:'Best season, time of day and conditions to aim for.', kit:'Lens · Tripod' });
     });
     setSelectedLoc(id);
   };
@@ -1368,7 +1385,7 @@ function App() {
     // spot doesn't leave orphaned images in the bucket. Only the owner (who holds
     // the upload password) can delete; a viewer's delete just changes their view.
     const key = Storage.peekUploadKey();
-    if (key) Storage.removePhotoVariants(month.key + '-ref-' + id, key);
+    if (key) Storage.removePhotoVariants(photoBase(month.key, id), key);
     let nextSel = null;
     mutateData(d => {
       const locs = d[monthIdx].locations;
@@ -1584,7 +1601,7 @@ function App() {
         boxStyle: { aspectRatio: '3 / 2' },
         items: data.flatMap(m => m.locations.map(loc => {
           const yr = (loc.photoYear || '').trim();
-          return { key: m.key + '-' + loc.id, base: m.key + '-ref-' + loc.id, caption: loc.name + ' · ' + m.name + (yr ? ' ' + yr : '') };
+          return { key: m.key + '-' + loc.id, base: photoBase(m.key, loc.id), caption: loc.name + ' · ' + m.name + (yr ? ' ' + yr : '') };
         })),
       })
     ),
@@ -1673,7 +1690,7 @@ function App() {
           boxStyle: { aspectRatio: '3 / 2' },
           items: month.locations.map(loc => {
             const yr = (loc.photoYear || '').trim();
-            return { key: loc.id, base: month.key + '-ref-' + loc.id, caption: loc.name + ' · ' + month.name + (yr ? ' ' + yr : '') };
+            return { key: loc.id, base: photoBase(month.key, loc.id), caption: loc.name + ' · ' + month.name + (yr ? ' ' + yr : '') };
           }),
         })
       ),
@@ -1712,7 +1729,7 @@ function App() {
             l.id === dragOverLoc && l.id !== draggingLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px dashed #54632F', background:'rgba(84,99,47,0.08)', pointerEvents:'none', zIndex:5 } }),
             e('div', { style:{ height:4, background: l.region==='UK' ? '#54632F' : '#9E4B26' } }),
             e('div', { style:{ position:'relative', height:76, overflow:'hidden', backgroundImage:'repeating-linear-gradient(135deg,#EFE7D2 0,#EFE7D2 7px,#E6DCC2 7px,#E6DCC2 14px)', borderBottom:'1px solid #E0D6BE' } },
-              e(LocThumb, { base: month.key + '-ref-' + l.id, epoch: imgEpoch }),
+              e(LocThumb, { base: photoBase(month.key, l.id), epoch: imgEpoch }),
               e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, zIndex:3, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#EFE7D2', textShadow:'0 1px 2px rgba(0,0,0,0.45)', cursor:'grab' } }, '⠿'),
               l.done
                 ? e('button', { onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as not done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, lineHeight:1, border:'1.5px solid #54632F', background:'#54632F', color:'#FBF7EC' } }, '✓')
@@ -1749,7 +1766,7 @@ function App() {
               ),
               e('div', { style:{ display:'flex', gap:24, marginTop:18, flexWrap:'wrap' } },
                 e('div', { style:{ flex:'0 0 300px', maxWidth:'100%' } },
-                  e(LocationPhoto, { base: month.key + '-ref-' + sel.id, placeholder:'Add a photo of ' + sel.name, onChange: bumpImg, style:{ height:206, borderRadius:4, border:'1px solid #D2C7AC' } }),
+                  e(LocationPhoto, { base: photoBase(month.key, sel.id), placeholder:'Add a photo of ' + sel.name, onChange: bumpImg, style:{ height:206, borderRadius:4, border:'1px solid #D2C7AC' } }),
                   e('div', { style:{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 } },
                     e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71' } }, 'Year taken'),
                     e(Editable, { key:'year-'+sel.id, tag:'span', value: sel.photoYear || '', onCommit:(t)=>setPhotoYear(sel.id, t), title:'Set the year this photo was taken', className:'year-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, padding:'4px 12px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:64, textAlign:'center', letterSpacing:'.1em', cursor:'text', outline:'none' } })

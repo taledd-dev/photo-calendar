@@ -16,7 +16,11 @@ spot. It's a personal planning tool for the owner; family can view it.
   - `GET /photo/<key>` is public (viewing). `PUT`/`DELETE` require the header
     `x-upload-key` matching the Worker secret `UPLOAD_PASSWORD`.
   - Each photo is stored twice: `<base>` (hero, ~1600px) and `<base>-thumb`
-    (~500px). `base = "<monthKey>-ref-<locId>"`, e.g. `jan-ref-lake-district`.
+    (~500px), under a **`photos/` folder**. `base = photoBase(monthKey, locId) =
+    "photos/<monthKey>-ref-<locId>"`, e.g. `photos/jan-ref-lake-district`.
+    New locations get a readable slug id from their name (`slugify`), so
+    added-location photos get readable filenames too. The Worker key sanitizer
+    allows `/` for the folder.
   - The **whole calendar dataset** (locations, events, edits, coordinates, years,
     done/visited ticks) is shared via `calendar-data.json` in R2, shaped
     `{ version, savedAt, data }`. Everyone reads it; only the owner (password)
