@@ -138,6 +138,9 @@ const Storage = {
   peekUploadKey() {
     try { return localStorage.getItem('calendar:uploadKey'); } catch (_) { return null; }
   },
+  setUploadKey(k) {
+    try { if (k) localStorage.setItem('calendar:uploadKey', k); } catch (_) {}
+  },
   // Photo metadata (currently the "year taken" for each location) is shared via a
   // tiny JSON file in R2, so everyone viewing the calendar sees the same info —
   // captions are otherwise built automatically from the location name and month.
@@ -1328,6 +1331,7 @@ function App() {
   const cloudEcho = useRef(false);      // true when data was just set from the cloud (don't re-save it)
   const cloudSaveTimer = useRef(null);
   const [cloudReady, setCloudReady] = useState(false); // true once the cloud load has settled (gates saving)
+  const unlockedRef = useRef(false);   // true once the edit password has been entered on this device
 
   // Save the calendar (locations, events, edits, ordering, ticked-off spots)
   // every time anything changes, so it survives a page reload.
@@ -1356,7 +1360,13 @@ function App() {
     const key = Storage.peekUploadKey();
     if (!key) return;
     clearTimeout(cloudSaveTimer.current);
-    cloudSaveTimer.current = setTimeout(() => { Storage.saveCloudData(data, key); }, 800);
+    cloudSaveTimer.current = setTimeout(() => {
+      Storage.saveCloudData(data, key).then(ok => {
+        // A 401 clears the stored key — i.e. the password was wrong. Re-lock so
+        // the next edit asks again, and let them know it didn't save.
+        if (!ok && !Storage.peekUploadKey()) { unlockedRef.current = false; alert('That password was not accepted, so your change was not saved. You will be asked again on your next edit.'); }
+      });
+    }, 800);
     return () => clearTimeout(cloudSaveTimer.current);
   }, [data, cloudReady]);
 
@@ -1404,7 +1414,23 @@ function App() {
     setSelectedLoc(first ? first.id : null);
   };
 
-  const mutateData = (fn) => setData(prev => { const d = prev.map(m => ({ ...m, locations: m.locations.map(l => ({ ...l })), events: m.events.map(e2 => ({ ...e2 })) })); fn(d); return d; });
+  // Editing is gated behind the upload password. The first time someone tries to
+  // change anything, they're asked for it; enter it once and everything's
+  // editable (and syncs). Leave it blank and it's view-only — the change is
+  // blocked. A device that already holds the password never gets asked.
+  const ensureUnlocked = () => {
+    if (unlockedRef.current || Storage.peekUploadKey()) { unlockedRef.current = true; return true; }
+    const entered = window.prompt('Enter the edit password to make changes.\n(Leave blank if you just want to look around.)');
+    if (!entered || !entered.trim()) return false;
+    Storage.setUploadKey(entered.trim());
+    unlockedRef.current = true;
+    return true;
+  };
+
+  const mutateData = (fn) => {
+    if (!ensureUnlocked()) return;
+    setData(prev => { const d = prev.map(m => ({ ...m, locations: m.locations.map(l => ({ ...l })), events: m.events.map(e2 => ({ ...e2 })) })); fn(d); return d; });
+  };
 
   // Toggle a location's "done"/visited state wherever it lives (used by the map,
   // whose pins can belong to any month, not just the current one).
@@ -1413,6 +1439,7 @@ function App() {
   };
 
   const addLocation = () => {
+    if (!ensureUnlocked()) return;
     const nameInput = window.prompt('Name of the new location:', '');
     if (nameInput === null) return; // cancelled
     const name = nameInput.trim() || 'New location';
@@ -1428,9 +1455,9 @@ function App() {
   };
 
   const deleteLocation = (id) => {
+    if (!ensureUnlocked()) return;
     // Also remove this location's photo (hero + thumbnail) from R2, so deleting a
-    // spot doesn't leave orphaned images in the bucket. Only the owner (who holds
-    // the upload password) can delete; a viewer's delete just changes their view.
+    // spot doesn't leave orphaned images in the bucket.
     const key = Storage.peekUploadKey();
     if (key) Storage.removePhotoVariants(photoBase(month.key, id), key);
     let nextSel = null;
