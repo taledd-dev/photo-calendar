@@ -1654,7 +1654,16 @@ function App() {
         e('div', { style:{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' } },
           e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
           e('a', { href:'https://instagram.com/llandscapist', target:'_blank', rel:'noopener noreferrer', className:'ig-link', title:'Follow @llandscapist on Instagram', style:{ display:'inline-flex', alignItems:'center', gap:6, textDecoration:'none', color:'#8A7D63', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em' } },
-            e('svg', { width:16, height:16, viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true', style:{ display:'block' } },
+            e('svg', { width:16, height:16, viewBox:'0 0 24 24', fill:'none', stroke:'url(#ig-grad)', strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true', style:{ display:'block' } },
+              e('defs', null,
+                e('linearGradient', { id:'ig-grad', x1:'0', y1:'1', x2:'1', y2:'0' },
+                  e('stop', { offset:'0%', stopColor:'#FEDA75' }),
+                  e('stop', { offset:'25%', stopColor:'#FA7E1E' }),
+                  e('stop', { offset:'50%', stopColor:'#D62976' }),
+                  e('stop', { offset:'75%', stopColor:'#962FBF' }),
+                  e('stop', { offset:'100%', stopColor:'#4F5BD5' })
+                )
+              ),
               e('rect', { x:2, y:2, width:20, height:20, rx:5, ry:5 }),
               e('path', { d:'M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z' }),
               e('line', { x1:17.5, y1:6.5, x2:17.51, y2:6.5 })
