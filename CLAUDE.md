@@ -37,6 +37,12 @@ spot. It's a personal planning tool for the owner; family can view it.
     `cloudEcho` ref stops the load from immediately re-saving. The old per-year
     `photo-meta.json` is superseded (years live in `calendar-data.json`;
     `loadMeta`/`saveMeta` remain in `Storage` but are unused).
+  - **Editing is password-gated.** `ensureUnlocked()` guards `mutateData` (and
+    `addLocation`/`deleteLocation` early): the first edit of any kind prompts for
+    the upload password; enter it once (stored in `calendar:uploadKey`) and you're
+    unlocked on that device forever; leave blank = view-only. A 401 on save
+    re-locks. NB `localStorage` is **per-origin**, so moving to the custom domain
+    reset every device's unlock (expected).
 
 ## Key pieces in `index.html`
 
@@ -83,13 +89,20 @@ spot. It's a personal planning tool for the owner; family can view it.
 - The **2026 cover** slideshow cycles *all* location photos; each **month hero**
   cycles that month's location photos.
 - Deleting a photo (×) **and** deleting a location both remove the R2 images.
+- The **map already has touch gestures** (pinch-to-zoom + one/two-finger pan via
+  pointer events on the SVG, `touchAction:'none'`) — don't rebuild them.
+- The **2026 page** has an Instagram link (`@llandscapist`, `.ig-link`) beside the
+  header label; it's year-page only.
 
 ## Working on it
 
-- **Deploy = publish to `main`.** GitHub Pages serves `main` at
-  `https://taledd-dev.github.io/photo-calendar/`. Development happens on a feature
-  branch, then fast-forward `main`. (Pages can lag a minute or two after a push;
-  cache-bust with `?v=something` when testing.)
+- **Live at `https://photoplan.studio`** (custom domain). Set up via a `CNAME`
+  file (`photoplan.studio`) + Cloudflare DNS (four A records to GitHub's
+  `185.199.108–111.153`, **DNS-only/grey**, plus a `www` CNAME) + GitHub Pages
+  "Enforce HTTPS". The old `taledd-dev.github.io/photo-calendar` redirects here.
+- **Deploy = publish to `main`.** GitHub Pages serves `main`. Development happens
+  on a feature branch, then fast-forward `main`. (Pages can lag a minute or two
+  after a push; cache-bust with `?v=something` when testing.)
 - **The Worker is deployed manually** via the Cloudflare dashboard (paste
   `worker/photo-storage-worker.js`, bind R2 bucket `photo-calendar` as `BUCKET`,
   set the `UPLOAD_PASSWORD` secret). `wrangler.toml` exists for reference.
@@ -104,3 +117,22 @@ spot. It's a personal planning tool for the owner; family can view it.
   ```
 - The environment can't reach the CDNs (React/d3) or R2, so the app can't be run
   headless here — rely on the syntax check and ask the owner to test live.
+
+## Next up: mobile / phone layout pass (not started)
+
+The app was built desktop-first. Goal: make it read well on phones **without a
+separate mobile site** (responsive, one codebase). Key points for whoever picks
+this up:
+
+- **Inline styles can't use `@media`.** Use a JS breakpoint — e.g. a
+  `useIsMobile()` hook around `window.matchMedia('(max-width: 640px)')` that
+  re-renders on change — then apply mobile style overrides conditionally. Scope
+  changes to the small breakpoint so **desktop is untouched**.
+- **Likely pain points:** the month **day-grid** (7 columns with absolutely-
+  positioned event bars) is the hardest on a narrow screen — may need to scroll
+  sideways or simplify; then location tiles, the detail panel two-column layout,
+  nav-row wrapping, page margins/padding, and font sizes.
+- **The map is already touch-optimised** (pinch/pan) — leave it.
+- **Testing is iterative:** this environment can't render a phone, so make a
+  change, publish, and have the owner check on their phone and report back.
+  Ask the owner up front which single thing annoys them most and start there.
