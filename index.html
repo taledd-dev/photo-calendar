@@ -52,6 +52,7 @@
     .coord-input:empty::before { content: 'paste latitude, longitude'; color: #B7AD90; }
     .kit-view:hover span { border-color: #54632F; }
     .tag-input:empty::before { content: 'Label'; color: #B7AD90; }
+    .ig-link:hover { color: #9E4B26 !important; }
     .pause-btn:hover { background: rgba(42,37,30,0.78) !important; }
     .pause-btn:active { transform: scale(0.94); }
     .map-chip:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.14) !important; }
@@ -1650,7 +1651,17 @@ function App() {
     // Header
     e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
       e('div', null,
-        e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
+        e('div', { style:{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' } },
+          e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
+          e('a', { href:'https://instagram.com/llandscapist', target:'_blank', rel:'noopener noreferrer', className:'ig-link', title:'Follow @llandscapist on Instagram', style:{ display:'inline-flex', alignItems:'center', gap:6, textDecoration:'none', color:'#8A7D63', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em' } },
+            e('svg', { width:16, height:16, viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true', style:{ display:'block' } },
+              e('rect', { x:2, y:2, width:20, height:20, rx:5, ry:5 }),
+              e('path', { d:'M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z' }),
+              e('line', { x1:17.5, y1:6.5, x2:17.51, y2:6.5 })
+            ),
+            e('span', null, '@llandscapist')
+          )
+        ),
         e('div', { style:{ display:'flex', alignItems:'flex-end', gap:18, marginTop:4 } },
           e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'clamp(64px,11vw,104px)', lineHeight:'0.82', color:'#2A251E', letterSpacing:'-0.015em' } }, '2026'),
           e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:9, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
