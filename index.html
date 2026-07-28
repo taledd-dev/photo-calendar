@@ -217,6 +217,26 @@ function shuffle(arr) {
   return a;
 }
 
+// ─── Mobile breakpoint ───────────────────────────────────────────────────────
+// Inline styles can't use @media, so this hook is the one place the app asks
+// "are we on a phone?". It re-renders whenever the viewport crosses 640px, and
+// components sprinkle small style overrides where isMobile is true — the
+// desktop layout is untouched.
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 640px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const onChange = () => setMobile(mq.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else mq.addListener(onChange); // older Safari
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+  return mobile;
+}
+
 // Shrink an uploaded photo to a max edge length and return a JPEG Blob. Used to
 // make a small thumbnail (for the location cards) and a larger hero version (for
 // the slideshows) from the same upload. Respects EXIF orientation on phones.
@@ -1315,6 +1335,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function App() {
+  const isMobile = useIsMobile();
   const [data, setData] = useState(() => Storage.loadData() || makeData());
   const [yearView, setYearView] = useState(true);
   const [mapView, setMapView] = useState(false);
@@ -1630,14 +1651,18 @@ function App() {
   const mapBtn = e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map');
   // Month view keeps both arrows; the year view drops the right arrow (it's the
   // same as the January button) and sits the left arrow just before January.
+  // On phones the row is allowed to wrap and the thin dividers are dropped —
+  // they read as clutter once the buttons flow onto two lines.
+  const navRowStyle = { display:'flex', gap:9, alignItems:'center', ...(isMobile ? { flexWrap:'wrap', gap:8 } : {}) };
+  const navDivider = () => isMobile ? null : e(Divider);
   const navRow = (showYearBtn) => showYearBtn
-    ? e('div', { style:{ display:'flex', gap:9, alignItems:'center' } },
+    ? e('div', { style:navRowStyle },
         e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' 2026'),
-        e(Divider), prevBtn, nextBtn, e(Divider), mapBtn, e(Divider),
-        e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), ' Add location')
+        navDivider(), prevBtn, nextBtn, navDivider(), mapBtn, navDivider(),
+        e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), isMobile ? ' Add' : ' Add location')
       )
-    : e('div', { style:{ display:'flex', gap:9, alignItems:'center' } },
-        mapBtn, e(Divider), prevBtn,
+    : e('div', { style:navRowStyle },
+        mapBtn, navDivider(), prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
 
@@ -1671,22 +1696,24 @@ function App() {
             e('span', null, '@llandscapist')
           )
         ),
-        e('div', { style:{ display:'flex', alignItems:'flex-end', gap:18, marginTop:4 } },
-          e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'clamp(64px,11vw,104px)', lineHeight:'0.82', color:'#2A251E', letterSpacing:'-0.015em' } }, '2026'),
+        e('div', { style:{ display:'flex', alignItems:'flex-end', gap:isMobile?14:18, marginTop:4, flexWrap:'wrap' } },
+          e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(48px,17vw,64px)':'clamp(64px,11vw,104px)', lineHeight:'0.82', color:'#2A251E', letterSpacing:'-0.015em' } }, '2026'),
           e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:9, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
             e('span', null, data.length + ' months'),
             e('span', null, totalLocs + ' locations'),
             e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
           )
         ),
-        e('div', { style:{ marginTop:12, fontSize:17, color:'#6E6450', maxWidth:'46ch', lineHeight:1.5 } }, 'A year of places to point a camera — frost on the fells, bluebells and lavender, a total eclipse, aurora and the longest nights. The plan, page by page.')
+        e('div', { style:{ marginTop:12, fontSize:isMobile?15:17, color:'#6E6450', maxWidth:'46ch', lineHeight:1.5 } }, 'A year of places to point a camera — frost on the fells, bluebells and lavender, a total eclipse, aurora and the longest nights. The plan, page by page.')
       ),
-      e('div', { style:{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:14 } },
+      // On phones this column wraps below the title, so pin it to the left edge
+      // (right-aligned buttons floating mid-screen look broken when stacked).
+      e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
         navRow(false),
         regionLegend()
       )
     ),
-    e('div', { style:{ height:1, background:'#D2C7AC', margin:'22px 0 24px' } }),
+    e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 18px':'22px 0 24px' } }),
     // Hero
     e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
       e(PhotoSlideshow, {
@@ -1714,7 +1741,9 @@ function App() {
     ),
     e('div', { style:{ marginTop:4 } },
       data.map((m2, i) =>
-        e('div', { key: m2.key, style:{ display:'grid', gridTemplateColumns:'150px 1fr', gap:26, padding:'22px 0', borderTop:'1px solid #D2C7AC' } },
+        // Phones: the 150px month column would squeeze the location text into a
+        // sliver, so the month header stacks above its locations instead.
+        e('div', { key: m2.key, style:{ display:'grid', gridTemplateColumns:isMobile?'1fr':'150px 1fr', gap:isMobile?10:26, padding:isMobile?'18px 0':'22px 0', borderTop:'1px solid #D2C7AC' } },
           e('div', { className:'month-link', onClick:()=>goToMonth(i, null), role:'button', tabIndex:0, style:{ cursor:'pointer', alignSelf:'start' } },
             e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, letterSpacing:'.12em', color:'#B7AD90' } }, String(i+1).padStart(2,'0')),
             e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:24, fontWeight:700, color:'#2A251E', lineHeight:'1.02', marginTop:3 } }, m2.name),
@@ -1762,18 +1791,19 @@ function App() {
       e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
         e('div', null,
           e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
-          e('div', { style:{ display:'flex', alignItems:'baseline', gap:14, marginTop:6 } },
-            e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, month.name),
-            e('span', { className:'year-link', onClick:goToYear, role:'button', tabIndex:0, style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:26, fontWeight:500, color:'#A89A7C', cursor:'pointer' } }, String(month.year))
+          e('div', { style:{ display:'flex', alignItems:'baseline', gap:isMobile?10:14, marginTop:6, flexWrap:'wrap' } },
+            e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, month.name),
+            e('span', { className:'year-link', onClick:goToYear, role:'button', tabIndex:0, style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:isMobile?19:26, fontWeight:500, color:'#A89A7C', cursor:'pointer' } }, String(month.year))
           ),
-          e('div', { style:{ marginTop:8, fontSize:16, color:'#6E6450', maxWidth:'30ch' } }, month.tagline)
+          e('div', { style:{ marginTop:8, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'30ch' } }, month.tagline)
         ),
-        e('div', { style:{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:14 } },
+        // Same as the year page: left-align + full width once it wraps on a phone.
+        e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
           navRow(true),
           regionLegend()
         )
       ),
-      e('div', { style:{ height:1, background:'#D2C7AC', margin:'22px 0 24px' } }),
+      e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 18px':'22px 0 24px' } }),
 
       // Hero
       e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
@@ -2060,7 +2090,7 @@ function App() {
     );
   };
 
-  return e('div', { style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:'36px 26px 70px' } },
+  return e('div', { style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       mapView
         ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear })
