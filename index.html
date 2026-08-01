@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Photoplan — Photo Location Calendar</title>
+  <link rel="icon" type="image/svg+xml" href="assets/photoplan-favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta name="theme-color" content="#272e1b">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -70,6 +74,11 @@
 <script>
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const e = React.createElement;
+
+// The Photoplan logo mark (viewfinder + mountain + sun). The brown-on-light
+// version suits the site's cream background; the favicon/app icon variants are
+// linked from the <head>.
+const LOGO_SRC = 'assets/photoplan-mark.svg';
 
 // ─── Storage ────────────────────────────────────────────────────────────────
 // The single "switch" for where saved data lives. Calendar text (locations,
@@ -1519,7 +1528,10 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
     // header
     e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' } },
       e('div', null,
-        e('div', { style: { fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.22em', textTransform: 'uppercase', color: '#8A7D63' } }, 'Photo Location Calendar'),
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 9 } },
+          e('img', { src: LOGO_SRC, alt: 'Photoplan', title: 'Back to the home page', onClick: onBack, style: { height: 22, width: 'auto', display: 'block', cursor: 'pointer' } }),
+          e('div', { style: { fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.22em', textTransform: 'uppercase', color: '#8A7D63' } }, 'Photo Location Calendar')
+        ),
         e('div', { style: { display: 'flex', alignItems: 'flex-end', gap: isMobile ? 12 : 18, marginTop: 4, flexWrap: 'wrap' } },
           e('h1', { style: { margin: 0, fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: isMobile ? 'clamp(30px,9vw,40px)' : 'clamp(40px,6vw,64px)', lineHeight: 0.82, color: '#2A251E', letterSpacing: '-0.015em' } }, 'Photo Map'),
           // Phones: one stat line; desktop keeps the small stacked column.
@@ -2073,9 +2085,12 @@ function App() {
           )
         ),
         e('div', { style:{ display:'flex', alignItems:'flex-end', gap:isMobile?14:18, marginTop:4, flexWrap:'wrap' } },
-          // lineHeight must fit the lowercase descenders ('p' tails) — the old
-          // 0.82 was tuned for the digits-only '2026' title.
-          e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(38px,12vw,56px)':'clamp(56px,9vw,96px)', lineHeight:'1.05', color:'#2A251E', letterSpacing:'-0.015em' } }, 'Photoplan'),
+          e('div', { style:{ display:'flex', alignItems:'center', gap:isMobile?10:16 } },
+            e('img', { src:LOGO_SRC, alt:'', style:{ height:isMobile?44:78, width:'auto', display:'block', flex:'none' } }),
+            // lineHeight must fit the lowercase descenders ('p' tails) — the old
+            // 0.82 was tuned for the digits-only '2026' title.
+            e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(38px,12vw,56px)':'clamp(56px,9vw,96px)', lineHeight:'1.05', color:'#2A251E', letterSpacing:'-0.015em' } }, 'Photoplan')
+          ),
           // Phones: two stat rows — "12 months · 41 locations" over
           // "27 UK · 14 international". Desktop keeps the stacked column.
           isMobile
@@ -2178,7 +2193,10 @@ function App() {
       // Header
       e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
         e('div', null,
-          e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
+          e('div', { style:{ display:'flex', alignItems:'center', gap:9 } },
+            e('img', { src:LOGO_SRC, alt:'Photoplan', title:'Back to the home page', onClick:goToYear, style:{ height:22, width:'auto', display:'block', cursor:'pointer' } }),
+            e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar')
+          ),
           e('div', { style:{ display:'flex', alignItems:'baseline', gap:isMobile?10:14, marginTop:6, flexWrap:'wrap' } },
             e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, month.name),
             e('span', { className:'year-link', onClick:goToYear, role:'button', tabIndex:0, style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:isMobile?19:26, fontWeight:500, color:'#A89A7C', cursor:'pointer' } }, String(month.year))
