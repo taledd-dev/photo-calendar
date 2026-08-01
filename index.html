@@ -2011,16 +2011,19 @@ function App() {
               // Phones: the two action buttons share a full-width row and the
               // delete sits alone underneath; desktop keeps the spread row.
               e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:isMobile?'stretch':'center', gap:isMobile?8:12, marginTop:isMobile?16:20, paddingTop:14, borderTop:'1px solid #E6DECA', flexWrap:'wrap', ...(isMobile?{flexDirection:'column'}:{}) } },
-                e('div', { style:{ display:'flex', alignItems:'center', gap:isMobile?8:9, flexWrap:'wrap' } },
+                e('div', { style:{ display:'flex', alignItems:isMobile?'stretch':'center', gap:isMobile?8:9, flexWrap:'wrap' } },
                   sel.done
                     ? e('button', { onClick:()=>toggleDone(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer', ...(isMobile?{flex:1, justifyContent:'center'}:{}) } }, e('span', { style:{ fontSize:12, lineHeight:1 } }, '✓'), ' Completed')
                     : e('button', { className:'done-toggle', onClick:()=>toggleDone(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #B3A988', color:'#5A6B2F', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer', ...(isMobile?{flex:1, justifyContent:'center'}:{}) } },
                         e('span', { style:{ width:12, height:12, borderRadius:'50%', border:'1.5px solid currentColor', display:'inline-block' } }),
                         ' Mark complete'
                       ),
-                  e('button', { onClick:()=>schedulePhotoOp(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #2A251E', color:'#2A251E', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer', ...(isMobile?{flex:1, justifyContent:'center'}:{}) } },
+                  // The full label wraps to two lines at half-row width on a
+                  // phone, making this button taller than its neighbour — so
+                  // mobile gets the short label and a no-wrap guarantee.
+                  e('button', { onClick:()=>schedulePhotoOp(sel.id), title:'Schedule photo op', style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #2A251E', color:'#2A251E', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer', whiteSpace:'nowrap', ...(isMobile?{flex:1, justifyContent:'center'}:{}) } },
                     e('span', { style:{ fontSize:12, lineHeight:1, color:'#C7902F' } }, '◉'),
-                    ' Schedule photo op'
+                    isMobile ? ' Photo op' : ' Schedule photo op'
                   )
                 ),
                 e('button', { className:'del-btn', onClick:()=>deleteLocation(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #D9B3A6', color:'#9C3B22', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer', ...(isMobile?{justifyContent:'center'}:{}) } },
