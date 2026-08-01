@@ -2090,20 +2090,12 @@ function App() {
             e('span', null, '@llandscapist')
           )
         ),
-        e('div', { style:{ display:'flex', alignItems:'flex-end', gap:isMobile?14:18, marginTop:4, flexWrap:'wrap' } },
-          // The brand lockup, rebuilt in HTML (an SVG lockup loaded via <img>
-          // can't fetch its font): mark beside PHOTOPLAN in Figtree bold,
-          // wide-tracked caps — proportions and colour per the lockup SVGs.
-          e('div', { style:{ display:'flex', alignItems:'center', gap:isMobile?12:20 } },
-            e('img', { src:LOGO_SRC, alt:'', style:{ height:isMobile?46:76, width:'auto', display:'block', flex:'none' } }),
-            e('h1', { style:{ margin:0, fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, fontSize:isMobile?20:33, lineHeight:1, color:'#201e1d', letterSpacing:'0.24em', textTransform:'uppercase' } }, 'Photoplan')
-          ),
-          // Two stat rows on every screen size: "12 months · 41 locations"
-          // over "27 UK · 14 international".
-          e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:isMobile?5:2, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
-            e('span', null, data.length + ' months · ' + totalLocs + ' locations'),
-            e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
-          )
+        // The brand lockup, rebuilt in HTML (an SVG lockup loaded via <img>
+        // can't fetch its font): mark beside PHOTOPLAN in Figtree bold,
+        // wide-tracked caps — proportions and colour per the lockup SVGs.
+        e('div', { style:{ display:'flex', alignItems:'center', gap:isMobile?12:20, marginTop:4 } },
+          e('img', { src:LOGO_SRC, alt:'', style:{ height:isMobile?46:76, width:'auto', display:'block', flex:'none' } }),
+          e('h1', { style:{ margin:0, fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, fontSize:isMobile?20:33, lineHeight:1, color:'#201e1d', letterSpacing:'0.24em', textTransform:'uppercase' } }, 'Photoplan')
         ),
         // Keyed on the text so a cloud load (which lands after first render)
         // refreshes the displayed copy — Editable only reads value on mount.
@@ -2121,7 +2113,12 @@ function App() {
         regionLegend()
       )
     ),
-    e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 18px':'22px 0 24px' } }),
+    // Stats — one line, right-aligned, just above the divider.
+    e('div', { style:{ marginTop:isMobile?14:18, textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
+      e('span', null, data.length + ' months · ' + totalLocs + ' locations'),
+      e('span', { style:{ color:'#A89A7C' } }, ' · ' + ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
+    ),
+    e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'8px 0 18px':'10px 0 24px' } }),
     // Hero
     e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
       e(PhotoSlideshow, {
