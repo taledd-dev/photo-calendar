@@ -204,6 +204,28 @@ const Storage = {
     await this.removeImage(base + '-thumb', key);
     return ok;
   },
+  // Copy a stored photo to a new name (photos are keyed by month, so moving a
+  // location between months means re-homing its image). Returns false if there
+  // was nothing to copy.
+  async copyImage(fromId, toId, key) {
+    try {
+      const res = await fetch(this.photoUrl(fromId, Date.now()), { cache: 'no-store' });
+      if (!res.ok) return false;
+      const blob = await res.blob();
+      return await this.saveImage(toId, blob, key);
+    } catch (_) { return false; }
+  },
+  // Move both sizes of a location's photo to a new base name. The originals are
+  // only deleted once at least one copy has landed safely.
+  async movePhotoVariants(fromBase, toBase, key) {
+    const okHero = await this.copyImage(fromBase, toBase, key);
+    const okThumb = await this.copyImage(fromBase + '-thumb', toBase + '-thumb', key);
+    if (okHero || okThumb) {
+      await this.removeImage(fromBase, key);
+      await this.removeImage(fromBase + '-thumb', key);
+    }
+    return okHero || okThumb;
+  },
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -1764,6 +1786,33 @@ function App() {
     setSelectedLoc(null); // briefs stay closed unless deliberately opened
   };
 
+  // Move a location (with its photo, ticks and coordinates) to another month.
+  // The R2 image is keyed by month, so it's copied to the new month's name
+  // before the old copies are deleted; the calendar data moves the location
+  // object itself. Ends by jumping to the destination month with the brief
+  // open, so the move is visible.
+  const moveLocation = async (locId, toIdx) => {
+    if (toIdx === monthIdx || toIdx < 0 || toIdx >= data.length) return;
+    if (!ensureUnlocked()) return;
+    const loc = month.locations.find(l => l.id === locId);
+    if (!loc) return;
+    if (data[toIdx].locations.some(l => l.id === locId)) {
+      alert(data[toIdx].name + ' already has this location — it appears in both months, so there is nothing to move.');
+      return;
+    }
+    const key = Storage.peekUploadKey();
+    if (key) await Storage.movePhotoVariants(photoBase(month.key, locId), photoBase(data[toIdx].key, locId), key);
+    mutateData(d => {
+      const fromArr = d[monthIdx].locations;
+      const i = fromArr.findIndex(l => l.id === locId);
+      if (i === -1) return;
+      const [moved] = fromArr.splice(i, 1);
+      d[toIdx].locations.push(moved);
+    });
+    bumpImg();
+    goToMonth(toIdx, locId);
+  };
+
   const toggleRegion = (id) => {
     mutateData(d => {
       const loc = d[monthIdx].locations.find(l => l.id === id);
@@ -2279,6 +2328,18 @@ function App() {
                   e('button', { onClick:()=>schedulePhotoOp(sel.id), title:'Schedule photo op', style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #2A251E', color:'#2A251E', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer', whiteSpace:'nowrap', ...(isMobile?{flex:1, justifyContent:'center'}:{}) } },
                     e('span', { style:{ fontSize:12, lineHeight:1, color:'#C7902F' } }, '◉'),
                     isMobile ? ' Photo op' : ' Schedule photo op'
+                  ),
+                  // Move this location (photo included) to a different month.
+                  // A select so the month list doesn't need its own modal; it
+                  // snaps back to the placeholder after use.
+                  e('select', {
+                    value: '',
+                    onChange: (ev) => { const v = parseInt(ev.target.value, 10); if (!isNaN(v)) moveLocation(sel.id, v); },
+                    title: 'Move this location (and its photo) to another month',
+                    style:{ height:35, padding:'0 10px', background:'#FFFDF5', border:'1px solid #B3A988', color:'#5A513B', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', textTransform:'uppercase', cursor:'pointer', borderRadius:0, ...(isMobile?{flex:'1 1 100%'}:{}) }
+                  },
+                    e('option', { value:'' }, 'Move to…'),
+                    data.map((m2, i) => i !== monthIdx ? e('option', { key:m2.key, value:i }, m2.name) : null)
                   )
                 ),
                 e('button', { className:'del-btn', onClick:()=>deleteLocation(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #D9B3A6', color:'#9C3B22', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer', ...(isMobile?{justifyContent:'center'}:{}) } },

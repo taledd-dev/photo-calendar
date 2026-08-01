@@ -100,6 +100,10 @@ eclipse/season dates per year, annual meteor + nature windows).
 - The **2026 cover** slideshow cycles *all* location photos; each **month hero**
   cycles that month's location photos.
 - Deleting a photo (×) **and** deleting a location both remove the R2 images.
+- Locations can be **moved between months** ("Move to…" select in the brief's
+  footer): the R2 photo (hero + thumb) is copied to the new month's key first,
+  the old objects deleted only after a copy lands, then the location object
+  moves in the data. Blocked if the target month already has that location id.
 - The **map already has touch gestures** (pinch-to-zoom + one/two-finger pan via
   pointer events on the SVG, `touchAction:'none'`) — don't rebuild them.
 - The **2026 page** has an Instagram link (`@llandscapist`, `.ig-link`) beside the
