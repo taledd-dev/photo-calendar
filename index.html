@@ -1387,7 +1387,7 @@ function App() {
   const [yearView, setYearView] = useState(true);
   const [mapView, setMapView] = useState(false);
   const [monthIdx, setMonthIdx] = useState(0);
-  const [selectedLoc, setSelectedLoc] = useState('lake-district');
+  const [selectedLoc, setSelectedLoc] = useState(null); // no brief open until a tile is tapped
   const [editingEvent, setEditingEvent] = useState(null);
   const [draggingLoc, setDraggingLoc] = useState(null);
   const [dragOverLoc, setDragOverLoc] = useState(null);
@@ -1467,7 +1467,9 @@ function App() {
     setMapView(false);
     setYearView(false);
     setMonthIdx(idx);
-    setSelectedLoc(locId || (m.locations[0] ? m.locations[0].id : null));
+    // Only an explicit deep link (year-page row, map card) opens a brief —
+    // plain month navigation arrives with every brief closed.
+    setSelectedLoc(locId || null);
   };
   const goToJan = () => goToMonth(0, null);
   const changeMonth = (dir) => {
@@ -1477,10 +1479,9 @@ function App() {
     setMapView(false);
     if (next === 0) { setYearView(true); return; }
     const idx = next - 1;
-    const first = data[idx].locations[0];
     setYearView(false);
     setMonthIdx(idx);
-    setSelectedLoc(first ? first.id : null);
+    setSelectedLoc(null);
   };
 
   // Editing is gated behind the upload password. The first time someone tries to
@@ -1529,16 +1530,12 @@ function App() {
     // spot doesn't leave orphaned images in the bucket.
     const key = Storage.peekUploadKey();
     if (key) Storage.removePhotoVariants(photoBase(month.key, id), key);
-    let nextSel = null;
     mutateData(d => {
       const locs = d[monthIdx].locations;
       const i = locs.findIndex(l => l.id === id);
-      if (i === -1) return;
-      locs.splice(i, 1);
-      const next = locs[i] || locs[i - 1] || null;
-      nextSel = next ? next.id : null;
+      if (i !== -1) locs.splice(i, 1);
     });
-    setSelectedLoc(nextSel);
+    setSelectedLoc(null); // briefs stay closed unless deliberately opened
   };
 
   const toggleRegion = (id) => {
@@ -1687,6 +1684,13 @@ function App() {
       return { ...prev, ...patch };
     });
   };
+
+  // On a phone the brief opens below the tile rows, where it can appear
+  // off-screen unnoticed — scroll it into view when a location is selected.
+  const detailRef = useRef(null);
+  useEffect(() => {
+    if (isMobile && selectedLoc && detailRef.current) detailRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [selectedLoc, isMobile]);
 
   const sel = month.locations.find(l => l.id === selectedLoc) || null;
   const featured = month.locations.find(l => l.id === month.featured) || month.locations[0] || null;
@@ -1911,27 +1915,29 @@ function App() {
         e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em', color:'#A89A7C' } }, month.locations.length + ' spots · ' + doneCount + ' done')
       ),
 
-      // Tiles
-      e('div', { style:{ display:'flex', gap:14, marginTop:16, flexWrap:'wrap' } },
+      // Tiles — phones get a two-column grid filling the width; desktop keeps
+      // the wrapping row of fixed 170px cards.
+      e('div', { style:{ marginTop:16, ...(isMobile ? { display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 } : { display:'flex', gap:14, flexWrap:'wrap' }) } },
         month.locations.map(l =>
           e('div', {
             key: l.id,
             className: 'tile',
             role: 'button', tabIndex: 0,
             draggable: true,
-            onClick: () => setSelectedLoc(l.id),
+            onClick: () => setSelectedLoc(prev => prev === l.id ? null : l.id),
             onDragStart: (ev) => { setDraggingLoc(l.id); setDragOverLoc(null); try { ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setData('text/plain',l.id); } catch(_){} },
             onDragOver: (ev) => { ev.preventDefault(); if (dragOverLoc !== l.id) setDragOverLoc(l.id); },
             onDrop: (ev) => { ev.preventDefault(); reorderLoc(draggingLoc, l.id); setDraggingLoc(null); setDragOverLoc(null); },
             onDragEnd: () => { setDraggingLoc(null); setDragOverLoc(null); },
-            style:{ position:'relative', width:170, textAlign:'left', background:'#FBF7EC', border:'1px solid #D2C7AC', padding:0, cursor:'pointer', fontFamily:"'Spectral',serif", overflow:'hidden', opacity: l.id===draggingLoc ? 0.4 : 1, transition:'transform .12s ease, box-shadow .12s ease, opacity .12s ease', boxShadow:'none' }
+            style:{ position:'relative', width:isMobile?'auto':170, textAlign:'left', background:'#FBF7EC', border:'1px solid #D2C7AC', padding:0, cursor:'pointer', fontFamily:"'Spectral',serif", overflow:'hidden', opacity: l.id===draggingLoc ? 0.4 : 1, transition:'transform .12s ease, box-shadow .12s ease, opacity .12s ease', boxShadow:'none' }
           },
             l.id === selectedLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px solid #2A251E', pointerEvents:'none', zIndex:5 } }),
             l.id === dragOverLoc && l.id !== draggingLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px dashed #54632F', background:'rgba(84,99,47,0.08)', pointerEvents:'none', zIndex:5 } }),
             e('div', { style:{ height:4, background: l.region==='UK' ? '#54632F' : '#9E4B26' } }),
             e('div', { style:{ position:'relative', height:76, overflow:'hidden', backgroundImage:'repeating-linear-gradient(135deg,#EFE7D2 0,#EFE7D2 7px,#E6DCC2 7px,#E6DCC2 14px)', borderBottom:'1px solid #E0D6BE' } },
               e(LocThumb, { base: photoBase(month.key, l.id), epoch: imgEpoch }),
-              e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, zIndex:3, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#EFE7D2', textShadow:'0 1px 2px rgba(0,0,0,0.45)', cursor:'grab' } }, '⠿'),
+              // drag-to-reorder is mouse-only, so the handle hides on touch layouts
+              !isMobile && e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, zIndex:3, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#EFE7D2', textShadow:'0 1px 2px rgba(0,0,0,0.45)', cursor:'grab' } }, '⠿'),
               l.done
                 ? e('button', { onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as not done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, lineHeight:1, border:'1.5px solid #54632F', background:'#54632F', color:'#FBF7EC' } }, '✓')
                 : e('button', { className:'tick-btn', onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', border:'1.5px solid #B3A988', background:'#FCFAF1' } })
@@ -1950,7 +1956,7 @@ function App() {
 
       // Detail card
       sel
-        ? e('div', { style:{ marginTop:18, background:'#FBF7EC', border:'1px solid #D2C7AC', boxShadow:'7px 7px 0 rgba(42,37,30,0.07)', position:'relative' } },
+        ? e('div', { ref: detailRef, style:{ marginTop:18, background:'#FBF7EC', border:'1px solid #D2C7AC', boxShadow:'7px 7px 0 rgba(42,37,30,0.07)', position:'relative', ...(isMobile?{scrollMarginTop:10}:{}) } },
             e('div', { style:{ height:5, background:regionColor(sel.region) } }),
             e('div', { style:{ padding:isMobile?'14px 14px 16px':'20px 22px 22px' } },
               e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16 } },
