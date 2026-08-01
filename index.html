@@ -2098,18 +2098,12 @@ function App() {
             e('img', { src:LOGO_SRC, alt:'', style:{ height:isMobile?46:76, width:'auto', display:'block', flex:'none' } }),
             e('h1', { style:{ margin:0, fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, fontSize:isMobile?20:33, lineHeight:1, color:'#201e1d', letterSpacing:'0.24em', textTransform:'uppercase' } }, 'Photoplan')
           ),
-          // Phones: two stat rows — "12 months · 41 locations" over
-          // "27 UK · 14 international". Desktop keeps the stacked column.
-          isMobile
-            ? e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:5, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
-                e('span', null, data.length + ' months · ' + totalLocs + ' locations'),
-                e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
-              )
-            : e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:9, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
-                e('span', null, data.length + ' months'),
-                e('span', null, totalLocs + ' locations'),
-                e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
-              )
+          // Two stat rows on every screen size: "12 months · 41 locations"
+          // over "27 UK · 14 international".
+          e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:isMobile?5:2, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
+            e('span', null, data.length + ' months · ' + totalLocs + ' locations'),
+            e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
+          )
         ),
         // Keyed on the text so a cloud load (which lands after first render)
         // refreshes the displayed copy — Editable only reads value on mount.
