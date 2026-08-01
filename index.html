@@ -922,6 +922,11 @@ function styleOf(ev) {
   return EVENT_STYLE.season;
 }
 
+// The home page's intro paragraph. Editable — the edited text is stored as
+// `yearIntro` on the first month's object (the shared data is an array of
+// months with no global slot, and an extra property there syncs cleanly).
+const DEFAULT_YEAR_INTRO = 'A year of places to point a camera — frost on the fells, bluebells and lavender, a total eclipse, aurora and the longest nights. The plan, page by page.';
+
 // ─── Calendar grid builder ─────────────────────────────────────────────────────
 // `compact` (phones) tightens the event-bar geometry so the week rows can be
 // much shorter than the desktop's 120px.
@@ -1585,6 +1590,12 @@ function App() {
     mutateData(d => { d[monthIdx][field] = value; });
   };
 
+  // The home page intro lives on the first month's object (see
+  // DEFAULT_YEAR_INTRO). A deliberate blank stays blank — only an
+  // untouched calendar shows the default copy.
+  const yearIntro = (data[0] && data[0].yearIntro != null) ? data[0].yearIntro : DEFAULT_YEAR_INTRO;
+  const editYearIntro = (t) => mutateData(d => { d[0].yearIntro = t; });
+
   const setPhotoYear = (locId, year) => {
     const y = (year || '').trim();
     mutateData(d => { const loc = d[monthIdx].locations.find(l => l.id === locId); if (loc) loc.photoYear = y; });
@@ -1808,7 +1819,9 @@ function App() {
                 e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
               )
         ),
-        e('div', { style:{ marginTop:12, fontSize:isMobile?15:17, color:'#6E6450', maxWidth:'46ch', lineHeight:1.5 } }, 'A year of places to point a camera — frost on the fells, bluebells and lavender, a total eclipse, aurora and the longest nights. The plan, page by page.')
+        // Keyed on the text so a cloud load (which lands after first render)
+        // refreshes the displayed copy — Editable only reads value on mount.
+        e(Editable, { key:'year-intro-' + yearIntro, tag:'div', value: yearIntro, onCommit:(t)=>editYearIntro(t), title:'Click to edit', style:{ marginTop:12, fontSize:isMobile?15:17, color:'#6E6450', maxWidth:'46ch', lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
       ),
       // On phones this column wraps below the title, so pin it to the left edge
       // (right-aligned buttons floating mid-screen look broken when stacked).
