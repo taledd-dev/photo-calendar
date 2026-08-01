@@ -1035,7 +1035,7 @@ function ensureScript(src) {
 }
 
 function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
-  const VW = 1000, VH = 640, VMIN = 1, VMAX = 8, PAPER = '#FCFAF1';
+  const VW = 1000, VH = 640, VMIN = 1, VMAX = 20, PAPER = '#FCFAF1';
   const isMobile = useIsMobile();
   const [hoveredId, setHoveredId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -1187,6 +1187,12 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
     return okR && okM && okS;
   };
   const invK = +(1 / zoomK).toFixed(4);
+  // Pins counter-scale against the zoom so they stay a constant size on screen.
+  // A phone shows the whole 1000-unit map in ~a third of the desktop width, so
+  // pins (and the hover label) get a matching boost there to stay readable and
+  // tappable. Applied to the group transform so every part scales together.
+  const pinK = +(invK * (isMobile ? 1.9 : 1)).toFixed(4);
+  const labelK = +(invK * (isMobile ? 1.4 : 1)).toFixed(4);
 
   const pins = places.map(l => {
     const g = map ? map.geo[l.id] : null;
@@ -1260,13 +1266,16 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
       e('div', null,
         e('div', { style: { fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.22em', textTransform: 'uppercase', color: '#8A7D63' } }, 'Photo Location Calendar'),
         e('div', { style: { display: 'flex', alignItems: 'flex-end', gap: isMobile ? 12 : 18, marginTop: 4, flexWrap: 'wrap' } },
-          e('h1', { style: { margin: 0, fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: isMobile ? 'clamp(30px,9vw,40px)' : 'clamp(40px,6vw,64px)', lineHeight: 0.82, color: '#2A251E', letterSpacing: '-0.015em' } }, 'The 2026 Map'),
-          // Phones: stats flow as one wrapping row, matching the home page.
-          e('div', { style: { display: 'flex', flexDirection: isMobile ? 'row' : 'column', ...(isMobile ? { flexWrap: 'wrap', alignItems: 'baseline', columnGap: 12, rowGap: 3, paddingBottom: 4 } : { gap: 3, paddingBottom: 9 }), fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', color: '#8A7D63' } },
-            e('span', null, places.length + ' locations'),
-            e('span', null, shootCount + ' shoots · UK & Europe'),
-            e('span', { style: { color: '#A89A7C' } }, 'Flat locator · fit to points')
-          )
+          e('h1', { style: { margin: 0, fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: isMobile ? 'clamp(30px,9vw,40px)' : 'clamp(40px,6vw,64px)', lineHeight: 0.82, color: '#2A251E', letterSpacing: '-0.015em' } }, 'Photo Map'),
+          // Phones: one stat line; desktop keeps the small stacked column.
+          isMobile
+            ? e('div', { style: { paddingBottom: 4, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', color: '#8A7D63' } },
+                e('span', null, places.length + ' locations · ' + shootCount + ' shoots')
+              )
+            : e('div', { style: { display: 'flex', flexDirection: 'column', gap: 3, paddingBottom: 9, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', color: '#8A7D63' } },
+                e('span', null, places.length + ' locations'),
+                e('span', null, shootCount + ' shoots')
+              )
         ),
         e('div', { style: { marginTop: 12, fontSize: isMobile ? 15 : 16, color: '#6E6450', maxWidth: '56ch', lineHeight: 1.5 } }, "Every shoot in the calendar on one map — UK spots in green, the international trips in terracotta. Filter by region, month or whether you've ticked it off, then " + (isMobile ? 'tap' : 'hover') + ' a pin for the details.')
       ),
@@ -1307,14 +1316,14 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
           e('g', { transform: 'translate(' + pan.x.toFixed(2) + ' ' + pan.y.toFixed(2) + ') scale(' + zoomK.toFixed(4) + ')' },
             map && e('path', { d: map.graticule, style: { fill: 'none', stroke: '#D6CAAC', strokeWidth: '0.6px', opacity: .5, vectorEffect: 'non-scaling-stroke' } }),
             map && map.countries.map(c => e('path', { key: c.id, d: c.d, style: { fill: '#E1D5B7', stroke: '#C5B78F', strokeWidth: '0.8px', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } })),
-            pins.map(p => e('g', { key: p.id, 'data-pin': '1', transform: 'translate(' + p.x + ' ' + p.y + ') scale(' + invK + ')', onMouseEnter: () => setHoveredId(p.id), onMouseLeave: () => setHoveredId(null), onClick: () => setSelectedId(s => s === p.id ? null : p.id), style: { cursor: 'pointer', opacity: p.opacity, transition: 'opacity .15s ease' } },
+            pins.map(p => e('g', { key: p.id, 'data-pin': '1', transform: 'translate(' + p.x + ' ' + p.y + ') scale(' + pinK + ')', onMouseEnter: () => setHoveredId(p.id), onMouseLeave: () => setHoveredId(null), onClick: () => setSelectedId(s => s === p.id ? null : p.id), style: { cursor: 'pointer', opacity: p.opacity, transition: 'opacity .15s ease' } },
               p.active && e('circle', { r: 14, style: { fill: 'none', stroke: p.color, strokeWidth: '1.5px', opacity: .5 } }),
               p.multi && e('circle', { r: p.rOuter, style: { fill: 'none', stroke: p.color, strokeWidth: '1.5px', opacity: .9 } }),
               e('circle', { r: p.r, style: { fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeW + 'px' } }),
               p.showCheck && e('path', { d: 'M -2.6 0 L -0.7 2 L 3 -2.4', style: { fill: 'none', stroke: p.checkColor, strokeWidth: '1.5px', strokeLinecap: 'round', strokeLinejoin: 'round', pointerEvents: 'none' } }),
               p.showCount && e('text', { x: 0, y: 0.5, style: { textAnchor: 'middle', dominantBaseline: 'middle', fontFamily: MAP_MONO, fontSize: '8px', fontWeight: 600, fill: p.countFill, pointerEvents: 'none' } }, p.count)
             )),
-            ap && activeLoc && e('g', { transform: 'translate(' + ap.x + ' ' + ap.y + ') scale(' + invK + ')', style: { pointerEvents: 'none' } },
+            ap && activeLoc && e('g', { transform: 'translate(' + ap.x + ' ' + ap.y + ') scale(' + labelK + ')', style: { pointerEvents: 'none' } },
               e('text', { x: 0, y: -30, style: { textAnchor: 'middle', fontFamily: MAP_MONO, fontSize: '12.5px', fontWeight: 500, fill: '#2A251E', paintOrder: 'stroke', stroke: '#FCFAF1', strokeWidth: '4px', strokeLinejoin: 'round' } }, activeLoc.name)
             )
           )
@@ -1710,13 +1719,18 @@ function App() {
         ),
         e('div', { style:{ display:'flex', alignItems:'flex-end', gap:isMobile?14:18, marginTop:4, flexWrap:'wrap' } },
           e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(48px,17vw,64px)':'clamp(64px,11vw,104px)', lineHeight:'0.82', color:'#2A251E', letterSpacing:'-0.015em' } }, '2026'),
-          // Phones: the stats read as one wrapping row ("12 months · 41
-          // locations · 27 UK · 14 international") instead of a stacked column.
-          e('div', { style:{ display:'flex', flexDirection:isMobile?'row':'column', ...(isMobile?{flexWrap:'wrap', alignItems:'baseline', columnGap:12, rowGap:3, paddingBottom:5}:{gap:3, paddingBottom:9}), fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
-            e('span', null, data.length + ' months'),
-            e('span', null, totalLocs + ' locations'),
-            e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
-          )
+          // Phones: two stat rows — "12 months · 41 locations" over
+          // "27 UK · 14 international". Desktop keeps the stacked column.
+          isMobile
+            ? e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:5, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
+                e('span', null, data.length + ' months · ' + totalLocs + ' locations'),
+                e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
+              )
+            : e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:9, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
+                e('span', null, data.length + ' months'),
+                e('span', null, totalLocs + ' locations'),
+                e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
+              )
         ),
         e('div', { style:{ marginTop:12, fontSize:isMobile?15:17, color:'#6E6450', maxWidth:'46ch', lineHeight:1.5 } }, 'A year of places to point a camera — frost on the fells, bluebells and lavender, a total eclipse, aurora and the longest nights. The plan, page by page.')
       ),
