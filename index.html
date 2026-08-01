@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Photo Location Calendar 2026</title>
+  <title>Photoplan — Photo Location Calendar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -886,6 +886,198 @@ function makeData() {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Years ────────────────────────────────────────────────────────────────────
+// The calendar is year-agnostic: locations (and their photos) are shared across
+// years, while events and the day-grid layout are per-year. Events live in each
+// month's `eventsByYear` map keyed by year string; migrateYearEvents upgrades
+// older data (whose single `events` array was the 2026 calendar) and seeds any
+// missing year from YEAR_EVENTS below. The grid's weekday/day-count comes from
+// Date, so any year renders correctly.
+const YEARS = [2026, 2027, 2028];
+
+// Seeded astro/nature events for the additional years. Moon phases, eclipses,
+// equinoxes/solstices and UK clock changes use that year's real dates (to ±1
+// day for moons); meteor showers and seasonal nature windows recur annually.
+const YEAR_EVENTS = {
+  2027: {
+    jan: [
+      { id:'e27-jan-1', type:'range', start:3, end:4, kind:'meteor', label:'Quadrantids' },
+      { id:'e27-jan-2', type:'day', day:7, kind:'newmoon', label:'New Moon' },
+      { id:'e27-jan-3', type:'day', day:22, kind:'fullmoon', label:'Wolf Moon' },
+      { id:'e27-jan-4', type:'range', start:26, end:31, kind:'nature', label:'Snowdrops emerging' },
+    ],
+    feb: [
+      { id:'e27-feb-1', type:'day', day:6, kind:'newmoon', label:'New Moon' },
+      { id:'e27-feb-2', type:'range', start:14, end:28, kind:'nature', label:'Snowdrops in bloom' },
+      { id:'e27-feb-3', type:'day', day:20, kind:'fullmoon', label:'Snow Moon' },
+    ],
+    mar: [
+      { id:'e27-mar-1', type:'day', day:8, kind:'newmoon', label:'New Moon' },
+      { id:'e27-mar-2', type:'range', start:18, end:31, kind:'nature', label:'Daffodils — Farndale' },
+      { id:'e27-mar-3', type:'day', day:20, kind:'season', label:'Spring equinox' },
+      { id:'e27-mar-4', type:'day', day:22, kind:'fullmoon', label:'Worm Moon' },
+      { id:'e27-mar-5', type:'day', day:28, kind:'season', label:'Clocks forward' },
+    ],
+    apr: [
+      { id:'e27-apr-1', type:'day', day:6, kind:'newmoon', label:'New Moon' },
+      { id:'e27-apr-2', type:'day', day:20, kind:'fullmoon', label:'Pink Moon' },
+      { id:'e27-apr-3', type:'range', start:20, end:30, kind:'nature', label:'Bluebells peaking' },
+      { id:'e27-apr-4', type:'range', start:22, end:23, kind:'meteor', label:'Lyrids' },
+    ],
+    may: [
+      { id:'e27-may-1', type:'day', day:6, kind:'newmoon', label:'New Moon' },
+      { id:'e27-may-2', type:'range', start:6, end:7, kind:'meteor', label:'Eta Aquariids' },
+      { id:'e27-may-3', type:'range', start:10, end:31, kind:'nature', label:'Milky Way core season' },
+      { id:'e27-may-4', type:'day', day:20, kind:'fullmoon', label:'Flower Moon' },
+    ],
+    jun: [
+      { id:'e27-jun-1', type:'range', start:1, end:30, kind:'nature', label:'Noctilucent cloud season' },
+      { id:'e27-jun-2', type:'day', day:4, kind:'newmoon', label:'New Moon' },
+      { id:'e27-jun-3', type:'day', day:18, kind:'fullmoon', label:'Strawberry Moon' },
+      { id:'e27-jun-4', type:'day', day:21, kind:'season', label:'Summer solstice' },
+    ],
+    jul: [
+      { id:'e27-jul-1', type:'range', start:1, end:20, kind:'nature', label:'Lavender in bloom' },
+      { id:'e27-jul-2', type:'day', day:4, kind:'newmoon', label:'New Moon' },
+      { id:'e27-jul-3', type:'day', day:18, kind:'fullmoon', label:'Buck Moon' },
+      { id:'e27-jul-4', type:'range', start:29, end:31, kind:'meteor', label:'Delta Aquariids' },
+    ],
+    aug: [
+      { id:'e27-aug-1', type:'day', day:2, kind:'eclipse', label:'Total solar eclipse — Spain' },
+      { id:'e27-aug-2', type:'range', start:11, end:13, kind:'meteor', label:'Perseids' },
+      { id:'e27-aug-3', type:'range', start:15, end:31, kind:'nature', label:'Heather in bloom' },
+      { id:'e27-aug-4', type:'day', day:17, kind:'fullmoon', label:'Sturgeon Moon' },
+      { id:'e27-aug-5', type:'day', day:31, kind:'newmoon', label:'New Moon' },
+    ],
+    sep: [
+      { id:'e27-sep-1', type:'day', day:15, kind:'fullmoon', label:'Harvest Moon' },
+      { id:'e27-sep-2', type:'day', day:23, kind:'season', label:'Autumn equinox' },
+      { id:'e27-sep-3', type:'range', start:23, end:30, kind:'nature', label:'First autumn colour' },
+      { id:'e27-sep-4', type:'day', day:30, kind:'newmoon', label:'New Moon' },
+    ],
+    oct: [
+      { id:'e27-oct-1', type:'range', start:14, end:31, kind:'nature', label:'Peak autumn colour' },
+      { id:'e27-oct-2', type:'day', day:15, kind:'fullmoon', label:'Hunter\'s Moon' },
+      { id:'e27-oct-3', type:'range', start:21, end:22, kind:'meteor', label:'Orionids' },
+      { id:'e27-oct-4', type:'day', day:29, kind:'newmoon', label:'New Moon' },
+      { id:'e27-oct-5', type:'day', day:31, kind:'season', label:'Clocks back' },
+    ],
+    nov: [
+      { id:'e27-nov-1', type:'range', start:1, end:30, kind:'nature', label:'Starling murmurations' },
+      { id:'e27-nov-2', type:'day', day:13, kind:'fullmoon', label:'Beaver Moon' },
+      { id:'e27-nov-3', type:'range', start:17, end:18, kind:'meteor', label:'Leonids' },
+      { id:'e27-nov-4', type:'day', day:28, kind:'newmoon', label:'New Moon' },
+    ],
+    dec: [
+      { id:'e27-dec-1', type:'day', day:13, kind:'fullmoon', label:'Cold Moon' },
+      { id:'e27-dec-2', type:'range', start:13, end:14, kind:'meteor', label:'Geminids' },
+      { id:'e27-dec-3', type:'day', day:22, kind:'season', label:'Winter solstice' },
+      { id:'e27-dec-4', type:'range', start:22, end:23, kind:'meteor', label:'Ursids' },
+      { id:'e27-dec-5', type:'day', day:27, kind:'newmoon', label:'New Moon' },
+    ],
+  },
+  2028: {
+    jan: [
+      { id:'e28-jan-1', type:'range', start:3, end:4, kind:'meteor', label:'Quadrantids' },
+      { id:'e28-jan-2', type:'day', day:12, kind:'eclipse', label:'Partial lunar eclipse' },
+      { id:'e28-jan-3', type:'day', day:26, kind:'newmoon', label:'New Moon' },
+      { id:'e28-jan-4', type:'range', start:26, end:31, kind:'nature', label:'Snowdrops emerging' },
+    ],
+    feb: [
+      { id:'e28-feb-1', type:'day', day:10, kind:'fullmoon', label:'Snow Moon' },
+      { id:'e28-feb-2', type:'range', start:14, end:28, kind:'nature', label:'Snowdrops in bloom' },
+      { id:'e28-feb-3', type:'day', day:25, kind:'newmoon', label:'New Moon' },
+    ],
+    mar: [
+      { id:'e28-mar-1', type:'day', day:11, kind:'fullmoon', label:'Worm Moon' },
+      { id:'e28-mar-2', type:'range', start:18, end:31, kind:'nature', label:'Daffodils — Farndale' },
+      { id:'e28-mar-3', type:'day', day:20, kind:'season', label:'Spring equinox' },
+      { id:'e28-mar-4', type:'day', day:26, kind:'season', label:'Clocks forward' },
+      { id:'e28-mar-5', type:'day', day:26, kind:'newmoon', label:'New Moon' },
+    ],
+    apr: [
+      { id:'e28-apr-1', type:'day', day:9, kind:'fullmoon', label:'Pink Moon' },
+      { id:'e28-apr-2', type:'range', start:20, end:30, kind:'nature', label:'Bluebells peaking' },
+      { id:'e28-apr-3', type:'range', start:22, end:23, kind:'meteor', label:'Lyrids' },
+      { id:'e28-apr-4', type:'day', day:24, kind:'newmoon', label:'New Moon' },
+    ],
+    may: [
+      { id:'e28-may-1', type:'range', start:6, end:7, kind:'meteor', label:'Eta Aquariids' },
+      { id:'e28-may-2', type:'day', day:8, kind:'fullmoon', label:'Flower Moon' },
+      { id:'e28-may-3', type:'range', start:10, end:31, kind:'nature', label:'Milky Way core season' },
+      { id:'e28-may-4', type:'day', day:24, kind:'newmoon', label:'New Moon' },
+    ],
+    jun: [
+      { id:'e28-jun-1', type:'range', start:1, end:30, kind:'nature', label:'Noctilucent cloud season' },
+      { id:'e28-jun-2', type:'day', day:7, kind:'fullmoon', label:'Strawberry Moon' },
+      { id:'e28-jun-3', type:'day', day:20, kind:'season', label:'Summer solstice' },
+      { id:'e28-jun-4', type:'day', day:22, kind:'newmoon', label:'New Moon' },
+    ],
+    jul: [
+      { id:'e28-jul-1', type:'range', start:1, end:20, kind:'nature', label:'Lavender in bloom' },
+      { id:'e28-jul-2', type:'day', day:6, kind:'fullmoon', label:'Buck Moon' },
+      { id:'e28-jul-3', type:'day', day:22, kind:'eclipse', label:'Total solar eclipse — Australia' },
+      { id:'e28-jul-4', type:'range', start:29, end:31, kind:'meteor', label:'Delta Aquariids' },
+    ],
+    aug: [
+      { id:'e28-aug-1', type:'day', day:5, kind:'fullmoon', label:'Sturgeon Moon' },
+      { id:'e28-aug-2', type:'range', start:11, end:13, kind:'meteor', label:'Perseids' },
+      { id:'e28-aug-3', type:'range', start:15, end:31, kind:'nature', label:'Heather in bloom' },
+      { id:'e28-aug-4', type:'day', day:20, kind:'newmoon', label:'New Moon' },
+    ],
+    sep: [
+      { id:'e28-sep-1', type:'day', day:3, kind:'fullmoon', label:'Corn Moon' },
+      { id:'e28-sep-2', type:'day', day:18, kind:'newmoon', label:'New Moon' },
+      { id:'e28-sep-3', type:'day', day:22, kind:'season', label:'Autumn equinox' },
+      { id:'e28-sep-4', type:'range', start:23, end:30, kind:'nature', label:'First autumn colour' },
+    ],
+    oct: [
+      { id:'e28-oct-1', type:'day', day:3, kind:'fullmoon', label:'Harvest Moon' },
+      { id:'e28-oct-2', type:'range', start:14, end:31, kind:'nature', label:'Peak autumn colour' },
+      { id:'e28-oct-3', type:'day', day:18, kind:'newmoon', label:'New Moon' },
+      { id:'e28-oct-4', type:'range', start:21, end:22, kind:'meteor', label:'Orionids' },
+      { id:'e28-oct-5', type:'day', day:29, kind:'season', label:'Clocks back' },
+    ],
+    nov: [
+      { id:'e28-nov-1', type:'range', start:1, end:30, kind:'nature', label:'Starling murmurations' },
+      { id:'e28-nov-2', type:'day', day:2, kind:'fullmoon', label:'Beaver Moon' },
+      { id:'e28-nov-3', type:'day', day:16, kind:'newmoon', label:'New Moon' },
+      { id:'e28-nov-4', type:'range', start:17, end:18, kind:'meteor', label:'Leonids' },
+    ],
+    dec: [
+      { id:'e28-dec-1', type:'day', day:1, kind:'fullmoon', label:'Cold Moon' },
+      { id:'e28-dec-2', type:'range', start:13, end:14, kind:'meteor', label:'Geminids' },
+      { id:'e28-dec-3', type:'day', day:16, kind:'newmoon', label:'New Moon' },
+      { id:'e28-dec-4', type:'day', day:21, kind:'season', label:'Winter solstice' },
+      { id:'e28-dec-5', type:'range', start:22, end:23, kind:'meteor', label:'Ursids' },
+      { id:'e28-dec-6', type:'day', day:31, kind:'eclipse', label:'Total lunar eclipse' },
+    ],
+  },
+};
+
+// Upgrade any loaded dataset to the per-year shape, idempotently: an old-style
+// `events` array becomes the 2026 calendar, and any of YEARS missing from
+// eventsByYear is filled from the seed above. Unknown years are preserved.
+function migrateYearEvents(arr) {
+  if (!Array.isArray(arr)) return arr;
+  return arr.map(m => {
+    const by = {};
+    Object.entries(m.eventsByYear || {}).forEach(([y, evs]) => { by[y] = evs; });
+    if (!by['2026']) by['2026'] = m.events || [];
+    YEARS.forEach(y => {
+      if (!by[String(y)]) by[String(y)] = ((YEAR_EVENTS[y] || {})[m.key] || []).map(ev => ({ ...ev }));
+    });
+    const m2 = { ...m, eventsByYear: by };
+    delete m2.events;
+    return m2;
+  });
+}
+
+// Every event in a month across all years (used to derive custom event types).
+function allMonthEvents(m) {
+  return Object.values(m.eventsByYear || {}).reduce((a, evs) => a.concat(evs), []);
+}
+
 const EVENT_STYLE = {
   fullmoon: { glyph: '●', bg: '#E6E3D4', fg: '#3A4259', accent: '#3A4259' },
   newmoon:  { glyph: '○', bg: '#E6E3D4', fg: '#3B3526', accent: '#6E6450' },
@@ -1260,7 +1452,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
   const statusChips = [{ key: 'All', label: 'All', count: places.length, dot: '#B7AD90', dotBorder: '#B7AD90' }, { key: 'Visited', label: 'Visited', count: visitedCount, dot: '#54632F', dotBorder: '#54632F' }, { key: 'To visit', label: 'To visit', count: toVisitCount, dot: '#FCFAF1', dotBorder: '#54632F' }]
     .map(c => ({ ...c, ...mkChip(status === c.key), onClick: () => setStatus(c.key) }));
   const monthChips = [{ key: null, label: 'All', count: places.length, title: 'All months' }]
-    .concat(MAP_ABBR.map((ab, mi) => ({ key: mi, label: ab, title: MAP_MONTHS[mi] + ' 2026', count: places.filter(p => p.shoots.some(s => s.mi === mi)).length })))
+    .concat(MAP_ABBR.map((ab, mi) => ({ key: mi, label: ab, title: MAP_MONTHS[mi], count: places.filter(p => p.shoots.some(s => s.mi === mi)).length })))
     .map(c => ({ ...c, ...mkChip(month === c.key), border: month === c.key ? '#2A251E' : '#D5CBB0', onClick: () => setMonth(month === c.key ? null : c.key) }));
 
   const readoutShoots = activeLoc ? activeLoc.shoots.slice().sort((a, b) => a.mi - b.mi) : [];
@@ -1289,7 +1481,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
           activeLoc.shoots.length > 1 && e('span', { style: { fontFamily: MAP_MONO, fontSize: 9, letterSpacing: '.06em', color: '#9E4B26' } }, activeLoc.shoots.length + ' visits')
         ),
         e('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
-          readoutShoots.map(s => e('div', { key: s.mi, className: 'map-shootrow', onClick: () => onOpenMonth(s.mi, activeLoc.id), role: 'button', tabIndex: 0, title: 'Open ' + s.monthName + ' 2026 in the calendar', style: { display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 10, alignItems: 'center', padding: '6px 7px', margin: '0 -7px', borderRadius: 3, cursor: 'pointer', background: 'transparent', transition: 'background .12s ease' } },
+          readoutShoots.map(s => e('div', { key: s.mi, className: 'map-shootrow', onClick: () => onOpenMonth(s.mi, activeLoc.id), role: 'button', tabIndex: 0, title: 'Open ' + s.monthName + ' in the calendar', style: { display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 10, alignItems: 'center', padding: '6px 7px', margin: '0 -7px', borderRadius: 3, cursor: 'pointer', background: 'transparent', transition: 'background .12s ease' } },
             e('span', { style: { fontFamily: MAP_MONO, fontSize: 11, fontWeight: 600, letterSpacing: '.04em', color: acColor } }, MAP_ABBR[s.mi]),
             e('span', { style: { fontSize: 14, color: '#3B3528', lineHeight: 1.3 } }, s.tag),
             e('span', { style: { fontFamily: MAP_MONO, fontSize: 10.5, fontWeight: 600, color: '#B7AD90', whiteSpace: 'nowrap' } }, '→')
@@ -1322,7 +1514,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
       ),
       // Left-align + full width once this column wraps below the title on phones.
       e('div', { style: { display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'flex-end', gap: 12, ...(isMobile ? { width: '100%' } : {}) } },
-        e('button', { className: 'btn-hover', onClick: onBack, style: { height: 40, border: '1px solid #2A251E', cursor: 'pointer', fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', boxShadow: '3px 3px 0 rgba(42,37,30,0.12)', background: '#54632F', color: '#FBF7EC', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '0 17px' } }, e('span', { style: { fontSize: 15, lineHeight: 1, marginTop: -1 } }, '←'), ' 2026'),
+        e('button', { className: 'btn-hover', onClick: onBack, style: { height: 40, border: '1px solid #2A251E', cursor: 'pointer', fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', boxShadow: '3px 3px 0 rgba(42,37,30,0.12)', background: '#54632F', color: '#FBF7EC', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '0 17px' } }, e('span', { style: { fontSize: 15, lineHeight: 1, marginTop: -1 } }, '←'), ' Home'),
         e('div', { style: { display: 'flex', gap: 16, alignItems: 'center', fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.08em', color: '#6E6450' } },
           e('span', { style: { display: 'flex', alignItems: 'center', gap: 7 } }, e('span', { style: { width: 10, height: 10, borderRadius: '50%', background: '#54632F', display: 'inline-block' } }), 'UK · ' + ukCount),
           e('span', { style: { display: 'flex', alignItems: 'center', gap: 7 } }, e('span', { style: { width: 10, height: 10, borderRadius: '50%', background: '#9E4B26', display: 'inline-block' } }), 'INTERNATIONAL · ' + intCount)
@@ -1398,7 +1590,14 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function App() {
   const isMobile = useIsMobile();
-  const [data, setData] = useState(() => Storage.loadData() || makeData());
+  const [data, setData] = useState(() => migrateYearEvents(Storage.loadData() || makeData()));
+  // Which year the calendar (grid + events) shows. A viewing preference, so it
+  // stays local to the device rather than in the shared data.
+  const [viewYear, setViewYear] = useState(() => {
+    try { const y = parseInt(localStorage.getItem('calendar:year'), 10); if (YEARS.indexOf(y) !== -1) return y; } catch (_) {}
+    return YEARS[0];
+  });
+  useEffect(() => { try { localStorage.setItem('calendar:year', String(viewYear)); } catch (_) {} }, [viewYear]);
   const [yearView, setYearView] = useState(true);
   const [mapView, setMapView] = useState(false);
   const [monthIdx, setMonthIdx] = useState(0);
@@ -1430,7 +1629,7 @@ function App() {
     let cancelled = false;
     Storage.loadCloudData().then(cloud => {
       if (cancelled) return;
-      if (cloud) { cloudEcho.current = true; setData(cloud); }
+      if (cloud) { cloudEcho.current = true; setData(migrateYearEvents(cloud)); }
       setCloudReady(true);
     });
   }, []);
@@ -1454,7 +1653,19 @@ function App() {
     return () => clearTimeout(cloudSaveTimer.current);
   }, [data, cloudReady]);
 
-  const month = data[Math.min(monthIdx, data.length - 1)];
+  // The month as seen in the selected year: locations (and photos) are shared
+  // across years; the grid layout (start weekday, day count — Date's 0=Sunday
+  // convention, leap years included) and the events are year-specific.
+  const mi = Math.min(monthIdx, data.length - 1);
+  const baseMonth = data[mi];
+  const yKey = String(viewYear);
+  const month = {
+    ...baseMonth,
+    year: viewYear,
+    dow: new Date(viewYear, mi, 1).getDay(),
+    days: new Date(viewYear, mi + 1, 0).getDate(),
+    events: (baseMonth.eventsByYear && baseMonth.eventsByYear[yKey]) || [],
+  };
   const matted = heroFraming === 'Matted print';
   const mapPlaces = useMemo(() => buildMapPlaces(data), [data]);
 
@@ -1514,7 +1725,7 @@ function App() {
 
   const mutateData = (fn) => {
     if (!ensureUnlocked()) return;
-    setData(prev => { const d = prev.map(m => ({ ...m, locations: m.locations.map(l => ({ ...l })), events: m.events.map(e2 => ({ ...e2 })) })); fn(d); return d; });
+    setData(prev => { const d = prev.map(m => ({ ...m, locations: m.locations.map(l => ({ ...l })), eventsByYear: Object.keys(m.eventsByYear || {}).reduce((o, y) => { o[y] = m.eventsByYear[y].map(e2 => ({ ...e2 })); return o; }, {}) })); fn(d); return d; });
   };
 
   // Toggle a location's "done"/visited state wherever it lives (used by the map,
@@ -1643,13 +1854,14 @@ function App() {
     if (!editingEvent) return;
     const d2 = editingEvent;
     mutateData(d => {
-      const events = d[monthIdx].events;
+      const by = d[monthIdx].eventsByYear;
+      const events = by[yKey] || (by[yKey] = []);
       // Drafts (isNew) don't exist in the data yet — Save is what creates them.
       let ev = events.find(e2 => e2.id === d2.id);
       if (!ev) { ev = { id: d2.id }; events.push(ev); }
       let s = parseInt(d2.start, 10); if (isNaN(s)) s = 1;
       let en = parseInt(d2.end, 10); if (isNaN(en)) en = s;
-      const days = d[monthIdx].days;
+      const days = month.days;
       s = Math.max(1, Math.min(days, s));
       en = Math.max(s, Math.min(days, en));
       ev.start = s; ev.end = en; ev.day = s;
@@ -1674,7 +1886,7 @@ function App() {
     if (editingEvent.isNew) { setEditingEvent(null); return; } // never saved — nothing to remove
     const evId = editingEvent.id;
     mutateData(d => {
-      const events = d[monthIdx].events;
+      const events = d[monthIdx].eventsByYear[yKey] || [];
       const i = events.findIndex(e2 => e2.id === evId);
       if (i !== -1) events.splice(i, 1);
     });
@@ -1697,7 +1909,7 @@ function App() {
     const slug = 'x-' + (slugify(name) || 'type');
     let label = name, color = null;
     const used = new Set();
-    data.forEach(m2 => m2.events.forEach(ev => {
+    data.forEach(m2 => allMonthEvents(m2).forEach(ev => {
       if (isCustomKind(ev.kind)) {
         used.add(ev.kindColor);
         if (ev.kind === slug) { label = ev.kindLabel || name; color = ev.kindColor; }
@@ -1764,7 +1976,7 @@ function App() {
   const navDivider = () => isMobile ? null : e(Divider);
   const navRow = (showYearBtn) => showYearBtn
     ? e('div', { style:navRowStyle },
-        e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' 2026'),
+        e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
         navDivider(), prevBtn, nextBtn, navDivider(), mapBtn, navDivider(),
         e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), isMobile ? ' Add' : ' Add location')
       )
@@ -1772,6 +1984,14 @@ function App() {
         mapBtn, navDivider(), prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
+
+  // Year picker — switches the calendar grid + events; locations are unaffected.
+  const yearPicker = () => e('div', { style:{ display:'flex', gap:7, alignItems:'center' } },
+    YEARS.map(y => e('button', {
+      key:y, className:'map-chip', onClick:()=>setViewYear(y), title:'Show the ' + y + ' calendar',
+      style:{ height:30, padding:'0 12px', background: y===viewYear ? '#54632F' : '#FBF7EC', color: y===viewYear ? '#FBF7EC' : '#5A513B', border:'1px solid ' + (y===viewYear ? '#2A251E' : '#C9BD9F'), fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.10)' }
+    }, String(y)))
+  );
 
   const regionLegend = () => e('div', { style:{ display:'flex', gap:16, alignItems:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', color:'#6E6450' } },
     e('span', { style:{ display:'flex', alignItems:'center', gap:7 } }, dot('#54632F'), 'UK'),
@@ -1804,7 +2024,7 @@ function App() {
           )
         ),
         e('div', { style:{ display:'flex', alignItems:'flex-end', gap:isMobile?14:18, marginTop:4, flexWrap:'wrap' } },
-          e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(48px,17vw,64px)':'clamp(64px,11vw,104px)', lineHeight:'0.82', color:'#2A251E', letterSpacing:'-0.015em' } }, '2026'),
+          e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(38px,12vw,56px)':'clamp(56px,9vw,96px)', lineHeight:'0.82', color:'#2A251E', letterSpacing:'-0.015em' } }, 'Photoplan'),
           // Phones: two stat rows — "12 months · 41 locations" over
           // "27 UK · 14 international". Desktop keeps the stacked column.
           isMobile
@@ -1826,6 +2046,7 @@ function App() {
       // (right-aligned buttons floating mid-screen look broken when stacked).
       e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
         navRow(false),
+        yearPicker(),
         regionLegend()
       )
     ),
@@ -1916,6 +2137,7 @@ function App() {
         // Same as the year page: left-align + full width once it wraps on a phone.
         e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
           navRow(true),
+          yearPicker(),
           regionLegend()
         )
       ),
@@ -2168,7 +2390,7 @@ function App() {
     // Built-in types plus every custom type found anywhere in the calendar
     // (and the draft's own, in case it was just created and isn't saved yet).
     const customKindMap = new Map();
-    data.forEach(m2 => m2.events.forEach(ev => {
+    data.forEach(m2 => allMonthEvents(m2).forEach(ev => {
       if (isCustomKind(ev.kind) && !customKindMap.has(ev.kind)) customKindMap.set(ev.kind, { kind: ev.kind, label: ev.kindLabel || 'Custom', color: ev.kindColor });
     }));
     if (isCustomKind(draft.kind) && !customKindMap.has(draft.kind)) customKindMap.set(draft.kind, { kind: draft.kind, label: draft.kindLabel || 'Custom', color: draft.kindColor });

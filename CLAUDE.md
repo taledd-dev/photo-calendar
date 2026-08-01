@@ -1,8 +1,19 @@
 # Photo Location Calendar — project notes
 
-A single-page **2026 photography planning calendar**: month-by-month locations
-(UK + international), astro/nature events, drop-in photos, and a map of every
-spot. It's a personal planning tool for the owner; family can view it.
+A single-page **photography planning calendar** ("Photoplan"): month-by-month
+locations (UK + international), astro/nature events, drop-in photos, and a map
+of every spot. It's a personal planning tool for the owner; family can view it.
+
+**Years:** the calendar is year-agnostic. Locations (and their photos) are
+shared across years; **events and the day-grid are per-year**, stored in each
+month's `eventsByYear` map (keyed by year string). A year picker (`YEARS` =
+2026–2028, chips on the home + month pages, choice kept in
+`localStorage['calendar:year']`) switches the grid + events only. The grid's
+start-weekday/day-count is computed from `Date` for the selected year (the
+seeded `dow`/`days`/`year` fields on months are legacy, unused).
+`migrateYearEvents` upgrades old data on load — a bare `events` array becomes
+the 2026 calendar — and seeds missing years from `YEAR_EVENTS` (real moon/
+eclipse/season dates per year, annual meteor + nature windows).
 
 ## Architecture at a glance
 
