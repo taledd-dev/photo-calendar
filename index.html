@@ -14,7 +14,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <link rel="preload" href="/assets/fonts/Figtree-Variable.woff2" as="font" type="font/woff2" crossorigin>
   <style>
+    /* Brand fonts from the logo pack, self-hosted. Figtree is the wordmark
+       face (per the lockup SVGs); Caprasimo is included for future use. */
+    @font-face { font-family: 'Figtree'; src: url('/assets/fonts/Figtree-Variable.woff2') format('woff2'); font-weight: 300 900; font-display: swap; }
+    @font-face { font-family: 'Caprasimo'; src: url('/assets/fonts/Caprasimo-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
     body { background: #E5DCC6; }
@@ -2086,11 +2091,12 @@ function App() {
           )
         ),
         e('div', { style:{ display:'flex', alignItems:'flex-end', gap:isMobile?14:18, marginTop:4, flexWrap:'wrap' } },
-          e('div', { style:{ display:'flex', alignItems:'center', gap:isMobile?10:16 } },
-            e('img', { src:LOGO_SRC, alt:'', style:{ height:isMobile?44:78, width:'auto', display:'block', flex:'none' } }),
-            // lineHeight must fit the lowercase descenders ('p' tails) — the old
-            // 0.82 was tuned for the digits-only '2026' title.
-            e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(38px,12vw,56px)':'clamp(56px,9vw,96px)', lineHeight:'1.05', color:'#2A251E', letterSpacing:'-0.015em' } }, 'Photoplan')
+          // The brand lockup, rebuilt in HTML (an SVG lockup loaded via <img>
+          // can't fetch its font): mark beside PHOTOPLAN in Figtree bold,
+          // wide-tracked caps — proportions and colour per the lockup SVGs.
+          e('div', { style:{ display:'flex', alignItems:'center', gap:isMobile?12:20 } },
+            e('img', { src:LOGO_SRC, alt:'', style:{ height:isMobile?46:76, width:'auto', display:'block', flex:'none' } }),
+            e('h1', { style:{ margin:0, fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, fontSize:isMobile?20:33, lineHeight:1, color:'#201e1d', letterSpacing:'0.24em', textTransform:'uppercase' } }, 'Photoplan')
           ),
           // Phones: two stat rows — "12 months · 41 locations" over
           // "27 UK · 14 international". Desktop keeps the stacked column.
