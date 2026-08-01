@@ -82,7 +82,7 @@ spot. It's a personal planning tool for the owner; family can view it.
 ## Decisions already made (don't silently reverse)
 
 - Photos are **public to view, owner-only to upload** (password gate).
-- Hero captions are **auto** (`Location · Month YY`); only the **year** is
+- Hero captions are **auto** (`Location · Mon YY`, month abbreviated); only the **year** is
   user-entered, and it's cloud-synced so viewers see it.
 - **Visited is the `done` tick.** Coordinates come from the built-in table and
   are **per-location editable**; the old **postcode** field was removed.

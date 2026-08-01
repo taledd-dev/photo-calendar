@@ -900,7 +900,9 @@ const KIND_ORDER = ['photoop','fullmoon','newmoon','meteor','eclipse','nature','
 const KIND_LABEL = { photoop:'Photo op', fullmoon:'Full moon', newmoon:'New moon', meteor:'Meteor', eclipse:'Eclipse', nature:'Nature', season:'Season window' };
 
 // ─── Calendar grid builder ─────────────────────────────────────────────────────
-function buildWeeks(month, weekStart = 'Monday') {
+// `compact` (phones) tightens the event-bar geometry so the week rows can be
+// much shorter than the desktop's 120px.
+function buildWeeks(month, weekStart = 'Monday', compact = false) {
   const leading = weekStart === 'Sunday' ? month.dow : (month.dow + 6) % 7;
   const cells = [];
   for (let i = 0; i < leading; i++) cells.push(null);
@@ -945,12 +947,13 @@ function buildWeeks(month, weekStart = 'Monday') {
         hasGlyph: !!st.glyph,
         left: (it.colStart / 7 * 100).toFixed(4) + '%',
         width: ((it.colEnd - it.colStart + 1) / 7 * 100).toFixed(4) + '%',
-        top: (30 + it.lane * 23) + 'px',
+        top: ((compact ? 24 : 30) + it.lane * (compact ? 20 : 23)) + 'px',
+        span: it.colEnd - it.colStart + 1,
         bg: st.bg, fg: st.fg, accent: st.accent,
         contRight: it.contRight,
       };
     });
-    weeks.push({ days: slice.map(d => ({ day: d == null ? '' : String(d), inMonth: d != null })), items });
+    weeks.push({ days: slice.map(d => ({ day: d == null ? '' : String(d), inMonth: d != null })), items, lanes: lanes.length });
   }
   return weeks;
 }
@@ -1640,7 +1643,7 @@ function App() {
 
   const sel = month.locations.find(l => l.id === selectedLoc) || null;
   const featured = month.locations.find(l => l.id === month.featured) || month.locations[0] || null;
-  const weeks = buildWeeks(month, weekStart);
+  const weeks = buildWeeks(month, weekStart, isMobile);
   const doneCount = month.locations.filter(l => l.done).length;
 
   const draft = editingEvent;
@@ -1750,7 +1753,7 @@ function App() {
         boxStyle: { aspectRatio: '3 / 2' },
         items: data.flatMap(m => m.locations.map(loc => {
           const yr = (loc.photoYear || '').trim();
-          return { key: m.key + '-' + loc.id, base: photoBase(m.key, loc.id), caption: loc.name + ' · ' + m.name + (yr ? ' ' + yr : '') };
+          return { key: m.key + '-' + loc.id, base: photoBase(m.key, loc.id), caption: loc.name + ' · ' + m.name.slice(0, 3) + (yr ? ' ' + yr : '') };
         })),
       })
     ),
@@ -1841,7 +1844,7 @@ function App() {
           boxStyle: { aspectRatio: '3 / 2' },
           items: month.locations.map(loc => {
             const yr = (loc.photoYear || '').trim();
-            return { key: loc.id, base: photoBase(month.key, loc.id), caption: loc.name + ' · ' + month.name + (yr ? ' ' + yr : '') };
+            return { key: loc.id, base: photoBase(month.key, loc.id), caption: loc.name + ' · ' + month.name.slice(0, 3) + (yr ? ' ' + yr : '') };
           }),
         })
       ),
@@ -1981,7 +1984,7 @@ function App() {
       // Calendar
       e('div', { style:{ marginTop:40, background:'#FBF7EC', border:'1px solid #C9BD9F', boxShadow:'0 1px 0 #C9BFA4' } },
         // Light strip header
-        e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:18, padding:'14px 18px', borderBottom:'1px solid #D2C7AC', background:'#F4EEDE', flexWrap:'wrap' } },
+        e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:isMobile?10:18, padding:isMobile?'10px 12px':'14px 18px', borderBottom:'1px solid #D2C7AC', background:'#F4EEDE', flexWrap:'wrap' } },
           e('div', { style:{ display:'flex', gap:20, alignItems:'center', flexWrap:'wrap' } },
             e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Typical light'),
             e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:13, color:'#54632F', letterSpacing:'.02em' } }, '↑ ' + month.sunrise + '   ↓ ' + month.sunset),
@@ -1995,32 +1998,57 @@ function App() {
             e('div', { key:i, style:{ padding:'9px 0', textAlign:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#9C8F71' } }, c)
           )
         ),
-        // Weeks
+        // Weeks. Phones keep the 7 columns for date orientation but compact
+        // everything: rows shrink to fit their event lanes, and a bar spanning
+        // a single ~50px column shows just its glyph (the tappable agenda list
+        // under the grid carries the labels instead).
         weeks.map((wk, wi) =>
-          e('div', { key:wi, style:{ position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)', gridAutoRows:'minmax(120px,auto)', borderBottom:'1px solid #E2D9C2', backgroundImage:'repeating-linear-gradient(to right,#ECE3CD 0,#ECE3CD 1px,transparent 1px,transparent 14.2857%)' } },
+          e('div', { key:wi, style:{ position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)', gridAutoRows: isMobile ? ('minmax(' + Math.max(52, 28 + wk.lanes * 20) + 'px,auto)') : 'minmax(120px,auto)', borderBottom:'1px solid #E2D9C2', backgroundImage:'repeating-linear-gradient(to right,#ECE3CD 0,#ECE3CD 1px,transparent 1px,transparent 14.2857%)' } },
             wk.days.map((d, di) =>
-              e('div', { key:di, style:{ padding:'7px 9px' } },
-                d.inMonth && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, fontWeight:500, color:'#7A6F58' } }, d.day)
+              e('div', { key:di, style:{ padding: isMobile ? '4px 6px' : '7px 9px' } },
+                d.inMonth && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 11 : 12, fontWeight:500, color:'#7A6F58' } }, d.day)
               )
             ),
-            wk.items.map(it =>
-              e('div', {
+            wk.items.map(it => {
+              const glyphOnly = isMobile && it.span === 1 && it.hasGlyph;
+              return e('div', {
                 key: it.id,
                 title: it.label,
                 className: 'ev-chip',
                 onClick: () => openEventEditor(it.ev.id),
-                style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height:19, display:'flex', alignItems:'center', gap:5, padding:'0 6px', background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, fontWeight:500, lineHeight:1, whiteSpace:'nowrap', overflow:'hidden', cursor:'pointer' }
+                style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height: isMobile ? 17 : 19, display:'flex', alignItems:'center', justifyContent: glyphOnly ? 'center' : 'flex-start', gap:isMobile?4:5, padding: glyphOnly ? 0 : (isMobile ? '0 4px' : '0 6px'), background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 9.5 : 10, fontWeight:500, lineHeight:1, whiteSpace:'nowrap', overflow:'hidden', cursor:'pointer' }
               },
                 it.hasGlyph && e('span', { style:{ flex:'none' } }, it.glyph),
-                e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis' } }, it.label),
-                it.contRight && e('span', { style:{ flex:'none', marginLeft:'auto', paddingLeft:3 } }, '→')
-              )
-            )
+                !glyphOnly && e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis' } }, it.label),
+                !glyphOnly && it.contRight && e('span', { style:{ flex:'none', marginLeft:'auto', paddingLeft:3 } }, '→')
+              );
+            })
+          )
+        ),
+        // Phones: the agenda — every event as a readable, tappable row (the
+        // compact grid above can't fit labels in 50px columns).
+        isMobile && month.events.length > 0 && e('div', { style:{ borderTop:'1px solid #D2C7AC', padding:'10px 12px 12px' } },
+          e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.16em', textTransform:'uppercase', color:'#9C8F71', marginBottom:7 } }, 'This month'),
+          e('div', { style:{ display:'flex', flexDirection:'column', gap:4 } },
+            month.events.slice()
+              .sort((a, b) => (a.start != null ? a.start : a.day) - (b.start != null ? b.start : b.day))
+              .map(ev => {
+                const st = EVENT_STYLE[ev.kind] || EVENT_STYLE.season;
+                const s = ev.start != null ? ev.start : ev.day;
+                const e2 = ev.end != null ? ev.end : ev.day;
+                return e('div', { key:ev.id, className:'ev-chip', onClick:()=>openEventEditor(ev.id), role:'button', tabIndex:0, style:{ display:'grid', gridTemplateColumns:'44px 1fr', gap:9, alignItems:'center', padding:'6px 8px', background:st.bg, color:st.fg, borderLeft:'3px solid '+st.accent, borderRadius:2, cursor:'pointer' } },
+                  e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, fontWeight:600, letterSpacing:'.02em' } }, s === e2 ? String(s) : (s + '–' + e2)),
+                  e('span', { style:{ display:'flex', alignItems:'center', gap:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:500, minWidth:0 } },
+                    st.glyph && e('span', { style:{ flex:'none' } }, st.glyph),
+                    e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, ev.label)
+                  )
+                );
+              })
           )
         ),
         // Legend + Add event
-        showEvents && e('div', { style:{ display:'flex', alignItems:'center', gap:18, flexWrap:'wrap', padding:'12px 18px', borderTop:'1px solid #D2C7AC' } },
-          e('div', { style:{ display:'flex', gap:18, flexWrap:'wrap', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.05em', color:'#8A7D63' } },
+        showEvents && e('div', { style:{ display:'flex', alignItems:'center', gap:isMobile?12:18, flexWrap:'wrap', padding:isMobile?'10px 12px':'12px 18px', borderTop:'1px solid #D2C7AC' } },
+          e('div', { style:{ display:'flex', gap:isMobile?'8px 14px':18, flexWrap:'wrap', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.05em', color:'#8A7D63' } },
             e('span', { style:{ color:'#2A251E' } }, '◉ Photo op'),
             e('span', { style:{ color:'#3A4259' } }, '● Full moon'),
             e('span', null, '○ New moon'),
