@@ -2024,7 +2024,9 @@ function App() {
           )
         ),
         e('div', { style:{ display:'flex', alignItems:'flex-end', gap:isMobile?14:18, marginTop:4, flexWrap:'wrap' } },
-          e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(38px,12vw,56px)':'clamp(56px,9vw,96px)', lineHeight:'0.82', color:'#2A251E', letterSpacing:'-0.015em' } }, 'Photoplan'),
+          // lineHeight must fit the lowercase descenders ('p' tails) — the old
+          // 0.82 was tuned for the digits-only '2026' title.
+          e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(38px,12vw,56px)':'clamp(56px,9vw,96px)', lineHeight:'1.05', color:'#2A251E', letterSpacing:'-0.015em' } }, 'Photoplan'),
           // Phones: two stat rows — "12 months · 41 locations" over
           // "27 UK · 14 international". Desktop keeps the stacked column.
           isMobile
