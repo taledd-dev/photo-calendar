@@ -2109,7 +2109,9 @@ function App() {
         // refreshes the displayed copy — Editable only reads value on mount.
         // Wide cap ≈ the logo + title + stats row above, so the intro runs the
         // full width of the header block before wrapping.
-        e(Editable, { key:'year-intro-' + yearIntro, tag:'div', value: yearIntro, onCommit:(t)=>editYearIntro(t), title:'Click to edit', style:{ marginTop:isMobile?18:26, fontSize:isMobile?15:17, color:'#6E6450', maxWidth:isMobile?'100%':720, lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
+        // NB per-side margins only — a `margin` shorthand would override
+        // marginTop and glue the intro to the title (it did, once).
+        e(Editable, { key:'year-intro-' + yearIntro, tag:'div', value: yearIntro, onCommit:(t)=>editYearIntro(t), title:'Click to edit', style:{ marginTop:isMobile?18:26, marginLeft:-4, marginRight:-4, fontSize:isMobile?15:17, color:'#6E6450', maxWidth:isMobile?'100%':720, lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px' } })
       ),
       // On phones this column wraps below the title, so pin it to the left edge
       // (right-aligned buttons floating mid-screen look broken when stacked).
@@ -2204,7 +2206,7 @@ function App() {
             e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, month.name),
             e('span', { className:'year-link', onClick:goToYear, role:'button', tabIndex:0, style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:isMobile?19:26, fontWeight:500, color:'#A89A7C', cursor:'pointer' } }, String(month.year))
           ),
-          e(Editable, { key:'tagline-'+month.key, tag:'div', value:month.tagline, onCommit:(t)=>editMonthField('tagline', t), title:"Click to edit this month's description", style:{ marginTop:8, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'30ch', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
+          e(Editable, { key:'tagline-'+month.key, tag:'div', value:month.tagline, onCommit:(t)=>editMonthField('tagline', t), title:"Click to edit this month's description", style:{ marginTop:8, marginLeft:-4, marginRight:-4, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'30ch', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px' } })
         ),
         // Same as the year page: left-align + full width once it wraps on a phone.
         e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
