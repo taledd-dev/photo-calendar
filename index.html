@@ -1036,6 +1036,7 @@ function ensureScript(src) {
 
 function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
   const VW = 1000, VH = 640, VMIN = 1, VMAX = 8, PAPER = '#FCFAF1';
+  const isMobile = useIsMobile();
   const [hoveredId, setHoveredId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [region, setRegion] = useState('All');
@@ -1218,28 +1219,65 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
   const readoutShoots = activeLoc ? activeLoc.shoots.slice().sort((a, b) => a.mi - b.mi) : [];
   const zoomBtnStyle = { width: 36, height: 36, background: '#FBF7EC', border: '1px solid #2A251E', color: '#2A251E', fontSize: 21, lineHeight: 1, cursor: 'pointer', fontFamily: "'Spectral',serif", boxShadow: '2px 2px 0 rgba(42,37,30,0.14)' };
 
+  // The pin detail card. Desktop floats it over the map beside the pin; on a
+  // phone the map box is small, so the card renders below the map instead of
+  // blanketing it (it can't stay inside the map's overflow-hidden frame).
+  const detailCard = () => activeLoc && e('div', { style: { ...(isMobile ? { position: 'relative', marginTop: 10 } : { position: 'absolute', top: 14, ...cardSide, zIndex: 4, width: 300, maxWidth: 'calc(100% - 28px)' }), background: '#FBF7EC', border: '1px solid #2A251E', boxShadow: '5px 5px 0 rgba(42,37,30,0.16)' } },
+    e('button', { className: 'map-close', onClick: () => { setSelectedId(null); setHoveredId(null); }, title: 'Close', style: { position: 'absolute', top: 8, right: 8, zIndex: 5, width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, background: 'rgba(251,247,236,0.92)', border: '1px solid transparent', borderRadius: 3, color: '#9C8F71', fontFamily: "'Spectral',serif", fontSize: 18, lineHeight: 1, cursor: 'pointer' } }, '×'),
+    e('div', { style: { height: 5, background: acColor } }),
+    e('div', { style: { padding: '14px 16px 16px' } },
+      e('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', paddingRight: 22 } },
+        e('span', { style: { fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: 21, color: '#2A251E', lineHeight: 1.02 } }, activeLoc.name),
+        activeLoc.region === 'UK'
+          ? e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.12em', textTransform: 'uppercase', padding: '3px 7px', background: '#E4E8D0', color: '#54632F', border: '1px solid #54632F' } }, 'UK')
+          : e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.12em', textTransform: 'uppercase', padding: '3px 7px', background: '#F1DECF', color: '#9E4B26', border: '1px solid #9E4B26' } }, "Int'l")
+      ),
+      e('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 9 } },
+        e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9C8F71', flex: '0 0 auto' } }, 'Where'),
+        e('span', { style: { fontSize: 14.5, color: '#2A251E' } }, activeLoc.where)
+      ),
+      e('div', { style: { marginTop: 12, paddingTop: 11, borderTop: '1px solid #E6DECA' } },
+        e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 } },
+          e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9C8F71' } }, 'Shoots'),
+          activeLoc.shoots.length > 1 && e('span', { style: { fontFamily: MAP_MONO, fontSize: 9, letterSpacing: '.06em', color: '#9E4B26' } }, activeLoc.shoots.length + ' visits')
+        ),
+        e('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+          readoutShoots.map(s => e('div', { key: s.mi, className: 'map-shootrow', onClick: () => onOpenMonth(s.mi, activeLoc.id), role: 'button', tabIndex: 0, title: 'Open ' + s.monthName + ' 2026 in the calendar', style: { display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 10, alignItems: 'center', padding: '6px 7px', margin: '0 -7px', borderRadius: 3, cursor: 'pointer', background: 'transparent', transition: 'background .12s ease' } },
+            e('span', { style: { fontFamily: MAP_MONO, fontSize: 11, fontWeight: 600, letterSpacing: '.04em', color: acColor } }, MAP_ABBR[s.mi]),
+            e('span', { style: { fontSize: 14, color: '#3B3528', lineHeight: 1.3 } }, s.tag),
+            e('span', { style: { fontFamily: MAP_MONO, fontSize: 10.5, fontWeight: 600, color: '#B7AD90', whiteSpace: 'nowrap' } }, '→')
+          ))
+        ),
+        e('div', { style: { marginTop: 9, fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.05em', color: '#B0A487', lineHeight: 1.4 } }, '↳ Tap a month to open its page in the calendar.')
+      ),
+      e('button', { className: 'map-visitbtn', onClick: () => onToggleVisited(activeLoc.id), style: { marginTop: 14, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 38, background: activeLoc.visited ? '#54632F' : '#FBF7EC', color: activeLoc.visited ? '#FBF7EC' : '#54632F', border: '1px solid ' + (activeLoc.visited ? '#2A251E' : '#54632F'), fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '2px 2px 0 rgba(42,37,30,0.12)' } }, activeLoc.visited ? '✓ Visited — tap to undo' : 'Mark as visited')
+    )
+  );
+
   return e('div', { style: { paddingBottom: 6 } },
     // header
     e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' } },
       e('div', null,
         e('div', { style: { fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.22em', textTransform: 'uppercase', color: '#8A7D63' } }, 'Photo Location Calendar'),
-        e('div', { style: { display: 'flex', alignItems: 'flex-end', gap: 18, marginTop: 4 } },
-          e('h1', { style: { margin: 0, fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: 'clamp(40px,6vw,64px)', lineHeight: 0.82, color: '#2A251E', letterSpacing: '-0.015em' } }, 'The 2026 Map'),
-          e('div', { style: { display: 'flex', flexDirection: 'column', gap: 3, paddingBottom: 9, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', color: '#8A7D63' } },
+        e('div', { style: { display: 'flex', alignItems: 'flex-end', gap: isMobile ? 12 : 18, marginTop: 4, flexWrap: 'wrap' } },
+          e('h1', { style: { margin: 0, fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: isMobile ? 'clamp(30px,9vw,40px)' : 'clamp(40px,6vw,64px)', lineHeight: 0.82, color: '#2A251E', letterSpacing: '-0.015em' } }, 'The 2026 Map'),
+          // Phones: stats flow as one wrapping row, matching the home page.
+          e('div', { style: { display: 'flex', flexDirection: isMobile ? 'row' : 'column', ...(isMobile ? { flexWrap: 'wrap', alignItems: 'baseline', columnGap: 12, rowGap: 3, paddingBottom: 4 } : { gap: 3, paddingBottom: 9 }), fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', color: '#8A7D63' } },
             e('span', null, places.length + ' locations'),
             e('span', null, shootCount + ' shoots · UK & Europe'),
             e('span', { style: { color: '#A89A7C' } }, 'Flat locator · fit to points')
           )
         ),
-        e('div', { style: { marginTop: 12, fontSize: 16, color: '#6E6450', maxWidth: '56ch', lineHeight: 1.5 } }, "Every shoot in the calendar on one map — UK spots in green, the international trips in terracotta. Filter by region, month or whether you've ticked it off, then hover a pin for the details.")
+        e('div', { style: { marginTop: 12, fontSize: isMobile ? 15 : 16, color: '#6E6450', maxWidth: '56ch', lineHeight: 1.5 } }, "Every shoot in the calendar on one map — UK spots in green, the international trips in terracotta. Filter by region, month or whether you've ticked it off, then " + (isMobile ? 'tap' : 'hover') + ' a pin for the details.')
       ),
-      e('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 } },
+      // Left-align + full width once this column wraps below the title on phones.
+      e('div', { style: { display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'flex-end', gap: 12, ...(isMobile ? { width: '100%' } : {}) } },
         e('button', { className: 'btn-hover', onClick: onBack, style: { height: 40, border: '1px solid #2A251E', cursor: 'pointer', fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', boxShadow: '3px 3px 0 rgba(42,37,30,0.12)', background: '#54632F', color: '#FBF7EC', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '0 17px' } }, e('span', { style: { fontSize: 15, lineHeight: 1, marginTop: -1 } }, '←'), ' 2026'),
         e('div', { style: { display: 'flex', gap: 16, alignItems: 'center', fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.08em', color: '#6E6450' } },
           e('span', { style: { display: 'flex', alignItems: 'center', gap: 7 } }, e('span', { style: { width: 10, height: 10, borderRadius: '50%', background: '#54632F', display: 'inline-block' } }), 'UK · ' + ukCount),
           e('span', { style: { display: 'flex', alignItems: 'center', gap: 7 } }, e('span', { style: { width: 10, height: 10, borderRadius: '50%', background: '#9E4B26', display: 'inline-block' } }), 'INTERNATIONAL · ' + intCount)
         ),
-        e('div', { style: { width: 210 } },
+        e('div', { style: { width: isMobile ? '100%' : 210, maxWidth: 340 } },
           e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontFamily: MAP_MONO, fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#8A7D63', marginBottom: 5 } },
             e('span', null, 'Ticked off'), e('span', { style: { color: '#54632F' } }, visitedCount + ' / ' + places.length)),
           e('div', { style: { height: 7, background: '#E1D5B7', border: '1px solid #CBBF9F', position: 'relative', overflow: 'hidden' } },
@@ -1247,14 +1285,16 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
         )
       )
     ),
-    e('div', { style: { height: 1, background: '#D2C7AC', margin: '22px 0 20px' } }),
+    e('div', { style: { height: 1, background: '#D2C7AC', margin: isMobile ? '16px 0 16px' : '22px 0 20px' } }),
     // controls
     e('div', { style: { display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16 } },
-      e('div', { style: { display: 'flex', gap: '20px 34px', flexWrap: 'wrap', alignItems: 'center' } },
-        e('div', { style: { display: 'flex', alignItems: 'center', gap: 11 } }, e('span', { style: lbl }, 'Region'), e('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, regionChips.map(chipBtn))),
-        e('div', { style: { display: 'flex', alignItems: 'center', gap: 11 } }, e('span', { style: lbl }, 'Status'), e('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, statusChips.map(chipBtn)))
+      // Phones: each filter label sits above its chips instead of beside them,
+      // so the chip rows get the full screen width to wrap in.
+      e('div', { style: { display: 'flex', gap: isMobile ? '14px 24px' : '20px 34px', flexWrap: 'wrap', alignItems: isMobile ? 'flex-start' : 'center' } },
+        e('div', { style: isMobile ? { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 7 } : { display: 'flex', alignItems: 'center', gap: 11 } }, e('span', { style: lbl }, 'Region'), e('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, regionChips.map(chipBtn))),
+        e('div', { style: isMobile ? { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 7 } : { display: 'flex', alignItems: 'center', gap: 11 } }, e('span', { style: lbl }, 'Status'), e('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, statusChips.map(chipBtn)))
       ),
-      e('div', { style: { display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 } },
+      e('div', { style: isMobile ? { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 7, minWidth: 0 } : { display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 } },
         e('span', { style: { ...lbl, flex: '0 0 auto' } }, 'When'),
         e('div', { style: { display: 'flex', gap: 5, flexWrap: 'wrap' } }, monthChips.map((mc, i) => e('button', { key: i, className: 'map-monthchip', onClick: mc.onClick, title: mc.title, style: { position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, height: 32, padding: '0 10px', background: mc.bg, color: mc.fg, border: '1px solid ' + mc.border, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.05em', cursor: 'pointer' } }, mc.label, e('span', { style: { fontSize: 9, opacity: .55 } }, mc.count))))
       )
@@ -1279,38 +1319,8 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
             )
           )
         ),
-        // card
-        activeLoc && e('div', { style: { position: 'absolute', top: 14, ...cardSide, zIndex: 4, width: 300, maxWidth: 'calc(100% - 28px)', background: '#FBF7EC', border: '1px solid #2A251E', boxShadow: '5px 5px 0 rgba(42,37,30,0.16)' } },
-          e('button', { className: 'map-close', onClick: () => { setSelectedId(null); setHoveredId(null); }, title: 'Close', style: { position: 'absolute', top: 8, right: 8, zIndex: 5, width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, background: 'rgba(251,247,236,0.92)', border: '1px solid transparent', borderRadius: 3, color: '#9C8F71', fontFamily: "'Spectral',serif", fontSize: 18, lineHeight: 1, cursor: 'pointer' } }, '×'),
-          e('div', { style: { height: 5, background: acColor } }),
-          e('div', { style: { padding: '14px 16px 16px' } },
-            e('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', paddingRight: 22 } },
-              e('span', { style: { fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: 21, color: '#2A251E', lineHeight: 1.02 } }, activeLoc.name),
-              activeLoc.region === 'UK'
-                ? e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.12em', textTransform: 'uppercase', padding: '3px 7px', background: '#E4E8D0', color: '#54632F', border: '1px solid #54632F' } }, 'UK')
-                : e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.12em', textTransform: 'uppercase', padding: '3px 7px', background: '#F1DECF', color: '#9E4B26', border: '1px solid #9E4B26' } }, "Int'l")
-            ),
-            e('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 9 } },
-              e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9C8F71', flex: '0 0 auto' } }, 'Where'),
-              e('span', { style: { fontSize: 14.5, color: '#2A251E' } }, activeLoc.where)
-            ),
-            e('div', { style: { marginTop: 12, paddingTop: 11, borderTop: '1px solid #E6DECA' } },
-              e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 } },
-                e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9C8F71' } }, 'Shoots'),
-                activeLoc.shoots.length > 1 && e('span', { style: { fontFamily: MAP_MONO, fontSize: 9, letterSpacing: '.06em', color: '#9E4B26' } }, activeLoc.shoots.length + ' visits')
-              ),
-              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
-                readoutShoots.map(s => e('div', { key: s.mi, className: 'map-shootrow', onClick: () => onOpenMonth(s.mi, activeLoc.id), role: 'button', tabIndex: 0, title: 'Open ' + s.monthName + ' 2026 in the calendar', style: { display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 10, alignItems: 'center', padding: '6px 7px', margin: '0 -7px', borderRadius: 3, cursor: 'pointer', background: 'transparent', transition: 'background .12s ease' } },
-                  e('span', { style: { fontFamily: MAP_MONO, fontSize: 11, fontWeight: 600, letterSpacing: '.04em', color: acColor } }, MAP_ABBR[s.mi]),
-                  e('span', { style: { fontSize: 14, color: '#3B3528', lineHeight: 1.3 } }, s.tag),
-                  e('span', { style: { fontFamily: MAP_MONO, fontSize: 10.5, fontWeight: 600, color: '#B7AD90', whiteSpace: 'nowrap' } }, '→')
-                ))
-              ),
-              e('div', { style: { marginTop: 9, fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.05em', color: '#B0A487', lineHeight: 1.4 } }, '↳ Tap a month to open its page in the calendar.')
-            ),
-            e('button', { className: 'map-visitbtn', onClick: () => onToggleVisited(activeLoc.id), style: { marginTop: 14, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 38, background: activeLoc.visited ? '#54632F' : '#FBF7EC', color: activeLoc.visited ? '#FBF7EC' : '#54632F', border: '1px solid ' + (activeLoc.visited ? '#2A251E' : '#54632F'), fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '2px 2px 0 rgba(42,37,30,0.12)' } }, activeLoc.visited ? '✓ Visited — tap to undo' : 'Mark as visited')
-          )
-        ),
+        // card — overlaid on the map on desktop only (phones get it below the map)
+        !isMobile && detailCard(),
         isLoading && e('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#EAE0C8', backgroundImage: 'radial-gradient(#d6c8a5 0.9px, transparent 0.9px)', backgroundSize: '20px 20px' } },
           e('div', { style: { fontFamily: MAP_MONO, fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase', color: '#8A7D63', animation: 'mapPulse 1.4s ease-in-out infinite' } }, "Plotting the year's locations…")),
         isError && e('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', background: '#EAE0C8' } },
@@ -1321,11 +1331,13 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
           e('button', { className: 'map-iconbtn', onClick: resetView, title: 'Fit all locations', style: { ...zoomBtnStyle, marginTop: 2, color: '#54632F', fontSize: 15, fontFamily: MAP_MONO } }, '⤢')
         ),
         isReady && e('div', { style: { position: 'absolute', left: 12, bottom: 12, zIndex: 3, fontFamily: MAP_MONO, fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#6E6450', background: 'rgba(251,247,236,0.86)', border: '1px solid #D2C7AC', padding: '5px 9px' } }, zoomK > 1 ? (zoomK.toFixed(1) + '× · drag to pan') : ('Fit · ' + zoomK.toFixed(1) + '×'))
-      )
+      ),
+      // phones: the pin card sits under the map, inside the same paper frame
+      isMobile && detailCard()
     ),
     // legend
     e('div', { style: { marginTop: 12, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.03em', color: '#9C8F71', display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' } },
-      e('span', null, 'Hover a pin for details · click to keep it open, then tick it off.'),
+      e('span', null, isMobile ? 'Tap a pin for its details · pinch to zoom, drag to pan.' : 'Hover a pin for details · click to keep it open, then tick it off.'),
       e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, e('circle', { cx: 7, cy: 7, r: 5, fill: '#54632F', stroke: '#FBF7EC', strokeWidth: 1.5 })), ' Visited'),
       e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, e('circle', { cx: 7, cy: 7, r: 4.4, fill: '#FCFAF1', stroke: '#54632F', strokeWidth: 2 })), ' To visit'),
       e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 16, height: 14, viewBox: '0 0 16 14' }, e('circle', { cx: 8, cy: 7, r: 6.2, fill: 'none', stroke: '#54632F', strokeWidth: 1.3 }), e('circle', { cx: 8, cy: 7, r: 4, fill: '#54632F' })), ' Shot in 2+ months')
@@ -1698,7 +1710,9 @@ function App() {
         ),
         e('div', { style:{ display:'flex', alignItems:'flex-end', gap:isMobile?14:18, marginTop:4, flexWrap:'wrap' } },
           e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(48px,17vw,64px)':'clamp(64px,11vw,104px)', lineHeight:'0.82', color:'#2A251E', letterSpacing:'-0.015em' } }, '2026'),
-          e('div', { style:{ display:'flex', flexDirection:'column', gap:3, paddingBottom:9, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
+          // Phones: the stats read as one wrapping row ("12 months · 41
+          // locations · 27 UK · 14 international") instead of a stacked column.
+          e('div', { style:{ display:'flex', flexDirection:isMobile?'row':'column', ...(isMobile?{flexWrap:'wrap', alignItems:'baseline', columnGap:12, rowGap:3, paddingBottom:5}:{gap:3, paddingBottom:9}), fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
             e('span', null, data.length + ' months'),
             e('span', null, totalLocs + ' locations'),
             e('span', { style:{ color:'#A89A7C' } }, ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
