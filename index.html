@@ -1726,7 +1726,6 @@ function App() {
   }, [selectedLoc, isMobile]);
 
   const sel = month.locations.find(l => l.id === selectedLoc) || null;
-  const featured = month.locations.find(l => l.id === month.featured) || month.locations[0] || null;
   const weeks = buildWeeks(month, weekStart, isMobile);
   const doneCount = month.locations.filter(l => l.done).length;
 
@@ -1934,15 +1933,6 @@ function App() {
           }),
         })
       ),
-      e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
-        e('div', { style:{ display:'flex', alignItems:'center', gap:10 } },
-          e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Featured'),
-          featured && e('span', { style:{ width:8, height:8, borderRadius:'50%', background:regionColor(featured.region), display:'inline-block' } }),
-          e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:16, fontWeight:600, color:'#2A251E' } }, featured ? featured.name : '—')
-        ),
-        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#8A7D63', letterSpacing:'.03em' } }, month.heroNote)
-      ),
-
       // Locations section header
       e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:38 } },
         e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'#8A7D63', whiteSpace:'nowrap' } }, 'Locations this month'),
