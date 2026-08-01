@@ -1028,6 +1028,16 @@ function locCoordText(loc) {
 // separate from the calendar-data.json file at the bucket root.
 function photoBase(monthKey, locId) { return 'photos/' + monthKey + '-ref-' + locId; }
 
+// Rough "is this in the UK?" test, used to auto-set a location's region when
+// coordinates are pasted: a Great Britain + Northern Ireland bounding box,
+// minus an approximate Republic of Ireland box. Close enough for a planning
+// calendar — the UK/International toggle stays available for edge cases.
+function coordsInUK(lat, lng) {
+  const inUKBox = lat >= 49.8 && lat <= 60.9 && lng >= -8.75 && lng <= 1.8;
+  const inIrelandBox = lat >= 51.2 && lat <= 54.3 && lng >= -10.8 && lng < -5.95;
+  return inUKBox && !inIrelandBox;
+}
+
 // Turn a name into a filename-friendly slug — used as the id for new locations so
 // their photos get readable names like photos/apr-ref-jasper.
 function slugify(s) {
@@ -1571,6 +1581,10 @@ function App() {
     });
   };
 
+  const editMonthField = (field, value) => {
+    mutateData(d => { d[monthIdx][field] = value; });
+  };
+
   const setPhotoYear = (locId, year) => {
     const y = (year || '').trim();
     mutateData(d => { const loc = d[monthIdx].locations.find(l => l.id === locId); if (loc) loc.photoYear = y; });
@@ -1584,7 +1598,15 @@ function App() {
     mutateData(d => {
       for (const m of d) {
         const loc = m.locations.find(l => l.id === locId);
-        if (loc) { if (has) { loc.lat = nums[0]; loc.lng = nums[1]; } else { delete loc.lat; delete loc.lng; } break; }
+        if (loc) {
+          if (has) {
+            loc.lat = nums[0]; loc.lng = nums[1];
+            // Entering coordinates decides the region; the toggle can still
+            // override it afterwards.
+            loc.region = coordsInUK(nums[0], nums[1]) ? 'UK' : 'INT';
+          } else { delete loc.lat; delete loc.lng; }
+          break;
+        }
       }
     });
   };
@@ -1877,7 +1899,7 @@ function App() {
             e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, month.name),
             e('span', { className:'year-link', onClick:goToYear, role:'button', tabIndex:0, style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:isMobile?19:26, fontWeight:500, color:'#A89A7C', cursor:'pointer' } }, String(month.year))
           ),
-          e('div', { style:{ marginTop:8, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'30ch' } }, month.tagline)
+          e(Editable, { key:'tagline-'+month.key, tag:'div', value:month.tagline, onCommit:(t)=>editMonthField('tagline', t), title:"Click to edit this month's description", style:{ marginTop:8, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'30ch', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
         ),
         // Same as the year page: left-align + full width once it wraps on a phone.
         e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
