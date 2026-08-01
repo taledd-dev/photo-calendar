@@ -93,6 +93,12 @@ spot. It's a personal planning tool for the owner; family can view it.
   pointer events on the SVG, `touchAction:'none'`) — don't rebuild them.
 - The **2026 page** has an Instagram link (`@llandscapist`, `.ig-link`) beside the
   header label; it's year-page only.
+- **Custom event types** live on the events themselves (`kind:'x-<slug>'` plus
+  `kindLabel` and a `kindColor` palette key from `CUSTOM_PALETTES`), so they sync
+  through the shared data with no schema change; the editor's type list derives
+  them from the data (`styleOf` resolves any event's colours). A type vanishes
+  when no event uses it. "＋ Add event" / "Schedule photo op" only open a
+  **draft** — nothing is written to the data until "Save event" is clicked.
 
 ## Working on it
 

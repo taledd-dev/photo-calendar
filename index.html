@@ -899,6 +899,29 @@ const EVENT_STYLE = {
 const KIND_ORDER = ['photoop','fullmoon','newmoon','meteor','eclipse','nature','season'];
 const KIND_LABEL = { photoop:'Photo op', fullmoon:'Full moon', newmoon:'New moon', meteor:'Meteor', eclipse:'Eclipse', nature:'Nature', season:'Season window' };
 
+// User-defined event types. They live on the events themselves — an event of a
+// custom type carries kind 'x-<slug>' plus its display label (kindLabel) and a
+// palette key (kindColor) — so they travel through the shared calendar data
+// with no schema change, and a type disappears once no event uses it. Colours
+// are preset palettes in the site's own tones, assigned automatically.
+const CUSTOM_KIND_GLYPH = '◆';
+const CUSTOM_PALETTES = [
+  { key:'plum',  bg:'#E6DCE4', fg:'#5C3A56', accent:'#7C4E74' },
+  { key:'teal',  bg:'#D8E4E0', fg:'#2F5A52', accent:'#3E7A6E' },
+  { key:'denim', bg:'#DAE0EA', fg:'#33465E', accent:'#46618A' },
+  { key:'clay',  bg:'#EADFD0', fg:'#6E4A2A', accent:'#8A5E36' },
+  { key:'moss',  bg:'#E0E4CE', fg:'#4A5526', accent:'#6B7A35' },
+  { key:'slate', bg:'#E0E0DE', fg:'#44484E', accent:'#5C636B' },
+];
+function paletteFor(key) { return CUSTOM_PALETTES.find(p => p.key === key) || CUSTOM_PALETTES[0]; }
+function isCustomKind(k) { return typeof k === 'string' && k.indexOf('x-') === 0; }
+// The one place that turns an event (or the editor draft) into chip colours.
+function styleOf(ev) {
+  if (EVENT_STYLE[ev.kind]) return EVENT_STYLE[ev.kind];
+  if (isCustomKind(ev.kind)) { const p = paletteFor(ev.kindColor); return { glyph: CUSTOM_KIND_GLYPH, bg: p.bg, fg: p.fg, accent: p.accent }; }
+  return EVENT_STYLE.season;
+}
+
 // ─── Calendar grid builder ─────────────────────────────────────────────────────
 // `compact` (phones) tightens the event-bar geometry so the week rows can be
 // much shorter than the desktop's 120px.
@@ -938,7 +961,7 @@ function buildWeeks(month, weekStart = 'Monday', compact = false) {
     }
     const items = raw.map(it => {
       const ev = it.ev;
-      const st = EVENT_STYLE[ev.kind] || EVENT_STYLE.season;
+      const st = styleOf(ev);
       return {
         id: ev.id,
         ev,
@@ -947,7 +970,7 @@ function buildWeeks(month, weekStart = 'Monday', compact = false) {
         hasGlyph: !!st.glyph,
         left: (it.colStart / 7 * 100).toFixed(4) + '%',
         width: ((it.colEnd - it.colStart + 1) / 7 * 100).toFixed(4) + '%',
-        top: ((compact ? 24 : 30) + it.lane * (compact ? 20 : 23)) + 'px',
+        top: ((compact ? 24 : 30) + it.lane * (compact ? 22 : 23)) + 'px',
         span: it.colEnd - it.colStart + 1,
         bg: st.bg, fg: st.fg, accent: st.accent,
         contRight: it.contRight,
@@ -1569,10 +1592,12 @@ function App() {
     });
   };
 
+  // "Add event" only opens the editor with a draft — nothing touches the data
+  // (or asks for the password) until Save is actually clicked. Closing or
+  // deleting an unsaved draft therefore leaves no event behind.
   const addEvent = () => {
     uidRef.current++;
     const id = 'ev-new-' + uidRef.current;
-    mutateData(d => { d[monthIdx].events.push({ id, type:'range', start:1, end:3, kind:'nature', label:'New event' }); });
     setEditingEvent({ id, label:'New event', start:'1', end:'3', kind:'nature', locId:null, isNew:true });
   };
 
@@ -1581,22 +1606,24 @@ function App() {
     if (!ev) return;
     const s = ev.start != null ? ev.start : ev.day;
     const e2 = ev.end != null ? ev.end : ev.day;
-    setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, locId: ev.locId || null, isNew: false });
+    setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, kindLabel: ev.kindLabel, kindColor: ev.kindColor, locId: ev.locId || null, isNew: false });
   };
 
   const saveEvent = () => {
     if (!editingEvent) return;
     const d2 = editingEvent;
     mutateData(d => {
-      const ev = d[monthIdx].events.find(e2 => e2.id === d2.id);
-      if (!ev) return;
+      const events = d[monthIdx].events;
+      // Drafts (isNew) don't exist in the data yet — Save is what creates them.
+      let ev = events.find(e2 => e2.id === d2.id);
+      if (!ev) { ev = { id: d2.id }; events.push(ev); }
       let s = parseInt(d2.start, 10); if (isNaN(s)) s = 1;
-      let e2 = parseInt(d2.end, 10); if (isNaN(e2)) e2 = s;
+      let en = parseInt(d2.end, 10); if (isNaN(en)) en = s;
       const days = d[monthIdx].days;
       s = Math.max(1, Math.min(days, s));
-      e2 = Math.max(s, Math.min(days, e2));
-      ev.start = s; ev.end = e2; ev.day = s;
-      ev.type = s === e2 ? 'day' : 'range';
+      en = Math.max(s, Math.min(days, en));
+      ev.start = s; ev.end = en; ev.day = s;
+      ev.type = s === en ? 'day' : 'range';
       ev.kind = d2.kind;
       if (d2.kind === 'photoop') {
         ev.locId = d2.locId || null;
@@ -1606,12 +1633,15 @@ function App() {
         ev.locId = undefined;
         ev.label = (d2.label || '').trim() || 'Untitled event';
       }
+      if (isCustomKind(d2.kind)) { ev.kindLabel = d2.kindLabel || 'Custom'; ev.kindColor = d2.kindColor; }
+      else { delete ev.kindLabel; delete ev.kindColor; }
     });
     setEditingEvent(null);
   };
 
   const deleteEvent = () => {
     if (!editingEvent) return;
+    if (editingEvent.isNew) { setEditingEvent(null); return; } // never saved — nothing to remove
     const evId = editingEvent.id;
     mutateData(d => {
       const events = d[monthIdx].events;
@@ -1626,8 +1656,25 @@ function App() {
     if (!loc) return;
     uidRef.current++;
     const id = 'ev-new-' + uidRef.current;
-    mutateData(d => { d[monthIdx].events.push({ id, type:'day', start:1, end:1, day:1, kind:'photoop', locId, label:loc.name }); });
     setEditingEvent({ id, label:loc.name, start:'1', end:'1', kind:'photoop', locId, isNew:true });
+  };
+
+  // Create (or reuse) a user-defined event type and select it on the draft.
+  // Colour comes from the first preset palette not already in use.
+  const addCustomKind = () => {
+    const name = (window.prompt('Name the new event type:', '') || '').trim();
+    if (!name) return;
+    const slug = 'x-' + (slugify(name) || 'type');
+    let label = name, color = null;
+    const used = new Set();
+    data.forEach(m2 => m2.events.forEach(ev => {
+      if (isCustomKind(ev.kind)) {
+        used.add(ev.kindColor);
+        if (ev.kind === slug) { label = ev.kindLabel || name; color = ev.kindColor; }
+      }
+    }));
+    if (!color) { const free = CUSTOM_PALETTES.find(p => !used.has(p.key)); color = (free || CUSTOM_PALETTES[used.size % CUSTOM_PALETTES.length]).key; }
+    setEditingEvent(p => p && ({ ...p, kind: slug, kindLabel: label, kindColor: color }));
   };
 
   const setDraftKind = (k) => {
@@ -1650,7 +1697,7 @@ function App() {
   let draftView = null;
   if (draft) {
     const isPhotoOp = draft.kind === 'photoop';
-    const st = EVENT_STYLE[draft.kind] || EVENT_STYLE.season;
+    const st = styleOf(draft);
     let pLabel;
     if (isPhotoOp) { const loc = month.locations.find(l => l.id === draft.locId); pLabel = loc ? loc.name : 'Pick a location'; }
     else { pLabel = (draft.label && draft.label.trim()) ? draft.label : 'Untitled event'; }
@@ -2003,7 +2050,7 @@ function App() {
         // a single ~50px column shows just its glyph (the tappable agenda list
         // under the grid carries the labels instead).
         weeks.map((wk, wi) =>
-          e('div', { key:wi, style:{ position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)', gridAutoRows: isMobile ? ('minmax(' + Math.max(52, 28 + wk.lanes * 20) + 'px,auto)') : 'minmax(120px,auto)', borderBottom:'1px solid #E2D9C2', backgroundImage:'repeating-linear-gradient(to right,#ECE3CD 0,#ECE3CD 1px,transparent 1px,transparent 14.2857%)' } },
+          e('div', { key:wi, style:{ position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)', gridAutoRows: isMobile ? ('minmax(' + Math.max(54, 28 + wk.lanes * 22) + 'px,auto)') : 'minmax(120px,auto)', borderBottom:'1px solid #E2D9C2', backgroundImage:'repeating-linear-gradient(to right,#ECE3CD 0,#ECE3CD 1px,transparent 1px,transparent 14.2857%)' } },
             wk.days.map((d, di) =>
               e('div', { key:di, style:{ padding: isMobile ? '4px 6px' : '7px 9px' } },
                 d.inMonth && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 11 : 12, fontWeight:500, color:'#7A6F58' } }, d.day)
@@ -2016,7 +2063,9 @@ function App() {
                 title: it.label,
                 className: 'ev-chip',
                 onClick: () => openEventEditor(it.ev.id),
-                style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height: isMobile ? 17 : 19, display:'flex', alignItems:'center', justifyContent: glyphOnly ? 'center' : 'flex-start', gap:isMobile?4:5, padding: glyphOnly ? 0 : (isMobile ? '0 4px' : '0 6px'), background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 9.5 : 10, fontWeight:500, lineHeight:1, whiteSpace:'nowrap', overflow:'hidden', cursor:'pointer' }
+                // lineHeight must clear the font's descenders — at 1 the label
+                // span's own line box clips the tails of p/g/y.
+                style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height:19, display:'flex', alignItems:'center', justifyContent: glyphOnly ? 'center' : 'flex-start', gap:isMobile?4:5, padding: glyphOnly ? 0 : (isMobile ? '0 4px' : '0 6px'), background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 9.5 : 10, fontWeight:500, lineHeight:1.4, whiteSpace:'nowrap', overflow:'hidden', cursor:'pointer' }
               },
                 it.hasGlyph && e('span', { style:{ flex:'none' } }, it.glyph),
                 !glyphOnly && e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis' } }, it.label),
@@ -2033,14 +2082,14 @@ function App() {
             month.events.slice()
               .sort((a, b) => (a.start != null ? a.start : a.day) - (b.start != null ? b.start : b.day))
               .map(ev => {
-                const st = EVENT_STYLE[ev.kind] || EVENT_STYLE.season;
+                const st = styleOf(ev);
                 const s = ev.start != null ? ev.start : ev.day;
                 const e2 = ev.end != null ? ev.end : ev.day;
                 return e('div', { key:ev.id, className:'ev-chip', onClick:()=>openEventEditor(ev.id), role:'button', tabIndex:0, style:{ display:'grid', gridTemplateColumns:'44px 1fr', gap:9, alignItems:'center', padding:'6px 8px', background:st.bg, color:st.fg, borderLeft:'3px solid '+st.accent, borderRadius:2, cursor:'pointer' } },
                   e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, fontWeight:600, letterSpacing:'.02em' } }, s === e2 ? String(s) : (s + '–' + e2)),
                   e('span', { style:{ display:'flex', alignItems:'center', gap:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:500, minWidth:0 } },
                     st.glyph && e('span', { style:{ flex:'none' } }, st.glyph),
-                    e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, ev.label)
+                    e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.4 } }, ev.label)
                   )
                 );
               })
@@ -2054,7 +2103,13 @@ function App() {
             e('span', null, '○ New moon'),
             e('span', { style:{ color:'#8A5A1B' } }, '✦ Meteor shower'),
             e('span', { style:{ color:'#9C3B22' } }, '◐ Eclipse'),
-            e('span', { style:{ color:'#54632F' } }, '▬ Season window')
+            e('span', { style:{ color:'#54632F' } }, '▬ Season window'),
+            // any custom types used this month, in their own colours
+            (() => {
+              const seen = new Set();
+              return month.events.filter(ev => isCustomKind(ev.kind) && !seen.has(ev.kind) && seen.add(ev.kind))
+                .map(ev => e('span', { key:ev.kind, style:{ color: paletteFor(ev.kindColor).accent } }, CUSTOM_KIND_GLYPH + ' ' + (ev.kindLabel || 'Custom')));
+            })()
           ),
           e('button', { className:'add-ev-btn', onClick:addEvent, style:{ marginLeft:'auto', display:'inline-flex', alignItems:'center', gap:6, padding:'6px 12px', background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.12)' } },
             e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1 } }, '+'), ' Add event'
@@ -2072,10 +2127,20 @@ function App() {
   // ─── Event editor modal ────────────────────────────────────────────────────
   const renderEventModal = () => {
     if (!draft || !draftView) return null;
+    // Built-in types plus every custom type found anywhere in the calendar
+    // (and the draft's own, in case it was just created and isn't saved yet).
+    const customKindMap = new Map();
+    data.forEach(m2 => m2.events.forEach(ev => {
+      if (isCustomKind(ev.kind) && !customKindMap.has(ev.kind)) customKindMap.set(ev.kind, { kind: ev.kind, label: ev.kindLabel || 'Custom', color: ev.kindColor });
+    }));
+    if (isCustomKind(draft.kind) && !customKindMap.has(draft.kind)) customKindMap.set(draft.kind, { kind: draft.kind, label: draft.kindLabel || 'Custom', color: draft.kindColor });
     const kindOpts = KIND_ORDER.map(k => {
       const st = EVENT_STYLE[k];
       return { k, label:KIND_LABEL[k], ...st, sel: draft.kind===k };
-    });
+    }).concat(Array.from(customKindMap.values()).map(ck => {
+      const p = paletteFor(ck.color);
+      return { k: ck.kind, label: ck.label, glyph: CUSTOM_KIND_GLYPH, bg: p.bg, fg: p.fg, accent: p.accent, sel: draft.kind === ck.kind, custom: ck };
+    }));
     const locOpts = month.locations.map(l => ({ ...l, sel: draft.locId===l.id }));
 
     return e('div', { onClick:()=>setEditingEvent(null), style:{ position:'fixed', inset:0, background:'rgba(42,37,30,0.34)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:60 } },
@@ -2126,12 +2191,13 @@ function App() {
             e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', marginBottom:8 } }, 'Type'),
             e('div', { style:{ display:'flex', flexWrap:'wrap', gap:8 } },
               kindOpts.map(k =>
-                e('button', { key:k.k, className:'kind-btn', onClick:()=>setDraftKind(k.k), style:{ position:'relative', display:'flex', alignItems:'center', gap:7, padding:'6px 11px 6px 9px', background:k.bg, color:k.fg, border:'1px solid '+k.accent, borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.03em' } },
+                e('button', { key:k.k, className:'kind-btn', onClick:()=> k.custom ? setEditingEvent(p => p && ({ ...p, kind:k.k, kindLabel:k.custom.label, kindColor:k.custom.color })) : setDraftKind(k.k), style:{ position:'relative', display:'flex', alignItems:'center', gap:7, padding:'6px 11px 6px 9px', background:k.bg, color:k.fg, border:'1px solid '+k.accent, borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.03em' } },
                   e('span', { style:{ width:10, height:10, borderRadius:'50%', background:k.accent, display:'inline-block', flex:'none' } }),
                   k.label,
                   k.sel && e('span', { style:{ position:'absolute', top:-6, right:-6, width:17, height:17, borderRadius:'50%', background:'#FBF7EC', border:'1px solid #2A251E', color:'#2A251E', fontSize:10, lineHeight:'15px', textAlign:'center' } }, '✓')
                 )
-              )
+              ),
+              e('button', { className:'kind-btn', onClick:addCustomKind, title:'Create a new event type', style:{ display:'flex', alignItems:'center', gap:6, padding:'6px 11px', background:'#FFFDF5', color:'#5A513B', border:'1px dashed #A89A7C', borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.03em' } }, '+ New type')
             )
           ),
           // Save / Delete
