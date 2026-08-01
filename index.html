@@ -2115,7 +2115,7 @@ function App() {
     ),
     // Stats — one line, right-aligned, just above the divider.
     e('div', { style:{ marginTop:isMobile?14:18, textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
-      e('span', null, data.length + ' months · ' + totalLocs + ' locations'),
+      e('span', null, totalLocs + ' locations'),
       e('span', { style:{ color:'#A89A7C' } }, ' · ' + ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
     ),
     e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'8px 0 18px':'10px 0 24px' } }),
