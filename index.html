@@ -1304,7 +1304,7 @@ function ensureScript(src) {
   });
 }
 
-function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
+function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEditIntro }) {
   const VW = 1000, VH = 640, VMIN = 1, VMAX = 20, PAPER = '#FCFAF1';
   const isMobile = useIsMobile();
   const [hoveredId, setHoveredId] = useState(null);
@@ -1446,7 +1446,6 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
   const isV = (l) => !!l.visited;
   const ukCount = places.filter(p => p.region === 'UK').length;
   const intCount = places.length - ukCount;
-  const shootCount = places.reduce((n, p) => n + p.shoots.length, 0);
   const visitedCount = places.filter(isV).length;
   const toVisitCount = places.length - visitedCount;
   const visitedPct = places.length ? Math.round(visitedCount / places.length * 100) + '%' : '0%';
@@ -1534,23 +1533,14 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack }) {
     // header
     e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' } },
       e('div', null,
-        e('div', { style: { display: 'flex', alignItems: 'center', gap: 9 } },
-          e('img', { src: LOGO_SRC, alt: 'Photoplan', title: 'Back to the home page', onClick: onBack, style: { height: 22, width: 'auto', display: 'block', cursor: 'pointer' } }),
-          e('div', { style: { fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.22em', textTransform: 'uppercase', color: '#8A7D63' } }, 'Photo Location Calendar')
+        e('div', { onClick: onBack, role: 'button', tabIndex: 0, title: 'Back to the home page', style: { display: 'inline-flex', alignItems: 'center', gap: 9, cursor: 'pointer' } },
+          e('img', { src: LOGO_SRC, alt: '', style: { height: 24, width: 'auto', display: 'block' } }),
+          e('div', { style: { fontFamily: "'Figtree',system-ui,sans-serif", fontWeight: 700, fontSize: 12.5, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#201e1d' } }, 'Photoplan')
         ),
-        e('div', { style: { display: 'flex', alignItems: 'flex-end', gap: isMobile ? 12 : 18, marginTop: 4, flexWrap: 'wrap' } },
-          e('h1', { style: { margin: 0, fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: isMobile ? 'clamp(30px,9vw,40px)' : 'clamp(40px,6vw,64px)', lineHeight: 0.82, color: '#2A251E', letterSpacing: '-0.015em' } }, 'Photo Map'),
-          // Phones: one stat line; desktop keeps the small stacked column.
-          isMobile
-            ? e('div', { style: { paddingBottom: 4, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', color: '#8A7D63' } },
-                e('span', null, places.length + ' locations · ' + shootCount + ' shoots')
-              )
-            : e('div', { style: { display: 'flex', flexDirection: 'column', gap: 3, paddingBottom: 9, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', color: '#8A7D63' } },
-                e('span', null, places.length + ' locations'),
-                e('span', null, shootCount + ' shoots')
-              )
-        ),
-        e('div', { style: { marginTop: 12, fontSize: isMobile ? 15 : 16, color: '#6E6450', maxWidth: '56ch', lineHeight: 1.5 } }, "Every shoot in the calendar on one map — UK spots in green, the international trips in terracotta. Filter by region, month or whether you've ticked it off, then " + (isMobile ? 'tap' : 'hover') + ' a pin for the details.')
+        e('h1', { style: { margin: 0, marginTop: 4, fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: isMobile ? 'clamp(30px,9vw,40px)' : 'clamp(40px,6vw,64px)', lineHeight: 0.82, color: '#2A251E', letterSpacing: '-0.015em' } }, 'Photo Map'),
+        // Editable intro (owner only, synced) — per-side margins, never the
+        // margin shorthand (it would cancel marginTop).
+        e(Editable, { key: 'map-intro-' + introText, tag: 'div', value: introText, onCommit: onEditIntro, title: 'Click to edit', style: { marginTop: 12, marginLeft: -4, marginRight: -4, fontSize: isMobile ? 15 : 16, color: '#6E6450', maxWidth: '56ch', lineHeight: 1.5, cursor: 'text', outline: 'none', borderRadius: 3, padding: '1px 4px' } })
       ),
       // Left-align + full width once this column wraps below the title on phones.
       e('div', { style: { display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'flex-end', gap: 12, ...(isMobile ? { width: '100%' } : {}) } },
@@ -1874,6 +1864,12 @@ function App() {
   const yearIntro = (data[0] && data[0].yearIntro != null) ? data[0].yearIntro : DEFAULT_YEAR_INTRO;
   const editYearIntro = (t) => mutateData(d => { d[0].yearIntro = t; });
 
+  // The map page intro, stored the same way (the default adapts its hover/tap
+  // wording to the device; an edited text is shown verbatim everywhere).
+  const mapIntro = (data[0] && data[0].mapIntro != null) ? data[0].mapIntro
+    : "Every shoot in the calendar on one map — UK spots in green, the international trips in terracotta. Filter by region, month or whether you've ticked it off, then " + (isMobile ? 'tap' : 'hover') + ' a pin for the details.';
+  const editMapIntro = (t) => mutateData(d => { d[0].mapIntro = t; });
+
   const setPhotoYear = (locId, year) => {
     const y = (year || '').trim();
     mutateData(d => { const loc = d[monthIdx].locations.find(l => l.id === locId); if (loc) loc.photoYear = y; });
@@ -2070,26 +2066,6 @@ function App() {
     // Header
     e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
       e('div', null,
-        e('div', { style:{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' } },
-          e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
-          e('a', { href:'https://instagram.com/llandscapist', target:'_blank', rel:'noopener noreferrer', className:'ig-link', title:'Follow @llandscapist on Instagram', style:{ display:'inline-flex', alignItems:'center', gap:6, textDecoration:'none', color:'#8A7D63', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em' } },
-            e('svg', { width:16, height:16, viewBox:'0 0 24 24', fill:'none', stroke:'url(#ig-grad)', strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true', style:{ display:'block' } },
-              e('defs', null,
-                e('linearGradient', { id:'ig-grad', x1:'0', y1:'1', x2:'1', y2:'0' },
-                  e('stop', { offset:'0%', stopColor:'#FEDA75' }),
-                  e('stop', { offset:'25%', stopColor:'#FA7E1E' }),
-                  e('stop', { offset:'50%', stopColor:'#D62976' }),
-                  e('stop', { offset:'75%', stopColor:'#962FBF' }),
-                  e('stop', { offset:'100%', stopColor:'#4F5BD5' })
-                )
-              ),
-              e('rect', { x:2, y:2, width:20, height:20, rx:5, ry:5 }),
-              e('path', { d:'M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z' }),
-              e('line', { x1:17.5, y1:6.5, x2:17.51, y2:6.5 })
-            ),
-            e('span', null, '@llandscapist')
-          )
-        ),
         // The brand lockup, rebuilt in HTML (an SVG lockup loaded via <img>
         // can't fetch its font): mark beside PHOTOPLAN in Figtree bold,
         // wide-tracked caps — proportions and colour per the lockup SVGs.
@@ -2113,10 +2089,34 @@ function App() {
         regionLegend()
       )
     ),
-    // Stats — one line, right-aligned, just above the divider.
-    e('div', { style:{ marginTop:isMobile?14:18, textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
-      e('span', null, totalLocs + ' locations'),
-      e('span', { style:{ color:'#A89A7C' } }, ' · ' + ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
+    // Bottom header row, just above the divider: the calendar label + IG link
+    // on the left, the stats on the right (marginLeft auto keeps the stats
+    // right-aligned even when the row wraps on a phone).
+    e('div', { style:{ marginTop:isMobile?14:18, display:'flex', alignItems:'baseline', gap:'6px 16px', flexWrap:'wrap' } },
+      e('div', { style:{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' } },
+        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
+        e('a', { href:'https://instagram.com/llandscapist', target:'_blank', rel:'noopener noreferrer', className:'ig-link', title:'Follow @llandscapist on Instagram', style:{ display:'inline-flex', alignItems:'center', gap:6, textDecoration:'none', color:'#8A7D63', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em' } },
+          e('svg', { width:16, height:16, viewBox:'0 0 24 24', fill:'none', stroke:'url(#ig-grad)', strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true', style:{ display:'block' } },
+            e('defs', null,
+              e('linearGradient', { id:'ig-grad', x1:'0', y1:'1', x2:'1', y2:'0' },
+                e('stop', { offset:'0%', stopColor:'#FEDA75' }),
+                e('stop', { offset:'25%', stopColor:'#FA7E1E' }),
+                e('stop', { offset:'50%', stopColor:'#D62976' }),
+                e('stop', { offset:'75%', stopColor:'#962FBF' }),
+                e('stop', { offset:'100%', stopColor:'#4F5BD5' })
+              )
+            ),
+            e('rect', { x:2, y:2, width:20, height:20, rx:5, ry:5 }),
+            e('path', { d:'M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z' }),
+            e('line', { x1:17.5, y1:6.5, x2:17.51, y2:6.5 })
+          ),
+          e('span', null, '@llandscapist')
+        )
+      ),
+      e('div', { style:{ marginLeft:'auto', textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
+        e('span', null, totalLocs + ' locations'),
+        e('span', { style:{ color:'#A89A7C' } }, ' · ' + ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
+      )
     ),
     e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'8px 0 18px':'10px 0 24px' } }),
     // Hero
@@ -2195,9 +2195,10 @@ function App() {
       // Header
       e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
         e('div', null,
-          e('div', { style:{ display:'flex', alignItems:'center', gap:9 } },
-            e('img', { src:LOGO_SRC, alt:'Photoplan', title:'Back to the home page', onClick:goToYear, style:{ height:22, width:'auto', display:'block', cursor:'pointer' } }),
-            e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar')
+          // Small Photoplan lockup (same face as the home masthead), clickable home.
+          e('div', { onClick:goToYear, role:'button', tabIndex:0, title:'Back to the home page', style:{ display:'inline-flex', alignItems:'center', gap:9, cursor:'pointer' } },
+            e('img', { src:LOGO_SRC, alt:'', style:{ height:24, width:'auto', display:'block' } }),
+            e('div', { style:{ fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, fontSize:12.5, letterSpacing:'0.24em', textTransform:'uppercase', color:'#201e1d' } }, 'Photoplan')
           ),
           e('div', { style:{ display:'flex', alignItems:'baseline', gap:isMobile?10:14, marginTop:6, flexWrap:'wrap' } },
             e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, month.name),
@@ -2558,7 +2559,7 @@ function App() {
   return e('div', { style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       mapView
-        ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear })
+        ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro })
         : (yearView ? renderYearPage() : renderMonthPage()),
       renderEventModal()
     )
