@@ -69,6 +69,11 @@ eclipse/season dates per year, annual meteor + nature windows).
   `LocThumb` (tile thumbnail), `LocationPhoto` (the upload control),
   `KitField` (pill chips that flip to an editable line), `Editable` (inline
   click-to-edit text), `MapView`, and `App`.
+- **Print view** (`renderPrintPage`, "Print" button on the home nav): a cover
+  sheet + one A4-portrait `.print-sheet` per month (photo, light strip, that
+  year's day-grid) for the selected year; printing/PDF goes through the
+  browser's dialog. `@media print` CSS hides `.no-print` chrome and page-breaks
+  the sheets; `PrintMonthPhoto` picks each month's first location with a photo.
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
   `navRow(showYearBtn)` renders the top buttons (year page drops the redundant

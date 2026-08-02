@@ -73,6 +73,18 @@
     .map-close:hover { color: #2A251E !important; background: #EFE7D2 !important; border-color: #D2C7AC !important; }
     .map-visitbtn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.16) !important; }
     @keyframes mapPulse { 0%,100% { opacity: .45; } 50% { opacity: .9; } }
+    /* ── Print view ── on screen the sheets preview as bordered A4 pages; when
+       actually printing, the app chrome hides and each sheet becomes one page. */
+    .print-sheet { break-after: page; page-break-after: always; }
+    .print-sheet:last-child { break-after: auto; page-break-after: auto; }
+    @page { size: A4; margin: 8mm; }
+    @media print {
+      body { background: #fff; }
+      .no-print { display: none !important; }
+      .app-shell { background: #fff !important; background-image: none !important; padding: 0 !important; }
+      .print-sheet { border: none !important; box-shadow: none !important; margin: 0 !important; width: auto !important; }
+      .print-sheet, .print-sheet * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
 </style>
 </head>
 <body>
@@ -547,6 +559,40 @@ function KitField({ value, onCommit }) {
     placeholder: 'e.g. 24–70mm, Tripod, Polariser',
     style: { width: '100%', minHeight: 62, fontFamily: mono, fontSize: 12, lineHeight: 1.6, color: '#2A251E', background: '#FFFDF5', border: '1px solid #C9BD9F', borderRadius: 3, padding: '8px 10px', outline: 'none', resize: 'vertical' },
   });
+}
+
+// ─── Print month photo ────────────────────────────────────────────────────────
+// The photo on a printed month page: the first location (in the month's tile
+// order) that has a photo uploaded — so reordering tiles changes the pick.
+// Shows the hero-size image for print quality, with the usual caption.
+function PrintMonthPhoto({ monthKey, locs, epoch }) {
+  const [pick, setPick] = useState(null);
+  const sig = monthKey + '|' + locs.map(l => l.id).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const l of locs) {
+        const base = photoBase(monthKey, l.id);
+        const ok = await new Promise(res => {
+          const im = new Image();
+          im.onload = () => res(true);
+          im.onerror = () => res(false);
+          im.src = Storage.photoUrl(base + '-thumb', epoch || undefined);
+        });
+        if (cancelled) return;
+        if (ok) { setPick({ base, name: l.name, year: (l.photoYear || '').trim() }); return; }
+      }
+      if (!cancelled) setPick(null);
+    })();
+    return () => { cancelled = true; };
+  }, [sig, epoch]);
+  if (!pick) {
+    return e('div', { style:{ height:'108mm', background:'#F1EBDB', border:'1px solid #E0D6BE', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:'3.5mm', color:'#A89A7C', letterSpacing:'.06em' } }, 'No photo yet for this month');
+  }
+  return e('div', { style:{ position:'relative', height:'108mm', overflow:'hidden', border:'1px solid #D2C7AC' } },
+    e('img', { src: Storage.photoUrl(pick.base, epoch || undefined), alt:'', style:{ width:'100%', height:'100%', objectFit:'cover', display:'block' } }),
+    e('div', { style:{ position:'absolute', left:0, bottom:0, background:'#000', color:'#fff', fontFamily:"'IBM Plex Mono',monospace", fontSize:'3mm', lineHeight:1.4, padding:'1.5mm 3mm', letterSpacing:'.02em' } }, pick.name + (pick.year ? ' · ' + pick.year : ''))
+  );
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -1630,6 +1676,7 @@ function App() {
   useEffect(() => { try { localStorage.setItem('calendar:year', String(viewYear)); } catch (_) {} }, [viewYear]);
   const [yearView, setYearView] = useState(true);
   const [mapView, setMapView] = useState(false);
+  const [printView, setPrintView] = useState(false);
   const [monthIdx, setMonthIdx] = useState(0);
   const [selectedLoc, setSelectedLoc] = useState(null); // no brief open until a tile is tapped
   const [editingEvent, setEditingEvent] = useState(null);
@@ -1683,19 +1730,19 @@ function App() {
     return () => clearTimeout(cloudSaveTimer.current);
   }, [data, cloudReady]);
 
-  // The month as seen in the selected year: locations (and photos) are shared
+  // A month as seen in the selected year: locations (and photos) are shared
   // across years; the grid layout (start weekday, day count — Date's 0=Sunday
   // convention, leap years included) and the events are year-specific.
-  const mi = Math.min(monthIdx, data.length - 1);
-  const baseMonth = data[mi];
   const yKey = String(viewYear);
-  const month = {
-    ...baseMonth,
+  const monthForYear = (m2, i) => ({
+    ...m2,
     year: viewYear,
-    dow: new Date(viewYear, mi, 1).getDay(),
-    days: new Date(viewYear, mi + 1, 0).getDate(),
-    events: (baseMonth.eventsByYear && baseMonth.eventsByYear[yKey]) || [],
-  };
+    dow: new Date(viewYear, i, 1).getDay(),
+    days: new Date(viewYear, i + 1, 0).getDate(),
+    events: (m2.eventsByYear && m2.eventsByYear[yKey]) || [],
+  });
+  const mi = Math.min(monthIdx, data.length - 1);
+  const month = monthForYear(data[mi], mi);
   const matted = heroFraming === 'Matted print';
   const mapPlaces = useMemo(() => buildMapPlaces(data), [data]);
 
@@ -1715,12 +1762,14 @@ function App() {
     });
   }, []);
 
-  const goToYear = () => { setMapView(false); setYearView(true); };
-  const goToMap = () => setMapView(true);
+  const goToYear = () => { setMapView(false); setPrintView(false); setYearView(true); };
+  const goToMap = () => { setPrintView(false); setMapView(true); };
+  const goToPrint = () => { setMapView(false); setPrintView(true); };
   const goToMonth = (idx, locId) => {
     const m = data[idx];
     if (!m) return;
     setMapView(false);
+    setPrintView(false);
     setYearView(false);
     setMonthIdx(idx);
     // Only an explicit deep link (year-page row, map card) opens a brief —
@@ -1733,6 +1782,7 @@ function App() {
     const pos = yearView ? 0 : (monthIdx + 1);
     const next = (pos + dir + n + 1) % (n + 1);
     setMapView(false);
+    setPrintView(false);
     if (next === 0) { setYearView(true); return; }
     const idx = next - 1;
     setYearView(false);
@@ -2031,6 +2081,7 @@ function App() {
   const prevBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(-1), style:WhiteBtn }, '‹');
   const nextBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(1), style:WhiteBtn }, '›');
   const mapBtn = e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map');
+  const printBtn = e('button', { className:'btn-hover', onClick:goToPrint, title:'A printable wall calendar for the selected year', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⎙'), ' Print');
   // Month view keeps both arrows; the year view drops the right arrow (it's the
   // same as the January button) and sits the left arrow just before January.
   // On phones the row is allowed to wrap and the thin dividers are dropped —
@@ -2044,7 +2095,7 @@ function App() {
         e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), isMobile ? ' Add' : ' Add location')
       )
     : e('div', { style:navRowStyle },
-        mapBtn, navDivider(), prevBtn,
+        mapBtn, printBtn, navDivider(), prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
 
@@ -2468,6 +2519,71 @@ function App() {
     );
   };
 
+  // ─── Print view ────────────────────────────────────────────────────────────
+  // A printable wall calendar for the selected year: a cover sheet plus one A4
+  // portrait sheet per month (photo on top, sunrise/sunset strip, day-grid with
+  // that year's events). Printing goes through the browser's dialog — where
+  // "Save as PDF" also lives — via the Print button; the controls bar hides on
+  // paper (.no-print) and each .print-sheet breaks onto its own page.
+  const renderPrintPage = () => {
+    const mono = "'IBM Plex Mono',monospace";
+    const sheetStyle = { width:'194mm', maxWidth:'100%', background:'#fff', border:'1px solid #D2C7AC', margin:'0 auto 26px', padding:'9mm', boxShadow:'0 2px 12px rgba(42,37,30,0.10)' };
+    const cover = e('div', { key:'cover', className:'print-sheet', style:{ ...sheetStyle, minHeight:'272mm', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', gap:'7mm' } },
+      e('img', { src:LOGO_SRC, alt:'', style:{ height:'32mm', width:'auto' } }),
+      e('div', { style:{ fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, letterSpacing:'0.24em', fontSize:'9mm', color:'#201e1d' } }, 'PHOTOPLAN'),
+      e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'30mm', lineHeight:1, color:'#2A251E' } }, String(viewYear)),
+      e('div', { style:{ fontFamily:mono, fontSize:'3.4mm', color:'#8A7D63', letterSpacing:'.2em', textTransform:'uppercase' } }, 'Photo Location Calendar')
+    );
+    const sheets = data.map((m2, i) => {
+      const pm = monthForYear(m2, i);
+      const wks = buildWeeks(pm, weekStart, true);
+      return e('div', { key:m2.key, className:'print-sheet', style:sheetStyle },
+        e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:'4mm' } },
+          e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'10mm', lineHeight:1, color:'#2A251E' } }, m2.name),
+          e('div', { style:{ fontFamily:mono, fontSize:'4mm', color:'#8A7D63', letterSpacing:'.14em' } }, String(viewYear))
+        ),
+        e(PrintMonthPhoto, { monthKey:m2.key, locs:m2.locations, epoch:imgEpoch }),
+        e('div', { style:{ display:'flex', justifyContent:'space-between', gap:'4mm', margin:'2.5mm 0 3.5mm', fontFamily:mono, fontSize:'3mm', color:'#8A7D63', letterSpacing:'.04em' } },
+          e('span', { style:{ color:'#54632F' } }, '↑ ' + m2.sunrise + '   ↓ ' + m2.sunset),
+          e('span', null, m2.daylightNote)
+        ),
+        e('div', { style:{ border:'1px solid #C9BD9F' } },
+          e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', borderBottom:'1px solid #D2C7AC', background:'#F4EEDE' } },
+            (weekStart==='Sunday' ? ['S','M','T','W','T','F','S'] : ['M','T','W','T','F','S','S']).map((c, ci) =>
+              e('div', { key:ci, style:{ padding:'1.6mm 0', textAlign:'center', fontFamily:mono, fontSize:'2.8mm', letterSpacing:'.1em', color:'#9C8F71' } }, c)
+            )
+          ),
+          wks.map((wk, wi) =>
+            e('div', { key:wi, style:{ position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)', gridAutoRows:'minmax(' + Math.max(54, 28 + wk.lanes * 22) + 'px,auto)', borderBottom: wi < wks.length - 1 ? '1px solid #E2D9C2' : 'none', backgroundImage:'repeating-linear-gradient(to right,#ECE3CD 0,#ECE3CD 1px,transparent 1px,transparent 14.2857%)' } },
+              wk.days.map((d, di) =>
+                e('div', { key:di, style:{ padding:'1.2mm 1.6mm' } },
+                  d.inMonth && e('span', { style:{ fontFamily:mono, fontSize:'3mm', fontWeight:500, color:'#7A6F58' } }, d.day)
+                )
+              ),
+              wk.items.map(it =>
+                e('div', { key:it.id, style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height:19, display:'flex', alignItems:'center', gap:4, padding:'0 4px', background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:mono, fontSize:9, fontWeight:500, lineHeight:1.4, whiteSpace:'nowrap', overflow:'hidden' } },
+                  it.hasGlyph && e('span', { style:{ flex:'none' } }, it.glyph),
+                  e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis' } }, it.label),
+                  it.contRight && e('span', { style:{ flex:'none', marginLeft:'auto', paddingLeft:3 } }, '→')
+                )
+              )
+            )
+          )
+        )
+      );
+    });
+    return e('div', null,
+      e('div', { className:'no-print', style:{ display:'flex', alignItems:'center', gap:'10px 14px', flexWrap:'wrap', marginBottom:22 } },
+        e('button', { className:'btn-hover', onClick:goToYear, style:GreenBtn }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
+        yearPicker(),
+        e('button', { className:'btn-hover', onClick:()=>window.print(), style:{ ...GreenBtn, gap:8 } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1 } }, '⎙'), ' Print / save PDF'),
+        e('span', { style:{ fontFamily:mono, fontSize:11, color:'#8A7D63', letterSpacing:'.03em' } }, 'One A4 page per month for ' + viewYear + ' · in the print dialog choose "Save as PDF" to keep a copy. Each month uses its first location that has a photo — drag tiles to reorder.')
+      ),
+      cover,
+      sheets
+    );
+  };
+
   // ─── Event editor modal ────────────────────────────────────────────────────
   const renderEventModal = () => {
     if (!draft || !draftView) return null;
@@ -2556,11 +2672,13 @@ function App() {
     );
   };
 
-  return e('div', { style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
+  return e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       mapView
         ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro })
-        : (yearView ? renderYearPage() : renderMonthPage()),
+        : printView
+          ? renderPrintPage()
+          : (yearView ? renderYearPage() : renderMonthPage()),
       renderEventModal()
     )
   );
