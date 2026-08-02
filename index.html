@@ -562,16 +562,21 @@ function KitField({ value, onCommit }) {
 }
 
 // ─── Print month photo ────────────────────────────────────────────────────────
-// The photo on a printed month page: the first location (in the month's tile
-// order) that has a photo uploaded — so reordering tiles changes the pick.
+// The photo on a printed month page: the starred location (the month's
+// `printLoc`, set via the ★ on the month-page tiles) if it has a photo, else
+// the first location (in the month's tile order) that has one — so a stale or
+// photo-less star falls back gracefully.
 // Shows the hero-size image for print quality, with the usual caption.
-function PrintMonthPhoto({ monthKey, locs, epoch }) {
+function PrintMonthPhoto({ monthKey, locs, preferId, epoch }) {
   const [pick, setPick] = useState(null);
-  const sig = monthKey + '|' + locs.map(l => l.id).join(',');
+  const sig = monthKey + '|' + (preferId || '') + '|' + locs.map(l => l.id).join(',');
   useEffect(() => {
     let cancelled = false;
+    const ordered = preferId
+      ? locs.filter(l => l.id === preferId).concat(locs.filter(l => l.id !== preferId))
+      : locs;
     (async () => {
-      for (const l of locs) {
+      for (const l of ordered) {
         const base = photoBase(monthKey, l.id);
         const ok = await new Promise(res => {
           const im = new Image();
@@ -591,7 +596,7 @@ function PrintMonthPhoto({ monthKey, locs, epoch }) {
   }
   return e('div', { style:{ position:'relative', height:'108mm', overflow:'hidden', border:'1px solid #D2C7AC' } },
     e('img', { src: Storage.photoUrl(pick.base, epoch || undefined), alt:'', style:{ width:'100%', height:'100%', objectFit:'cover', display:'block' } }),
-    e('div', { style:{ position:'absolute', left:0, bottom:0, background:'#000', color:'#fff', fontFamily:"'IBM Plex Mono',monospace", fontSize:'3mm', lineHeight:1.4, padding:'1.5mm 3mm', letterSpacing:'.02em' } }, pick.name + (pick.year ? ' · ' + pick.year : ''))
+    e('div', { style:{ position:'absolute', left:0, bottom:0, background:'#000', color:'#fff', fontFamily:"'IBM Plex Mono',monospace", fontSize:'3mm', lineHeight:1.4, padding:'1.5mm 3mm', letterSpacing:'.02em' } }, pick.name + (pick.year ? " · '" + pick.year : ''))
   );
 }
 
@@ -1920,6 +1925,14 @@ function App() {
     : "Every shoot in the calendar on one map — UK spots in green, the international trips in terracotta. Filter by region, month or whether you've ticked it off, then " + (isMobile ? 'tap' : 'hover') + ' a pin for the details.';
   const editMapIntro = (t) => mutateData(d => { d[0].mapIntro = t; });
 
+  // Star a location for the printable calendar: its photo fronts this month's
+  // printed page. One per month, stored on the month itself (cloud-synced);
+  // starring another location moves the star, starring again clears it (back
+  // to the default first-location-with-a-photo).
+  const togglePrintStar = (locId) => {
+    mutateData(d => { const m2 = d[monthIdx]; m2.printLoc = m2.printLoc === locId ? undefined : locId; });
+  };
+
   const setPhotoYear = (locId, year) => {
     const y = (year || '').trim();
     mutateData(d => { const loc = d[monthIdx].locations.find(l => l.id === locId); if (loc) loc.photoYear = y; });
@@ -1952,7 +1965,7 @@ function App() {
   const addEvent = () => {
     uidRef.current++;
     const id = 'ev-new-' + uidRef.current;
-    setEditingEvent({ id, label:'New event', start:'1', end:'3', kind:'nature', locId:null, isNew:true });
+    setEditingEvent({ id, label:'New event', start:'1', end:'3', kind:'nature', locId:null, noPrint:false, isNew:true });
   };
 
   const openEventEditor = (evId) => {
@@ -1960,7 +1973,7 @@ function App() {
     if (!ev) return;
     const s = ev.start != null ? ev.start : ev.day;
     const e2 = ev.end != null ? ev.end : ev.day;
-    setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, kindLabel: ev.kindLabel, kindColor: ev.kindColor, locId: ev.locId || null, isNew: false });
+    setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, kindLabel: ev.kindLabel, kindColor: ev.kindColor, locId: ev.locId || null, noPrint: !!ev.noPrint, isNew: false });
   };
 
   const saveEvent = () => {
@@ -1990,6 +2003,8 @@ function App() {
       }
       if (isCustomKind(d2.kind)) { ev.kindLabel = d2.kindLabel || 'Custom'; ev.kindColor = d2.kindColor; }
       else { delete ev.kindLabel; delete ev.kindColor; }
+      // Events print by default; only an explicit hide is stored.
+      if (d2.noPrint) ev.noPrint = true; else delete ev.noPrint;
     });
     setEditingEvent(null);
   };
@@ -2011,7 +2026,7 @@ function App() {
     if (!loc) return;
     uidRef.current++;
     const id = 'ev-new-' + uidRef.current;
-    setEditingEvent({ id, label:loc.name, start:'1', end:'1', kind:'photoop', locId, isNew:true });
+    setEditingEvent({ id, label:loc.name, start:'1', end:'1', kind:'photoop', locId, noPrint:false, isNew:true });
   };
 
   // Create (or reuse) a user-defined event type and select it on the draft.
@@ -2178,7 +2193,7 @@ function App() {
         boxStyle: { aspectRatio: '3 / 2' },
         items: data.flatMap(m => m.locations.map(loc => {
           const yr = (loc.photoYear || '').trim();
-          return { key: m.key + '-' + loc.id, base: photoBase(m.key, loc.id), caption: loc.name + ' · ' + m.name.slice(0, 3) + (yr ? ' ' + yr : '') };
+          return { key: m.key + '-' + loc.id, base: photoBase(m.key, loc.id), caption: loc.name + ' · ' + m.name.slice(0, 3) + (yr ? " '" + yr : '') };
         })),
       })
     ),
@@ -2274,7 +2289,7 @@ function App() {
           boxStyle: { aspectRatio: '3 / 2' },
           items: month.locations.map(loc => {
             const yr = (loc.photoYear || '').trim();
-            return { key: loc.id, base: photoBase(month.key, loc.id), caption: loc.name + ' · ' + month.name.slice(0, 3) + (yr ? ' ' + yr : '') };
+            return { key: loc.id, base: photoBase(month.key, loc.id), caption: loc.name + ' · ' + month.name.slice(0, 3) + (yr ? " '" + yr : '') };
           }),
         })
       ),
@@ -2310,7 +2325,15 @@ function App() {
               !isMobile && e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, zIndex:3, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#EFE7D2', textShadow:'0 1px 2px rgba(0,0,0,0.45)', cursor:'grab' } }, '⠿'),
               l.done
                 ? e('button', { onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as not done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, lineHeight:1, border:'1.5px solid #54632F', background:'#54632F', color:'#FBF7EC' } }, '✓')
-                : e('button', { className:'tick-btn', onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', border:'1.5px solid #B3A988', background:'#FCFAF1' } })
+                : e('button', { className:'tick-btn', onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', border:'1.5px solid #B3A988', background:'#FCFAF1' } }),
+              e('button', {
+                className:'star-btn',
+                onClick:(ev)=>{ev.stopPropagation();togglePrintStar(l.id);},
+                title: month.printLoc === l.id ? 'Starred — this photo fronts the printable calendar (click to unstar)' : "Star — use this location's photo on the printable calendar",
+                style: month.printLoc === l.id
+                  ? { position:'absolute', bottom:5, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, lineHeight:1, border:'1.5px solid #8A6D1C', background:'#C9971C', color:'#FFFDF5' }
+                  : { position:'absolute', bottom:5, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, lineHeight:1, border:'1.5px solid #B3A988', background:'#FCFAF1', color:'#C8BC9C' }
+              }, '★')
             ),
             e('div', { style:{ padding:'10px 11px 12px' } },
               e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71', marginBottom:5 } }, l.tag),
@@ -2536,13 +2559,14 @@ function App() {
     );
     const sheets = data.map((m2, i) => {
       const pm = monthForYear(m2, i);
-      const wks = buildWeeks(pm, weekStart, true);
+      // Events print unless explicitly hidden in the event editor (noPrint).
+      const wks = buildWeeks({ ...pm, events: pm.events.filter(ev => !ev.noPrint) }, weekStart, true);
       return e('div', { key:m2.key, className:'print-sheet', style:sheetStyle },
         e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:'4mm' } },
           e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'10mm', lineHeight:1, color:'#2A251E' } }, m2.name),
           e('div', { style:{ fontFamily:mono, fontSize:'4mm', color:'#8A7D63', letterSpacing:'.14em' } }, String(viewYear))
         ),
-        e(PrintMonthPhoto, { monthKey:m2.key, locs:m2.locations, epoch:imgEpoch }),
+        e(PrintMonthPhoto, { monthKey:m2.key, locs:m2.locations, preferId:m2.printLoc, epoch:imgEpoch }),
         e('div', { style:{ display:'flex', justifyContent:'space-between', gap:'4mm', margin:'2.5mm 0 3.5mm', fontFamily:mono, fontSize:'3mm', color:'#8A7D63', letterSpacing:'.04em' } },
           e('span', { style:{ color:'#54632F' } }, '↑ ' + m2.sunrise + '   ↓ ' + m2.sunset),
           e('span', null, m2.daylightNote)
@@ -2577,7 +2601,7 @@ function App() {
         e('button', { className:'btn-hover', onClick:goToYear, style:GreenBtn }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
         yearPicker(),
         e('button', { className:'btn-hover', onClick:()=>window.print(), style:{ ...GreenBtn, gap:8 } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1 } }, '⎙'), ' Print / save PDF'),
-        e('span', { style:{ fontFamily:mono, fontSize:11, color:'#8A7D63', letterSpacing:'.03em' } }, 'One A4 page per month for ' + viewYear + ' · in the print dialog choose "Save as PDF" to keep a copy. Each month uses its first location that has a photo — drag tiles to reorder.')
+        e('span', { style:{ fontFamily:mono, fontSize:11, color:'#8A7D63', letterSpacing:'.03em' } }, 'One A4 page per month for ' + viewYear + ' · in the print dialog choose "Save as PDF" to keep a copy. Each month shows its ★-starred location’s photo (star on the month-page tiles), or its first location with a photo. Untick "Shown on the printable calendar" in an event’s editor to keep it off these pages.')
       ),
       cover,
       sheets
@@ -2659,6 +2683,11 @@ function App() {
               ),
               e('button', { className:'kind-btn', onClick:addCustomKind, title:'Create a new event type', style:{ display:'flex', alignItems:'center', gap:6, padding:'6px 11px', background:'#FFFDF5', color:'#5A513B', border:'1px dashed #A89A7C', borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.03em' } }, '+ New type')
             )
+          ),
+          // Printable calendar — on by default, untick to keep this event off it
+          e('label', { style:{ marginTop:16, display:'flex', alignItems:'center', gap:9, cursor:'pointer', userSelect:'none' } },
+            e('input', { type:'checkbox', checked:!draft.noPrint, onChange:(ev)=>{ const on = ev.target.checked; setEditingEvent(p=>p&&({ ...p, noPrint:!on })); }, style:{ width:15, height:15, margin:0, accentColor:'#54632F', cursor:'pointer' } }),
+            e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.04em', color: draft.noPrint ? '#A89A7C' : '#5A513B' } }, draft.noPrint ? 'Hidden from the printable calendar' : 'Shown on the printable calendar')
           ),
           // Save / Delete
           e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginTop:22, paddingTop:15, borderTop:'1px solid #E6DECA' } },

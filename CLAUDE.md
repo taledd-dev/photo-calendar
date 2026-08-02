@@ -73,7 +73,11 @@ eclipse/season dates per year, annual meteor + nature windows).
   sheet + one A4-portrait `.print-sheet` per month (photo, light strip, that
   year's day-grid) for the selected year; printing/PDF goes through the
   browser's dialog. `@media print` CSS hides `.no-print` chrome and page-breaks
-  the sheets; `PrintMonthPhoto` picks each month's first location with a photo.
+  the sheets. `PrintMonthPhoto` shows the month's **starred** location
+  (`month.printLoc`, ★ button on the month-page tiles, one per month,
+  cloud-synced) if it has a photo, else the first location with one. Events
+  print **by default**; a checkbox in the event editor sets `noPrint: true`
+  to keep an event off the printed grid (calendar pages unaffected).
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
   `navRow(showYearBtn)` renders the top buttons (year page drops the redundant
@@ -98,8 +102,9 @@ eclipse/season dates per year, annual meteor + nature windows).
 ## Decisions already made (don't silently reverse)
 
 - Photos are **public to view, owner-only to upload** (password gate).
-- Hero captions are **auto** (`Location · Mon YY`, month abbreviated); only the **year** is
-  user-entered, and it's cloud-synced so viewers see it.
+- Hero captions are **auto** (`Location · Mon 'YY`, month abbreviated, year
+  shown with a leading apostrophe); only the **year** is user-entered (raw,
+  e.g. `24`), and it's cloud-synced so viewers see it.
 - **Visited is the `done` tick.** Coordinates come from the built-in table and
   are **per-location editable**; the old **postcode** field was removed.
 - The **2026 cover** slideshow cycles *all* location photos; each **month hero**
