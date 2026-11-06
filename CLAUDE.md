@@ -43,11 +43,23 @@ eclipse/season dates per year, annual meteor + nature windows).
   - **Local only:** the owner's upload password (`calendar:uploadKey`), plus a
     `localStorage` cache of the data (`calendar:data`) for instant/offline render,
     which the cloud copy overrides on load.
-  - `App` gates cloud *saving* behind a `cloudReady` flag (set once the load
-    settles) so a fresh device can't overwrite the cloud with defaults; a
-    `cloudEcho` ref stops the load from immediately re-saving. The old per-year
-    `photo-meta.json` is superseded (years live in `calendar-data.json`;
-    `loadMeta`/`saveMeta` remain in `Storage` but are unused).
+  - **Sync safety (the "Cloud sync" block in `App`):** `loadCloudData` resolves
+    to `{status:'ok'|'empty'|'error'}` — an *error* (unreachable or unreadable)
+    is never treated as empty. `ensureUnlocked` refuses edits until a load has
+    settled as ok/empty, with a banner ("editing paused") while offline and
+    retries every 15 s. Each device keeps `cloudStamp` (the `savedAt` of the
+    copy it is in step with); `saveCloudData(data, key, expectSavedAt)` checks
+    the cloud still carries that stamp before writing (and the v2 Worker
+    re-checks via `x-if-saved-at` → 409). On conflict the newer cloud copy is
+    adopted and the owner is told their last change was not kept. The copy is
+    re-fetched on tab focus/visibility, `online`, and a 5-minute poll (skipped
+    while local edits are pending or a field is being typed in). Saves are
+    serialised (`pushingRef`/`queuedRef`); a failed save shows a banner,
+    retries every 10 s, warns on tab close (`beforeunload`), and sets
+    `localStorage['calendar:dirty']` so the next visit asks keep-or-discard.
+    `syncedRef` marks the data object that came from the cloud so the save
+    effect never echoes it back. The old per-year `photo-meta.json` is
+    superseded (`loadMeta`/`saveMeta` remain in `Storage` but are unused).
   - **Editing is password-gated.** `ensureUnlocked()` guards `mutateData` (and
     `addLocation`/`deleteLocation` early): the first edit of any kind prompts for
     the upload password; enter it once (stored in `calendar:uploadKey`) and you're
@@ -109,7 +121,8 @@ eclipse/season dates per year, annual meteor + nature windows).
   are **per-location editable**; the old **postcode** field was removed.
 - The **2026 cover** slideshow cycles *all* location photos; each **month hero**
   cycles that month's location photos.
-- Deleting a photo (×) **and** deleting a location both remove the R2 images.
+- Deleting a photo (×) **and** deleting a location both remove the R2 images —
+  both ask for confirmation first (irreversible).
 - Locations can be **moved between months** ("Move to…" select in the brief's
   footer): the R2 photo (hero + thumb) is copied to the new month's key first,
   the old objects deleted only after a copy lands, then the location object
@@ -137,6 +150,14 @@ eclipse/season dates per year, annual meteor + nature windows).
 - **The Worker is deployed manually** via the Cloudflare dashboard (paste
   `worker/photo-storage-worker.js`, bind R2 bucket `photo-calendar` as `BUCKET`,
   set the `UPLOAD_PASSWORD` secret). `wrangler.toml` exists for reference.
+  **Worker v2** (header `x-photoplan-worker: 2`) adds the `x-if-saved-at`
+  optimistic lock on `calendar-data.json` and **automatic backups**: before each
+  overwrite the previous copy goes to `backups/calendar-data-<UTC time>.json`
+  (one per 15-min window, newest 60 kept); `GET /backups` lists them. The site
+  only sends the lock header once it has seen the v2 response header, so it
+  works with the old Worker too (client-side check only, no backups) until the
+  new file is pasted in. **Restore** = download a backup from the R2 dashboard
+  and upload it as `calendar-data.json`.
 - **Always syntax-check before publishing** — extract the inline script and run
   `node --check`:
   ```

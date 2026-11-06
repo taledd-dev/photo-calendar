@@ -4,20 +4,41 @@
 // UPLOADING or DELETING requires the secret password, which lives safely inside
 // Cloudflare and is never exposed in the website code.
 //
-// Two settings are wired up in the Cloudflare dashboard (see worker/README.md):
+// Two settings are wired up in the Cloudflare dashboard:
 //   • BUCKET          — an R2 binding pointing at the "photo-calendar" bucket
 //   • UPLOAD_PASSWORD — a secret; the password required to upload or delete
 //
-// Endpoints (all under /photo/<name>):
-//   GET    /photo/<name>  → returns the photo            (public, no password)
-//   PUT    /photo/<name>  → saves/replaces the photo     (password required)
-//   DELETE /photo/<name>  → removes the photo            (password required)
+// Endpoints:
+//   GET    /photo/<name>  → returns the photo / file         (public, no password)
+//   PUT    /photo/<name>  → saves/replaces it                (password required)
+//   DELETE /photo/<name>  → removes it                       (password required)
+//   GET    /backups       → lists the automatic backups of calendar-data.json
+//
+// Safety for the shared calendar (calendar-data.json) — "v2", announced to the
+// site through the `x-photoplan-worker: 2` response header:
+//   • Optimistic locking: a PUT may carry `x-if-saved-at: <stamp>` (or `none`).
+//     The write is refused with 409 unless the stored copy's `savedAt` matches,
+//     so two devices can never overwrite each other unseen. PUTs without the
+//     header (older site code) are accepted as before.
+//   • Backups: before each overwrite, the previous copy is kept under
+//     backups/calendar-data-<UTC time>.json — at most one per 15-minute window
+//     (the state as it was before the first save in that window) and the
+//     newest 60 are kept. To restore one: in the R2 dashboard, download the
+//     backup and upload it as calendar-data.json (overwrite), or PUT it with
+//     the password.
+
+const DATA_KEY = 'calendar-data.json';
+const BACKUP_PREFIX = 'backups/calendar-data-';
+const BACKUP_WINDOW_MS = 15 * 60 * 1000;
+const BACKUP_KEEP = 60;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, x-upload-key',
+  'Access-Control-Allow-Headers': 'Content-Type, x-upload-key, x-if-saved-at',
+  'Access-Control-Expose-Headers': 'x-photoplan-worker, etag',
   'Access-Control-Max-Age': '86400',
+  'x-photoplan-worker': '2',
 };
 
 function json(body, status = 200) {
@@ -25,6 +46,27 @@ function json(body, status = 200) {
     status,
     headers: { ...CORS, 'Content-Type': 'application/json' },
   });
+}
+
+// The `savedAt` stamp inside a stored calendar-data.json (null if unreadable).
+function stampOf(buf) {
+  try {
+    const s = JSON.parse(new TextDecoder().decode(buf)).savedAt;
+    return typeof s === 'number' ? s : null;
+  } catch (_) { return null; }
+}
+
+// Keep a copy of the calendar as it was before this write — one per 15-minute
+// window, oldest state in the window wins — then trim to the newest BACKUP_KEEP.
+async function backupCalendarData(env, previousBytes) {
+  const windowStart = Math.floor(Date.now() / BACKUP_WINDOW_MS) * BACKUP_WINDOW_MS;
+  const stamp = new Date(windowStart).toISOString().slice(0, 16).replace(':', '-'); // e.g. 2026-11-06T14-30
+  const key = BACKUP_PREFIX + stamp + '.json';
+  if (await env.BUCKET.head(key)) return;
+  await env.BUCKET.put(key, previousBytes, { httpMetadata: { contentType: 'application/json' } });
+  const listed = await env.BUCKET.list({ prefix: BACKUP_PREFIX });
+  const keys = listed.objects.map(o => o.key).sort(); // timestamps sort oldest → newest
+  if (keys.length > BACKUP_KEEP) await env.BUCKET.delete(keys.slice(0, keys.length - BACKUP_KEEP));
 }
 
 export default {
@@ -35,6 +77,16 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    // ── Public: list the calendar backups (newest first) ──────────────────────
+    if (url.pathname === '/backups' && request.method === 'GET') {
+      const listed = await env.BUCKET.list({ prefix: BACKUP_PREFIX });
+      const backups = listed.objects
+        .map(o => ({ key: o.key, uploaded: o.uploaded, size: o.size }))
+        .sort((a, b) => (a.key < b.key ? 1 : -1));
+      return json({ backups });
+    }
+
     const match = url.pathname.match(/^\/photo\/(.+)$/);
     if (!match) {
       return json({ error: 'Not found' }, 404);
@@ -64,6 +116,19 @@ export default {
     if (request.method === 'PUT') {
       const contentType = request.headers.get('content-type') || 'application/octet-stream';
       const body = await request.arrayBuffer();
+      if (key === DATA_KEY) {
+        const existing = await env.BUCKET.get(DATA_KEY);
+        const previousBytes = existing ? await existing.arrayBuffer() : null;
+        // Optimistic lock: the caller says which stamp it last saw; refuse if the
+        // stored copy has moved on (another device saved in between).
+        const expect = request.headers.get('x-if-saved-at');
+        if (expect !== null) {
+          const have = previousBytes ? stampOf(previousBytes) : null;
+          const want = expect === 'none' ? null : Number(expect);
+          if (have !== want) return json({ error: 'Conflict', savedAt: have }, 409);
+        }
+        if (previousBytes) await backupCalendarData(env, previousBytes);
+      }
       await env.BUCKET.put(key, body, { httpMetadata: { contentType } });
       return json({ ok: true, key });
     }

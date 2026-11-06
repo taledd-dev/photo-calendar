@@ -193,25 +193,51 @@ const Storage = {
   // The whole calendar dataset (locations, events, edits, coordinates, ticks) is
   // shared via calendar-data.json in R2 — everyone reads it, only the owner (with
   // the upload password) writes it. Local storage stays a fast, offline cache.
+  //
+  // Resolves to one of:
+  //   { status:'ok', data, savedAt }  a readable copy exists (savedAt = its stamp)
+  //   { status:'empty' }              nothing saved yet — the first save creates it
+  //   { status:'error' }              unreachable, or unreadable. Never treated as
+  //                                   empty: a save on top would destroy real data.
+  workerV2: false, // set once a response shows the Worker enforces x-if-saved-at
   async loadCloudData() {
     try {
       const res = await fetch(this.photoUrl('calendar-data.json', Date.now()), { cache: 'no-store' });
-      if (!res.ok) return null;
+      if (res.status === 404) return { status: 'empty' };
+      if (!res.ok) return { status: 'error' };
+      this.workerV2 = res.headers.get('x-photoplan-worker') === '2';
       const parsed = await res.json();
-      if (!parsed || parsed.version !== STORAGE_VERSION || !parsed.data) return null;
-      return parsed.data;
-    } catch (_) { return null; }
+      if (!parsed || parsed.version !== STORAGE_VERSION || !Array.isArray(parsed.data)) return { status: 'error' };
+      return { status: 'ok', data: parsed.data, savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : null };
+    } catch (_) { return { status: 'error' }; }
   },
-  async saveCloudData(data, key) {
+  // Write the shared calendar — but only if the cloud copy still carries the
+  // stamp this device last saw (`expectSavedAt`; null = "there should be none
+  // yet"). That is what stops two devices overwriting each other unseen. The
+  // check runs here before the PUT, and again inside the Worker (409) once the
+  // v2 Worker is deployed. Resolves to { ok:true, savedAt } or
+  // { ok:false, reason, cloud? } with reason 'conflict' (the newer cloud copy is
+  // returned as `cloud` for adoption; null if it has vanished), 'unauthorized',
+  // 'network' or 'error'.
+  async saveCloudData(data, key, expectSavedAt) {
+    const cur = await this.loadCloudData();
+    if (cur.status === 'error') return { ok: false, reason: 'network' };
+    if (cur.status === 'ok' && cur.savedAt !== expectSavedAt) return { ok: false, reason: 'conflict', cloud: cur };
+    if (cur.status === 'empty' && expectSavedAt != null) return { ok: false, reason: 'conflict', cloud: null };
+    const savedAt = Date.now();
     try {
+      const headers = { 'x-upload-key': key, 'Content-Type': 'application/json' };
+      if (this.workerV2) headers['x-if-saved-at'] = expectSavedAt == null ? 'none' : String(expectSavedAt);
       const res = await fetch(this.photoUrl('calendar-data.json'), {
         method: 'PUT',
-        headers: { 'x-upload-key': key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version: STORAGE_VERSION, savedAt: Date.now(), data }),
+        headers,
+        body: JSON.stringify({ version: STORAGE_VERSION, savedAt, data }),
       });
-      if (res.status === 401) { this.clearUploadKey(); return false; }
-      return res.ok;
-    } catch (_) { return false; }
+      if (res.status === 401) { this.clearUploadKey(); return { ok: false, reason: 'unauthorized' }; }
+      if (res.status === 409) { const again = await this.loadCloudData(); return { ok: false, reason: 'conflict', cloud: again.status === 'ok' ? again : null }; }
+      if (!res.ok) return { ok: false, reason: 'error' };
+      return { ok: true, savedAt };
+    } catch (_) { return { ok: false, reason: 'network' }; }
   },
   // Save an uploaded photo as two sizes: a small thumbnail (<base>-thumb) for the
   // location cards and a larger hero version (<base>) for the slideshows.
@@ -256,6 +282,11 @@ const Storage = {
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+// A per-device marker that the last visit ended with changes not yet confirmed
+// in the cloud (see the cloud-sync notes in App). Read on the next visit.
+function readUnsavedFlag() { try { return localStorage.getItem('calendar:dirty') === '1'; } catch (_) { return false; } }
+function writeUnsavedFlag(on) { try { if (on) localStorage.setItem('calendar:dirty', '1'); else localStorage.removeItem('calendar:dirty'); } catch (_) {} }
+
 // Fisher–Yates shuffle — returns a new array in random order.
 function shuffle(arr) {
   const a = arr.slice();
@@ -473,6 +504,7 @@ function LocationPhoto({ base, placeholder, style = {}, onChange }) {
 
   const handleClear = useCallback(async (ev) => {
     ev.stopPropagation();
+    if (!window.confirm('Remove this photo? It will be deleted from the cloud — this cannot be undone.')) return;
     const key = Storage.getUploadKey();
     if (!key) return;
     setBusy(true);
@@ -1693,47 +1725,191 @@ function App() {
   const [imgEpoch, setImgEpoch] = useState(0); // bumped after an upload so tiles + slideshows refresh
   const bumpImg = () => setImgEpoch(n => n + 1);
   const uidRef = useRef(100);
-  const cloudEcho = useRef(false);      // true when data was just set from the cloud (don't re-save it)
-  const cloudSaveTimer = useRef(null);
-  const [cloudReady, setCloudReady] = useState(false); // true once the cloud load has settled (gates saving)
   const unlockedRef = useRef(false);   // true once the edit password has been entered on this device
 
   // Save the calendar (locations, events, edits, ordering, ticked-off spots)
   // every time anything changes, so it survives a page reload.
   useEffect(() => { Storage.saveData(data); }, [data]);
 
-  // Load the shared calendar from the cloud on startup so every device and every
-  // viewer sees the same data. Local storage shows instantly; the cloud copy (if
-  // present) then overrides it. `cloudReady` flips on only once this has settled,
-  // which gates saving so a fresh device can't overwrite the cloud with defaults
-  // before the load lands.
+  // ── Cloud sync ─────────────────────────────────────────────────────────────
+  // The cloud copy (calendar-data.json) is the source of truth; local storage is
+  // a cache that shows instantly and is then replaced. Safety rules:
+  //  • Editing stays paused (ensureUnlocked refuses) until a cloud load has
+  //    settled as 'ok' or 'empty' — never after an 'error', which would risk
+  //    pushing a stale cache over the real data.
+  //  • This device remembers the `savedAt` stamp of the copy it is in step with
+  //    (cloudStamp). Every save first checks the cloud still carries that stamp;
+  //    if another device saved in between, the newer copy is loaded instead and
+  //    the local change is reported as lost — never silently overwritten.
+  //  • The copy is re-fetched whenever the tab regains focus, comes back online,
+  //    and every few minutes, so devices rarely diverge in the first place.
+  //  • A save that fails for network reasons is retried, shown in a banner,
+  //    warned about on tab close, and remembered across reloads (the next load
+  //    asks whether to keep or discard the unsaved changes).
+  const [cloudReady, setCloudReady] = useState(false);       // load settled (ok/empty) → edits allowed
+  const [cloudStatus, setCloudStatus] = useState('loading'); // 'loading' | 'ok' | 'offline' | 'unsaved'
+  const [dirty, setDirty] = useState(false);                 // local changes not yet confirmed in the cloud
+  const [retryNonce, setRetryNonce] = useState(0);           // bumps to re-arm the save retry timer
+  const cloudReadyRef = useRef(false);
+  const cloudStamp = useRef(null);      // savedAt of the cloud copy this device is in step with
+  const syncedRef = useRef(null);       // the data object known to match the cloud (never re-saved)
+  const dataRef = useRef(data);
+  const dirtyRef = useRef(false);
+  const pushingRef = useRef(false);
+  const queuedRef = useRef(false);
+  const cloudSaveTimer = useRef(null);
+  // Did the previous visit end with changes that never reached the cloud? Read
+  // once at start; resolved (keep or discard) on the first successful load.
+  const unsavedFromLastTime = useRef(readUnsavedFlag());
+  useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => {
-    let cancelled = false;
-    Storage.loadCloudData().then(cloud => {
-      if (cancelled) return;
-      if (cloud) { cloudEcho.current = true; setData(migrateYearEvents(cloud)); }
-      setCloudReady(true);
-    });
+    dirtyRef.current = dirty;
+    // Leave last visit's flag alone until its keep/discard question is settled.
+    if (!dirty && unsavedFromLastTime.current) return;
+    writeUnsavedFlag(dirty);
+  }, [dirty]);
+
+  const settle = () => { cloudReadyRef.current = true; setCloudReady(true); };
+  const okStatus = () => setCloudStatus(s => s === 'unsaved' ? s : 'ok');
+  // Take the cloud copy as our data, remembering it so the save effect skips it.
+  const adoptCloud = (cur) => {
+    const d = migrateYearEvents(cur.data);
+    syncedRef.current = d;
+    cloudStamp.current = cur.savedAt;
+    setData(d);
+    setDirty(false);
+  };
+
+  const loadingRef = useRef(false); // one load at a time (tab switches fire focus + visibility together)
+  const loadFromCloud = async () => {
+    const settled = cloudReadyRef.current;
+    if (loadingRef.current) return;
+    if (settled && dirtyRef.current) return; // local edits pending — the save's own check arbitrates
+    if (settled && document.activeElement && document.activeElement.isContentEditable) return; // mid-typing
+    loadingRef.current = true;
+    try {
+      const cur = await Storage.loadCloudData();
+      if (cur.status === 'error') { if (!cloudReadyRef.current) setCloudStatus('offline'); return; }
+      if (cur.status === 'empty') {
+        unsavedFromLastTime.current = false; writeUnsavedFlag(dirtyRef.current);
+        settle(); okStatus(); return;
+      }
+      if (unsavedFromLastTime.current) {
+        unsavedFromLastTime.current = false;
+        const keep = Storage.peekUploadKey() && window.confirm(
+          'This device has changes that never reached the shared calendar (the last save did not complete).\n\n' +
+          'OK = keep them and save them now (this replaces the cloud copy).\n' +
+          'Cancel = discard them and load the cloud copy.');
+        if (keep) { cloudStamp.current = cur.savedAt; settle(); okStatus(); setDirty(true); return; }
+        writeUnsavedFlag(false);
+      }
+      if (!settled || cur.savedAt !== cloudStamp.current) adoptCloud(cur);
+      settle(); okStatus();
+    } finally { loadingRef.current = false; }
+  };
+
+  // Write the current data to the cloud. Serialised: a change made while a
+  // save is in flight queues one more save afterwards (with the fresh stamp),
+  // so two overlapping saves can't trip the conflict check on each other.
+  const pushToCloud = async () => {
+    const key = Storage.peekUploadKey();
+    if (!key || !cloudReadyRef.current) return;
+    if (pushingRef.current) { queuedRef.current = true; return; }
+    pushingRef.current = true;
+    try {
+      do {
+        queuedRef.current = false;
+        const snapshot = dataRef.current;
+        if (snapshot === syncedRef.current) { setDirty(false); break; }
+        const res = await Storage.saveCloudData(snapshot, key, cloudStamp.current);
+        if (res.ok) {
+          cloudStamp.current = res.savedAt;
+          syncedRef.current = snapshot;
+          if (dataRef.current === snapshot) setDirty(false);
+          setCloudStatus('ok');
+        } else if (res.reason === 'conflict') {
+          if (res.cloud) {
+            adoptCloud(res.cloud);
+            setCloudStatus('ok');
+            alert('Another device saved changes after this page loaded, so the newer version has been loaded here and your last change was not kept — please redo it.');
+          } else {
+            cloudStamp.current = null; // the cloud copy vanished — write ours fresh
+            queuedRef.current = true;
+          }
+        } else if (res.reason === 'unauthorized') {
+          // The stored password was rejected (and has been cleared). The change
+          // stays local and dirty; the banner offers to re-enter it and retry.
+          unlockedRef.current = false;
+          setCloudStatus('unsaved');
+          break;
+        } else {
+          setCloudStatus('unsaved');
+          setRetryNonce(n => n + 1);
+          break;
+        }
+      } while (queuedRef.current);
+    } finally { pushingRef.current = false; }
+  };
+
+  // First load, plus re-sync triggers: tab shown / focused, back online, and a
+  // gentle poll while visible. Hiding the tab flushes any pending save at once.
+  useEffect(() => {
+    loadFromCloud();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        if (dirtyRef.current) { clearTimeout(cloudSaveTimer.current); pushToCloud(); }
+        return;
+      }
+      loadFromCloud();
+    };
+    const onFocus = () => loadFromCloud();
+    const onOnline = () => { loadFromCloud(); if (dirtyRef.current) pushToCloud(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
+    const poll = setInterval(() => { if (document.visibilityState === 'visible') loadFromCloud(); }, 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onOnline);
+      clearInterval(poll);
+    };
   }, []);
 
   // Push the shared calendar back to the cloud whenever it changes — owner only
-  // (whoever holds the upload password). Debounced; only after the load has
-  // settled; and skips the echo from the load itself.
+  // (whoever holds the upload password), debounced, and never for a data object
+  // that itself came from the cloud.
   useEffect(() => {
     if (!cloudReady) return;
-    if (cloudEcho.current) { cloudEcho.current = false; return; }
-    const key = Storage.peekUploadKey();
-    if (!key) return;
+    if (data === syncedRef.current) return;
+    if (!Storage.peekUploadKey()) return;
+    dirtyRef.current = true; // immediately, so a focus-refresh in this tick can't adopt over the edit
+    setDirty(true);
     clearTimeout(cloudSaveTimer.current);
-    cloudSaveTimer.current = setTimeout(() => {
-      Storage.saveCloudData(data, key).then(ok => {
-        // A 401 clears the stored key — i.e. the password was wrong. Re-lock so
-        // the next edit asks again, and let them know it didn't save.
-        if (!ok && !Storage.peekUploadKey()) { unlockedRef.current = false; alert('That password was not accepted, so your change was not saved. You will be asked again on your next edit.'); }
-      });
-    }, 800);
+    cloudSaveTimer.current = setTimeout(pushToCloud, 800);
     return () => clearTimeout(cloudSaveTimer.current);
   }, [data, cloudReady]);
+
+  // Retries: while the cloud is unreachable keep trying to load; while a save
+  // is outstanding keep trying to push (only when a password is held).
+  useEffect(() => {
+    if (cloudStatus !== 'offline') return;
+    const t = setInterval(loadFromCloud, 15000);
+    return () => clearInterval(t);
+  }, [cloudStatus]);
+  useEffect(() => {
+    if (cloudStatus !== 'unsaved' || !Storage.peekUploadKey()) return;
+    const t = setTimeout(pushToCloud, 10000);
+    return () => clearTimeout(t);
+  }, [cloudStatus, retryNonce]);
+
+  // Unsaved changes + closing the tab → the browser's "leave site?" prompt.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (ev) => { ev.preventDefault(); ev.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   // A month as seen in the selected year: locations (and photos) are shared
   // across years; the grid layout (start weekday, day count — Date's 0=Sunday
@@ -1800,6 +1976,14 @@ function App() {
   // editable (and syncs). Leave it blank and it's view-only — the change is
   // blocked. A device that already holds the password never gets asked.
   const ensureUnlocked = () => {
+    // No edits until the cloud copy has been read: an edit made on top of a
+    // stale local cache would overwrite whatever is really in the cloud.
+    if (!cloudReadyRef.current) {
+      alert(cloudStatus === 'offline'
+        ? 'The shared calendar can\'t be reached right now, so editing is paused and that change was not made. It reconnects automatically — try again once the warning at the top has gone.'
+        : 'Still loading the shared calendar — try again in a moment.');
+      return false;
+    }
     if (unlockedRef.current || Storage.peekUploadKey()) { unlockedRef.current = true; return true; }
     const entered = window.prompt('Enter the edit password to make changes.\n(Leave blank if you just want to look around.)');
     if (!entered || !entered.trim()) return false;
@@ -1836,6 +2020,10 @@ function App() {
   };
 
   const deleteLocation = (id) => {
+    const target = month.locations.find(l => l.id === id);
+    const name = target ? target.name : 'this location';
+    // Irreversible (the photo goes too), so confirm before anything else.
+    if (!window.confirm('Delete "' + name + '" from ' + month.name + '?\n\nIts photo will be removed from the cloud as well. This cannot be undone.')) return;
     if (!ensureUnlocked()) return;
     // Also remove this location's photo (hero + thumbnail) from R2, so deleting a
     // spot doesn't leave orphaned images in the bucket.
@@ -2701,8 +2889,33 @@ function App() {
     );
   };
 
+  // ─── Cloud status banner ───────────────────────────────────────────────────
+  // Shown only when something needs the owner's attention: the cloud copy can't
+  // be read (editing paused), or a change hasn't been saved yet.
+  const renderCloudBanner = () => {
+    if (cloudStatus !== 'offline' && cloudStatus !== 'unsaved') return null;
+    const offline = cloudStatus === 'offline';
+    const noKey = !offline && !Storage.peekUploadKey();
+    const msg = offline
+      ? 'Can\'t reach the shared calendar — showing the copy last saved on this device. Editing is paused until it reconnects.'
+      : noKey
+        ? 'Your latest change has not been saved — the edit password was rejected.'
+        : 'Your latest change has not reached the shared calendar yet — retrying automatically.';
+    const onRetry = () => {
+      if (offline) { loadFromCloud(); return; }
+      if (!Storage.peekUploadKey() && !ensureUnlocked()) return;
+      pushToCloud();
+    };
+    return e('div', { className:'no-print', role:'status', style:{ display:'flex', alignItems:'center', gap:'8px 14px', flexWrap:'wrap', marginBottom:isMobile?14:20, padding:'9px 12px', background:'#F3E3D6', border:'1px solid #D9B3A6', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.04em', lineHeight:1.5, color:'#7A3A22' } },
+      e('span', { style:{ flex:'1 1 240px' } }, '⚠ ' + msg),
+      e('button', { className:'btn-hover', onClick:onRetry, style:{ height:30, padding:'0 12px', background:'#FBF7EC', border:'1px solid #9C3B22', color:'#9C3B22', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.10)' } },
+        offline ? 'Retry now' : (noKey ? 'Enter password & retry' : 'Retry now'))
+    );
+  };
+
   return e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
+      renderCloudBanner(),
       mapView
         ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro })
         : printView
