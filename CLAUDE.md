@@ -188,7 +188,21 @@ a per-location "Light" row. `daylightNote` stays editorial.
 - **Calendar file**: `downloadIcs()` (home nav "⤓ Calendar file", owner only)
   writes the selected year's events as all-day VEVENTs (folded lines, GEO +
   LOCATION on photo ops) to `photoplan-<year>.ics` via a Blob download.
-- **Views:** `App` holds `yearView` / `monthIdx` / `mapView`. Navigation:
+- **Weather page** (`WeatherView`, "☁ Weather" button on the home and month
+  nav rows for everyone; `goToWeather(locId)` also from the brief's Light row
+  "Forecast & conditions →"): a location `<select>` (grouped by month, only
+  locations with coordinates; opens on the given location, else one from the
+  current month), a seven-day outlook from **Open-Meteo** (`api.open-meteo.com`,
+  `timezone=auto`; `models=ukmo_seamless` tried first for UK coords, then the
+  default model; cached per coordinates for the session) summarised per day
+  as cloud at the sunrise/sunset hours and 01:00, min visibility, rain chance,
+  wind/gusts, temperatures, moon illumination (`moonIllumination`) and a
+  `lightVerdict` line; the live NOAA planetary Kp with an aurora reading;
+  deep links (Met Office via `geohash(lat,lng,9)`, Windy, Clear Outside,
+  meteoblue, light-pollution map, MWIS/Met Office mountain, tide times,
+  AuroraWatch); and the `WEATHER_GUIDE` cards (conditions / settings / tips
+  per kind of shoot — editorial, edit the array). All fetches fail quietly.
+- **Views:** `App` holds `yearView` / `monthIdx` / `mapView` / `weatherView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
   `navRow(showYearBtn)` renders the top buttons. Month pages: `‹ › [month
   picker] | Map | ← Home`, with the owner's "+ Add location" (`addLocBtn`) at

@@ -1892,6 +1892,263 @@ function ensureScript(src) {
   });
 }
 
+// ─── Weather ─────────────────────────────────────────────────────────────────
+// The Weather page: pick a location, see a seven-day outlook built for
+// photographers (cloud at dawn, dusk and in the night, visibility, wind, the
+// moon), the live aurora index, deep links into the forecast sites, and a
+// guide to the conditions and camera settings each kind of shoot wants.
+// Forecasts come from Open-Meteo (free, no key, CORS-friendly) — the Met
+// Office UKMO model for UK coordinates, their best-match model elsewhere.
+
+// Geohash (base-32), as the Met Office uses in its forecast URLs.
+function geohash(lat, lng, precision = 9) {
+  const chars = '0123456789bcdefghjkmnpqrstuvwxyz';
+  let latR = [-90, 90], lngR = [-180, 180], hash = '', bit = 0, ch = 0, even = true;
+  while (hash.length < precision) {
+    if (even) { const mid = (lngR[0] + lngR[1]) / 2; if (lng >= mid) { ch |= 1 << (4 - bit); lngR[0] = mid; } else lngR[1] = mid; }
+    else { const mid = (latR[0] + latR[1]) / 2; if (lat >= mid) { ch |= 1 << (4 - bit); latR[0] = mid; } else latR[1] = mid; }
+    even = !even;
+    if (bit < 4) bit++; else { hash += chars[ch]; bit = 0; ch = 0; }
+  }
+  return hash;
+}
+// How much of the Moon is lit on a date (0 new … 1 full), and whether waxing.
+function moonIllumination(date) {
+  const jd = jdFromDate(date);
+  const syn = 29.530588861;
+  let k = Math.floor((jd - 2451550.09766) / syn);
+  let newJd = moonPhaseJd(k);
+  if (newJd > jd) { k -= 1; newJd = moonPhaseJd(k); }
+  const nextNew = moonPhaseJd(k + 1);
+  if (nextNew <= jd) newJd = nextNew;
+  const age = jd - newJd;
+  return { frac: (1 - Math.cos(2 * Math.PI * age / syn)) / 2, waxing: age < syn / 2, age };
+}
+// WMO weather codes → words and a glyph.
+const WMO = { 0:['Clear','☀'], 1:['Mainly clear','🌤'], 2:['Partly cloudy','⛅'], 3:['Overcast','☁'], 45:['Fog','🌫'], 48:['Freezing fog','🌫'], 51:['Light drizzle','🌦'], 53:['Drizzle','🌦'], 55:['Heavy drizzle','🌧'], 56:['Freezing drizzle','🌧'], 57:['Freezing drizzle','🌧'], 61:['Light rain','🌦'], 63:['Rain','🌧'], 65:['Heavy rain','🌧'], 66:['Freezing rain','🌧'], 67:['Freezing rain','🌧'], 71:['Light snow','🌨'], 73:['Snow','🌨'], 75:['Heavy snow','❄'], 77:['Snow grains','🌨'], 80:['Light showers','🌦'], 81:['Showers','🌧'], 82:['Heavy showers','⛈'], 85:['Snow showers','🌨'], 86:['Heavy snow showers','❄'], 95:['Thunderstorm','⛈'], 96:['Thunder & hail','⛈'], 99:['Thunder & hail','⛈'] };
+// A photographer's read of the sky at the golden hour from cloud cover (%),
+// low cloud (%) and the day's rain chance (%).
+function lightVerdict(cloud, low, rainP) {
+  if (cloud == null) return null;
+  if (rainP != null && rainP >= 70 && cloud >= 80) return { text: 'Wet and grey', tone: '#8A7D63' };
+  if (cloud <= 15) return { text: 'Clear · clean light, little colour', tone: '#54632F' };
+  if (cloud <= 70 && (low == null || low <= 60)) return { text: 'Broken cloud · colour likely', tone: '#9E4B26' };
+  if (cloud <= 90) return { text: 'Mostly cloudy · maybe a gap', tone: '#7A6F58' };
+  return { text: 'Overcast · soft, flat light', tone: '#8A7D63' };
+}
+// The conditions-and-settings guide, one card per kind of shoot.
+const WEATHER_GUIDE = [
+  { glyph:'◉', title:'Golden hour & sunsets', conditions:'Broken mid and high cloud (roughly 30–70 %) with a clear strip of horizon in the sun’s direction — best just after a front has cleared. Overcast kills it; a cloudless sky gives clean light but little colour.', settings:'f/8–f/11, ISO 100, tripod. Bracket ±2 EV or use a graduated ND for the bright sky. Expose for the sky and lift shadows later.', tips:'Be in place 30 min before sunset and stay 20 min after — the afterglow often beats the sun itself. Check cloud at the sunset hour in the outlook above, not the daily summary.' },
+  { glyph:'◐', title:'Blue hour & twilight', conditions:'Clear or thinly veiled sky, still air for reflections. Starts at sunset and runs 20–40 min; longer in summer at this latitude.', settings:'f/8, ISO 100–400, 2–30 s on a tripod with a remote or 2-s timer. White balance 3500–4500 K keeps the blue honest.', tips:'City and harbour lights balance the sky about 20–25 min after sunset. Civil dusk in the Light row of each location is the end of usable blue hour.' },
+  { glyph:'≋', title:'Mist & inversions', conditions:'High pressure, a clear calm night after a damp day, temperature within a degree or two of the dew point, wind under 5 mph. Autumn and winter dawns; valleys fill, hills poke through — be above it.', settings:'f/8–f/11, telephoto to stack the layers. Mist fools the meter: add +0.3 to +1 EV. Shoot into the light for glow, across it for texture.', tips:'Arrive 45 min before sunrise; it burns off fast once the sun is up. Low cloud at dawn under 20 % and fog in the forecast is the signal.' },
+  { glyph:'❄', title:'Frost & snow', conditions:'A clear night at −2 °C or below with light wind for hoar frost; fresh snow followed by clearing skies for the classic shot. Wind-blown spindrift on the tops needs a gale, so dress for it.', settings:'+0.7 to +1.3 EV so snow stays white, not grey. ISO 100, f/8. Polariser with care — it can turn blue skies black. Keep spare batteries warm in a pocket.', tips:'Shoot early: snow greys and tracks appear within hours. Blue shadows at dawn, pink alpenglow on the tops minutes before sunrise.' },
+  { glyph:'●', title:'Full moon & moonrise', conditions:'Around full moon the Moon rises near sunset, so the eastern horizon must be clear. The evening before full moon is often best: the Moon is up before the sky goes fully dark and the light balances.', settings:'Moon detail: 1/125–1/250 s, f/8, ISO 100–200 at 200 mm or more (the “Looney 11” rule). Moon in a landscape: bracket widely or blend two frames.', tips:'Use the Light row to find sunset; the Moon rises within about 30 min of it on full-moon day. Each later day it rises roughly 50 min later.' },
+  { glyph:'✦', title:'Milky Way & dark skies', conditions:'New moon ±5 days, a clear dry night, a dark site (Bortle 4 or better). The core is up in the UK from late March (pre-dawn) to September (evening); best April–August between midnight and 03:00. Night cloud under 20 %.', settings:'14–24 mm at f/1.8–f/2.8, 10–20 s (500 ÷ focal length, or less to keep stars sharp), ISO 3200–6400. Manual focus on a bright star, lens heater or hand-warmer against dew.', tips:'A sky tracker lets you drop to ISO 800 and 2–4 min exposures. Low humidity and a post-frontal night give the clearest air.' },
+  { glyph:'✦', title:'Meteor showers', conditions:'After midnight when the radiant is high, a moonless sky, clear and dark. Perseids (12–13 Aug) and Geminids (13–14 Dec) are the reliable ones; Quadrantids and Lyrids are brief peaks.', settings:'Widest lens, f/2.8, 15–25 s continuous on an intervalometer, ISO 3200–6400. Aim 40–60° away from the radiant for the longest trails.', tips:'Shoot for hours and composite the frames later. Lie back and let the camera work — most meteors appear in the corner you weren’t watching.' },
+  { glyph:'✦', title:'Aurora', conditions:'Kp 5 or more for Scotland and northern England, Kp 7 or more for the south. A clear dark northern horizon, little moon, 21:00–02:00. Watch the live index above and the AuroraWatch alert level.', settings:'14–24 mm, f/2.8, 2–8 s (shorter when the bands move fast), ISO 1600–6400, manual focus at infinity, white balance 3500–4000 K.', tips:'The camera sees colour the eye reads as grey — fire a test frame north whenever the index is up. A foreground (water, a bothy) makes the picture.' },
+  { glyph:'◐', title:'Eclipses', conditions:'Solar: a certified solar filter on the lens and solar glasses for your eyes through every partial phase — no exceptions. Lunar: a clear sky and a good view of the Moon’s path; totality lasts an hour or more.', settings:'Partial solar with filter: 1/500–1/2000 s, f/8, ISO 100. Totality only: filter off, bracket 1/1000 to 2 s. Lunar totality: 200–600 mm, f/5.6, 1–4 s, ISO 800–1600; partial phases 1/250 s at ISO 200.', tips:'Rehearse the sequence the night before. The 12 Aug 2026 total eclipse crosses Spain; the UK sees a deep partial at sunset — plan a west-facing horizon.' },
+  { glyph:'❀', title:'Bluebells, daffodils & woodland', conditions:'Overcast or just after rain for saturated colour and no hotspots; soft early light or mist in the trees. Wind under 10 mph keeps the flowers still. Bluebells peak late April to early May, Farndale’s daffodils mid-March to early April.', settings:'Polariser to cut leaf glare, f/8–f/11 for depth, ISO 200–400. A 70–200 mm compresses the carpet; get low and shoot across it, never down at it.', tips:'Stay on paths — trampled bluebells take years to recover. Backlight at dawn makes the haze glow; midday sun is the enemy.' },
+  { glyph:'❀', title:'Autumn colour & heather', conditions:'Colour follows cool nights: about a week after the first frosts, mid-October to early November for most of England, earlier in Scotland. Heather peaks mid-August to early September on dry moors. Backlight or bright overcast.', settings:'Polariser, f/8–f/11, ISO 100–400. Underexpose a touch (−0.3 EV) to keep the reds and oranges from clipping.', tips:'Still, misty mornings after rain are the dream: wet leaves, saturated colour, no wind. Calm water doubles the show.' },
+  { glyph:'~', title:'Coast & long exposure', conditions:'Check the tide first: an incoming mid-to-high tide for movement around rocks, low tide for pools and reflections. Onshore wind for drama, offshore for clean waves. The hour either side of sunset.', settings:'ND 6–10 stops with f/11 for 1–30 s silky water, or 1/4–1 s for streaks and texture. Polariser cuts glare on wet sand. ISO 100.', tips:'Never turn your back on the sea; know the tide times and your exit. Rinse the tripod legs and wipe salt spray off the front element often.' },
+  { glyph:'~', title:'Waterfalls & rivers', conditions:'The day after heavy rain for volume, bright overcast so the white water doesn’t burn out. Autumn adds colour; winter adds ice.', settings:'Polariser (essential — it removes the sheen on wet rock), f/11, 1/2–2 s, ISO 100, ND filter in daylight.', tips:'Shorter shutter speeds (1/8–1/4 s) keep texture in the water; multi-second exposures turn it to milk. Protect the lens from spray between frames.' },
+  { glyph:'◉', title:'Starlings & wildlife at dusk', conditions:'Murmurations build 30–45 min before sunset on calm, clear or lightly clouded evenings from November to February, biggest in cold snaps. Position with the sky behind the flock.', settings:'70–200 mm or 100–400 mm. 1/500–1/1000 s to freeze the shapes, or 1/15–1/30 s for painterly flow. ISO 800 and up as the light goes.', tips:'Arrive an hour early and watch where the birds gather. A tripod with a loose head lets you follow the swirl.' },
+  { glyph:'☁', title:'Noctilucent clouds', conditions:'Late May to early August, 90–120 min after sunset or before sunrise, low in the north-west (evening) or north-east (morning). A clear sky with the Sun 6–16° below the horizon — civil dusk onwards.', settings:'24–50 mm, f/2.8–f/4, 1–5 s, ISO 400–800. They are brighter than you expect; check the histogram.', tips:'Electric-blue ripples high in the twilight that don’t darken as the sky does — ordinary cloud goes black, NLC stays lit.' },
+];
+
+function WeatherView({ data, initialLocId, onBack, onOpenMonth, isMobile, navControl }) {
+  const mono = "'IBM Plex Mono',monospace";
+  const places = useMemo(() => data.flatMap((m, i) => m.locations.map(l => ({ loc: l, m, i, coords: coordsOf(l) })).filter(p => p.coords)), [data]);
+  const todayMonth = new Date().getMonth();
+  const defaultId = initialLocId || (places.find(p => p.i === todayMonth) || places[0] || { loc: {} }).loc.id;
+  const [selId, setSelId] = useState(defaultId);
+  const sel = places.find(p => p.loc.id === selId) || places[0] || null;
+  const [fc, setFc] = useState({ status: 'idle' });
+  const [kp, setKp] = useState(null);
+  const cacheRef = useRef({});
+  const coordKey = sel ? sel.coords.join(',') : '';
+
+  // Forecast for the chosen spot — Met Office model first for UK coordinates,
+  // then Open-Meteo's best match; cached for the session.
+  useEffect(() => {
+    if (!sel) return;
+    if (cacheRef.current[coordKey]) { setFc({ status: 'ok', data: cacheRef.current[coordKey] }); return; }
+    const ctrl = new AbortController(); let cancelled = false;
+    setFc({ status: 'loading' });
+    (async () => {
+      const [lat, lng] = sel.coords;
+      const base = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lng
+        + '&hourly=temperature_2m,precipitation_probability,weather_code,cloud_cover,cloud_cover_low,visibility,wind_speed_10m,wind_gusts_10m'
+        + '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max'
+        + '&wind_speed_unit=mph&timezone=auto&forecast_days=7';
+      const tries = coordsInUK(lat, lng) ? [base + '&models=ukmo_seamless', base] : [base];
+      for (const url of tries) {
+        try {
+          const res = await fetch(url, { signal: ctrl.signal });
+          if (!res.ok) continue;
+          const json = await res.json();
+          if (!json || !json.daily || !json.hourly || !json.daily.time) continue;
+          json._model = url.indexOf('ukmo') !== -1 ? 'Met Office (UKMO) model' : 'best-match model';
+          if (cancelled) return;
+          cacheRef.current[coordKey] = json; setFc({ status: 'ok', data: json }); return;
+        } catch (_) { if (cancelled) return; }
+      }
+      if (!cancelled) setFc({ status: 'error' });
+    })();
+    return () => { cancelled = true; ctrl.abort(); };
+  }, [coordKey]);
+
+  // Live planetary K index (NOAA SWPC) for the aurora line; quietly absent if it fails.
+  useEffect(() => {
+    let c = false;
+    fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json').then(r => r.json()).then(rows => {
+      if (c || !Array.isArray(rows) || rows.length < 2) return;
+      const last = rows[rows.length - 1]; const v = parseFloat(last[1]);
+      if (!isNaN(v)) setKp({ value: v, time: String(last[0]).slice(0, 16) });
+    }).catch(() => {});
+    return () => { c = true; };
+  }, []);
+
+  // Per-day summaries from the hourly series: cloud at the sunrise and sunset
+  // hours and at 01:00 that night, the day's worst visibility, the Moon.
+  const days = useMemo(() => {
+    if (fc.status !== 'ok') return [];
+    const H = fc.data.hourly, D = fc.data.daily;
+    const idx = {}; H.time.forEach((t, i) => { idx[t.slice(0, 13)] = i; });
+    const keyAt = (dateStr, hour) => new Date(new Date(dateStr + 'T00:00:00Z').getTime() + hour * 3600000).toISOString().slice(0, 13);
+    const nearest = (iso) => { if (!iso) return null; const h = parseInt(iso.slice(11, 13), 10) + (parseInt(iso.slice(14, 16), 10) >= 30 ? 1 : 0); const k = keyAt(iso.slice(0, 10), h); return idx[k] != null ? idx[k] : null; };
+    const pick = (arr, i) => (arr && i != null && arr[i] != null) ? arr[i] : null;
+    return D.time.map((date, di) => {
+      const hrs = []; H.time.forEach((t, i) => { if (t.slice(0, 10) === date) hrs.push(i); });
+      const riseI = nearest(D.sunrise[di]), setI = nearest(D.sunset[di]);
+      let nightI = idx[keyAt(date, 25)]; if (nightI == null) nightI = idx[keyAt(date, 23)];
+      const vis = hrs.map(i => H.visibility ? H.visibility[i] : null).filter(v => v != null);
+      return {
+        date, code: D.weather_code ? D.weather_code[di] : null,
+        tmax: D.temperature_2m_max[di], tmin: D.temperature_2m_min[di],
+        rainP: D.precipitation_probability_max ? D.precipitation_probability_max[di] : null, rain: D.precipitation_sum ? D.precipitation_sum[di] : null,
+        wind: D.wind_speed_10m_max ? D.wind_speed_10m_max[di] : null, gust: D.wind_gusts_10m_max ? D.wind_gusts_10m_max[di] : null,
+        sunrise: (D.sunrise[di] || '').slice(11, 16), sunset: (D.sunset[di] || '').slice(11, 16),
+        cloudDawn: pick(H.cloud_cover, riseI), lowDawn: pick(H.cloud_cover_low, riseI),
+        cloudDusk: pick(H.cloud_cover, setI), lowDusk: pick(H.cloud_cover_low, setI),
+        cloudNight: pick(H.cloud_cover, nightI == null ? null : nightI),
+        visMin: vis.length ? Math.min(...vis) / 1000 : null,
+        moon: moonIllumination(new Date(date + 'T12:00:00Z')),
+      };
+    });
+  }, [fc]);
+
+  const label = (t, extra) => e('div', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', ...(extra || {}) } }, t);
+  const pct = (v) => v == null ? '—' : Math.round(v) + '%';
+  const cloudWord = (v) => v == null ? '' : v <= 15 ? 'clear' : v <= 50 ? 'some cloud' : v <= 85 ? 'cloudy' : 'overcast';
+  const fmtDay = (iso) => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const kpWord = (v) => v >= 7 ? 'storm — aurora possible across the UK' : v >= 5 ? 'storm — aurora possible in Scotland & the north' : v >= 4 ? 'active — watch the north' : v >= 3 ? 'unsettled' : 'quiet';
+  const kpTone = (v) => v >= 5 ? '#9E4B26' : v >= 3 ? '#8A5A1B' : '#54632F';
+
+  const linkStyle = { fontFamily:mono, fontSize:10.5, letterSpacing:'.08em', textTransform:'uppercase', color:'#54632F', textDecoration:'none', borderBottom:'1px solid #C9D4A8', paddingBottom:1, whiteSpace:'nowrap' };
+  const extLink = (href, text) => e('a', { key:text, className:'map-link', href, target:'_blank', rel:'noopener noreferrer', style:linkStyle }, text + ' ↗');
+  const card = { background:'#FBF7EC', border:'1px solid #C9BD9F', boxShadow:'0 1px 0 #C9BFA4' };
+
+  const links = sel ? (() => {
+    const [la, lo] = sel.coords; const uk = coordsInUK(la, lo);
+    const out = [];
+    if (uk) out.push(extLink('https://www.metoffice.gov.uk/weather/forecast/' + geohash(la, lo, 9), 'Met Office'));
+    out.push(extLink('https://www.windy.com/' + la.toFixed(3) + '/' + lo.toFixed(3) + '?' + la.toFixed(3) + ',' + lo.toFixed(3) + ',10', 'Windy'));
+    out.push(extLink('https://clearoutside.com/forecast/' + la.toFixed(2) + '/' + lo.toFixed(2), 'Clear Outside (astro)'));
+    out.push(extLink('https://www.meteoblue.com/en/weather/week/' + la.toFixed(3) + 'N' + lo.toFixed(3) + 'E', 'meteoblue'));
+    out.push(extLink('https://www.lightpollutionmap.info/#zoom=10&lat=' + la + '&lon=' + lo, 'Light pollution map'));
+    if (uk) { out.push(extLink('https://www.metoffice.gov.uk/weather/specialist-forecasts/mountain', 'Met Office mountain')); out.push(extLink('https://www.mwis.org.uk/', 'MWIS')); out.push(extLink('https://www.tidetimes.org.uk/', 'Tide times')); }
+    out.push(extLink('https://aurorawatch.lancs.ac.uk/', 'AuroraWatch UK'));
+    return out;
+  })() : [];
+
+  const dayRow = (d) => {
+    const w = WMO[d.code] || ['', ''];
+    const dusk = lightVerdict(d.cloudDusk, d.lowDusk, d.rainP);
+    const dawn = lightVerdict(d.cloudDawn, d.lowDawn, d.rainP);
+    const night = d.cloudNight == null ? null : d.cloudNight <= 25 ? (d.moon.frac < 0.35 ? 'dark & clear — astro night' : 'clear, moonlit') : d.cloudNight <= 60 ? 'some cloud' : 'cloudy';
+    const cell = (k, v, sub) => e('div', { style:{ minWidth: isMobile ? 'calc(50% - 6px)' : 0, flex: isMobile ? '1 1 calc(50% - 6px)' : '1 1 0' } },
+      label(k), e('div', { style:{ fontFamily:mono, fontSize:12.5, color:'#2A251E', marginTop:3, lineHeight:1.4 } }, v),
+      sub && e('div', { style:{ fontSize:12, color:'#8A7D63', marginTop:2, lineHeight:1.35 } }, sub));
+    return e('div', { key:d.date, style:{ ...card, padding: isMobile ? '12px 13px' : '13px 16px', display:'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 10 : 18, alignItems: isMobile ? 'stretch' : 'flex-start' } },
+      e('div', { style:{ flex: isMobile ? 'none' : '0 0 150px', display:'flex', gap:12, alignItems:'center' } },
+        e('span', { style:{ fontSize:26, lineHeight:1 } }, w[1]),
+        e('div', null,
+          e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:16, color:'#2A251E' } }, fmtDay(d.date)),
+          e('div', { style:{ fontSize:12.5, color:'#6E6450', marginTop:2 } }, w[0] + (d.tmax != null ? ' · ' + Math.round(d.tmin) + '–' + Math.round(d.tmax) + ' °C' : '')))),
+      e('div', { style:{ flex:1, display:'flex', flexWrap:'wrap', gap: isMobile ? '10px 12px' : 14 } },
+        cell('Dawn ' + d.sunrise, pct(d.cloudDawn) + ' cloud', dawn && e('span', { style:{ color:dawn.tone } }, dawn.text)),
+        cell('Dusk ' + d.sunset, pct(d.cloudDusk) + ' cloud', dusk && e('span', { style:{ color:dusk.tone } }, dusk.text)),
+        cell('Night', pct(d.cloudNight) + ' cloud', (night || '') + ' · moon ' + Math.round(d.moon.frac * 100) + '%' + (d.moon.waxing ? ' waxing' : ' waning')),
+        cell('Rain · wind · vis', (d.rainP != null ? Math.round(d.rainP) + '%' : '—') + ' · ' + (d.wind != null ? Math.round(d.wind) + (d.gust != null ? '/' + Math.round(d.gust) : '') + ' mph' : '—') + ' · ' + (d.visMin != null ? (d.visMin < 1 ? Math.round(d.visMin * 1000) + ' m' : Math.round(d.visMin) + ' km') : '—'),
+          d.rain != null ? Math.round(d.rain * 10) / 10 + ' mm' : null)
+      )
+    );
+  };
+
+  return e('div', null,
+    // Header
+    e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
+      e('div', null,
+        e('div', { onClick:onBack, onKeyDown:keyActivate(onBack), role:'button', tabIndex:0, title:'Back to the home page', style:{ display:'inline-flex', alignItems:'center', gap:9, cursor:'pointer' } },
+          e('img', { src:LOGO_SRC, alt:'', style:{ height:24, width:'auto', display:'block' } }),
+          e('div', { style:{ fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, fontSize:12.5, letterSpacing:'0.24em', textTransform:'uppercase', color:'#201e1d' } }, 'Photoplan')),
+        e('h1', { style:{ margin:'6px 0 0', fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, 'Weather'),
+        e('div', { style:{ marginTop:8, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'46ch', lineHeight:1.5 } }, 'What the sky is doing at each spot, read the way a photographer needs it: cloud at dawn and dusk, the night, the moon — and what each kind of shoot wants.')
+      ),
+      e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } }, navControl)
+    ),
+    e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 18px':'22px 0 24px' } }),
+
+    // Location picker + outlook
+    places.length === 0
+      ? e('div', { style:{ ...card, padding:18, fontSize:14, color:'#6E6450' } }, 'Add map coordinates to a location to see its forecast here.')
+      : e('div', null,
+          e('div', { style:{ display:'flex', alignItems:'center', gap:'10px 16px', flexWrap:'wrap' } },
+            label('Location'),
+            e('select', { value: sel ? sel.loc.id : '', onChange:(ev)=>setSelId(ev.target.value), 'aria-label':'Location for the forecast',
+                style:{ height:38, padding:'0 12px', background:'#FFFDF5', border:'1px solid #B3A988', color:'#2A251E', fontFamily:mono, fontSize:12, letterSpacing:'.04em', cursor:'pointer', borderRadius:0, maxWidth:'100%' } },
+              data.map((m, i) => { const ps = places.filter(p => p.i === i); return ps.length ? e('optgroup', { key:m.key, label:m.name }, ps.map(p => e('option', { key:p.loc.id, value:p.loc.id }, p.loc.name))) : null; })),
+            sel && e('button', { className:'btn-hover', onClick:()=>onOpenMonth(sel.i, sel.loc.id), style:{ height:38, padding:'0 14px', background:'#FBF7EC', border:'1px solid #2A251E', color:'#2A251E', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'3px 3px 0 rgba(42,37,30,0.12)' } }, 'Open ' + sel.m.name + ' →')
+          ),
+          sel && e('div', { style:{ marginTop:14, display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:'6px 18px', flexWrap:'wrap' } },
+            e('div', null,
+              e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:24, color:'#2A251E' } }, sel.loc.name),
+              e('div', { style:{ fontSize:13.5, color:'#6E6450', marginTop:2 } }, (sel.loc.where || '') + ' · ' + sel.coords[0].toFixed(3) + ', ' + sel.coords[1].toFixed(3))),
+            e('div', { style:{ fontFamily:mono, fontSize:10.5, color:'#A89A7C', letterSpacing:'.06em' } },
+              fc.status === 'ok' ? 'Seven days · ' + fc.data._model + ' · local time ' + (fc.data.timezone_abbreviation || '') : fc.status === 'loading' ? 'Fetching the forecast…' : fc.status === 'error' ? 'The forecast service could not be reached' : '')
+          ),
+          // Aurora + links
+          e('div', { style:{ marginTop:12, display:'flex', alignItems:'center', gap:'8px 18px', flexWrap:'wrap' } },
+            kp && e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.04em', color: kpTone(kp.value) } }, '✦ Aurora now: Kp ' + kp.value.toFixed(1) + ' — ' + kpWord(kp.value) + ' (NOAA ' + kp.time.slice(11) + ' UTC)'),
+            ...links
+          ),
+          // Days
+          e('div', { style:{ marginTop:16, display:'flex', flexDirection:'column', gap:8 } },
+            fc.status === 'loading' && e('div', { style:{ ...card, padding:16, fontFamily:mono, fontSize:11, color:'#8A7D63', letterSpacing:'.04em' } }, 'Loading…'),
+            fc.status === 'error' && e('div', { style:{ ...card, padding:16, fontSize:14, color:'#6E6450', lineHeight:1.5 } }, 'No live forecast right now — the links above open the same spot on the forecast sites.'),
+            days.map(dayRow)
+          ),
+          fc.status === 'ok' && e('div', { style:{ marginTop:10, fontFamily:mono, fontSize:10.5, color:'#A89A7C', letterSpacing:'.03em', lineHeight:1.6 } }, 'Cloud figures are total cover at the hour nearest sunrise, sunset and 01:00. Treat days four to seven as a trend, not a plan. Data: Open-Meteo.com (CC BY 4.0).')
+        ),
+
+    // Guide
+    e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:44 } },
+      e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'#8A7D63', whiteSpace:'nowrap' } }, 'Conditions & settings'),
+      e('span', { style:{ flex:1, height:1, background:'#D2C7AC' } }),
+      e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.06em', color:'#A89A7C', whiteSpace:'nowrap' } }, WEATHER_GUIDE.length + ' kinds of shoot')
+    ),
+    e('div', { style:{ marginTop:16, display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap:12 } },
+      WEATHER_GUIDE.map(g => e('div', { key:g.title, style:{ ...card, padding: isMobile ? '14px 14px 15px' : '16px 18px 17px' } },
+        e('div', { style:{ display:'flex', alignItems:'baseline', gap:9 } },
+          e('span', { style:{ fontFamily:mono, color:'#9E4B26', fontSize:13 } }, g.glyph),
+          e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:17, color:'#2A251E' } }, g.title)),
+        [['Conditions', g.conditions], ['Settings', g.settings], ['Tips', g.tips]].map(([k, v]) =>
+          e('div', { key:k, style:{ marginTop:10 } }, label(k), e('div', { style:{ fontSize:14, color:'#3B3528', lineHeight:1.5, marginTop:3 } }, v)))
+      ))
+    )
+  );
+}
+
 function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEditIntro, editMode, editControl }) {
   const VW = 1000, VH = 640, VMIN = 1, VMAX = 20, PAPER = '#FCFAF1';
   const isMobile = useIsMobile();
@@ -2221,6 +2478,8 @@ function App() {
   const [yearView, setYearView] = useState(true);
   const [mapView, setMapView] = useState(false);
   const [printView, setPrintView] = useState(false);
+  const [weatherView, setWeatherView] = useState(false);
+  const [weatherLoc, setWeatherLoc] = useState(null); // location the Weather page opens on
   const [monthIdx, setMonthIdx] = useState(0);
   const [selectedLoc, setSelectedLoc] = useState(null); // no brief open until a tile is tapped
   const [editingEvent, setEditingEvent] = useState(null);
@@ -2545,14 +2804,16 @@ function App() {
     });
   }, []);
 
-  const goToYear = () => { setMapView(false); setPrintView(false); setYearView(true); };
-  const goToMap = () => { setPrintView(false); setMapView(true); };
-  const goToPrint = () => { setMapView(false); setPrintView(true); };
+  const goToYear = () => { setMapView(false); setPrintView(false); setWeatherView(false); setYearView(true); };
+  const goToMap = () => { setPrintView(false); setWeatherView(false); setMapView(true); };
+  const goToPrint = () => { setMapView(false); setWeatherView(false); setPrintView(true); };
+  const goToWeather = (locId) => { setMapView(false); setPrintView(false); setWeatherLoc(locId || null); setWeatherView(true); };
   const goToMonth = (idx, locId) => {
     const m = data[idx];
     if (!m) return;
     setMapView(false);
     setPrintView(false);
+    setWeatherView(false);
     setYearView(false);
     setMonthIdx(idx);
     // Only an explicit deep link (year-page row, map card) opens a brief —
@@ -2566,6 +2827,7 @@ function App() {
     const next = (pos + dir + n + 1) % (n + 1);
     setMapView(false);
     setPrintView(false);
+    setWeatherView(false);
     if (next === 0) { setYearView(true); return; }
     const idx = next - 1;
     setYearView(false);
@@ -2951,6 +3213,7 @@ function App() {
   const nextBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(1), title:'Next month', 'aria-label':'Next month', style:WhiteBtn }, '›');
   const mapBtn = e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map');
   const printBtn = e('button', { className:'btn-hover', onClick:goToPrint, title:'A printable wall calendar for the selected year', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⎙'), ' Print');
+  const weatherBtn = e('button', { className:'btn-hover', onClick:()=>goToWeather(null), title:'Forecasts for each location, and the conditions each kind of shoot wants', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '☁'), ' Weather');
   const icsBtn = e('button', { className:'btn-hover', onClick:downloadIcs, title:'Download the ' + viewYear + ' events as a calendar file (.ics) to add to your phone or desktop calendar', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⤓'), ' Calendar file');
   // Month view keeps both arrows; the year view drops the right arrow (it's the
   // same as the January button) and sits the left arrow just before January.
@@ -2970,11 +3233,11 @@ function App() {
   // foot of the nav column, see addLocBtn).
   const navRow = (showYearBtn) => showYearBtn
     ? e('div', { style:navRowStyle },
-        prevBtn, nextBtn, monthPicker(), navDivider(), mapBtn, navDivider(),
+        prevBtn, nextBtn, monthPicker(), navDivider(), mapBtn, weatherBtn, navDivider(),
         e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home')
       )
     : e('div', { style:navRowStyle },
-        mapBtn, editMode && printBtn, editMode && icsBtn, navDivider(), prevBtn,
+        mapBtn, weatherBtn, editMode && printBtn, editMode && icsBtn, navDivider(), prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
 
@@ -3381,7 +3644,9 @@ function App() {
                               cell('Golden', L.rise + '–' + L.goldenEnd + ' · ' + L.goldenStart + '–' + L.set),
                               cell('Blue', L.dawn + '–' + L.rise + ' · ' + L.set + '–' + L.dusk),
                               cell('Daylight', L.dayLen + ' h')),
-                        e('div', { style:{ marginTop:6, fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', color:'#B7AD90' } }, 'Mid-' + month.name + ' ' + viewYear + ' · ' + L.zone + (L.zone === 'UTC' ? ' — local clock time will differ' : ''))
+                        e('div', { style:{ marginTop:6, display:'flex', alignItems:'baseline', gap:14, flexWrap:'wrap' } },
+                          e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', color:'#B7AD90' } }, 'Mid-' + month.name + ' ' + viewYear + ' · ' + L.zone + (L.zone === 'UTC' ? ' — local clock time will differ' : '')),
+                          e('button', { onClick:()=>goToWeather(sel.id), style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:mono, fontSize:10.5, letterSpacing:'.08em', textTransform:'uppercase', color:'#54632F', borderBottom:'1px solid #C9D4A8' } }, 'Forecast & conditions →'))
                       )
                     );
                   })(),
@@ -3876,7 +4141,10 @@ function App() {
   return e(EditCtx.Provider, { value: editMode }, e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       renderCloudBanner(),
-      mapView
+      weatherView
+        ? e(WeatherView, { data, initialLocId: weatherLoc, onBack: goToYear, onOpenMonth: goToMonth, isMobile,
+            navControl: e('div', { style:navRowStyle }, e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'), navDivider(), mapBtn) })
+        : mapView
         ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro, editMode, editControl: editToggle() })
         : (printView && editMode)
           ? renderPrintPage()
