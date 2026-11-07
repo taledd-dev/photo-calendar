@@ -3279,7 +3279,10 @@ function App() {
   const renderYearPage = () => e('div', null,
     // Header
     e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
-      e('div', null,
+      // The title column may shrink so the nav fits beside it; the nav column
+      // grows so that, when it does wrap onto its own line, it spans the width
+      // and its rows stay right-aligned instead of huddling on the left.
+      e('div', { style: isMobile ? {} : { flex:'1 1 460px', minWidth:0 } },
         // The brand lockup, rebuilt in HTML (an SVG lockup loaded via <img>
         // can't fetch its font): mark beside PHOTOPLAN in Figtree bold,
         // wide-tracked caps — proportions and colour per the lockup SVGs.
@@ -3297,7 +3300,7 @@ function App() {
       ),
       // On phones this column wraps below the title, so pin it to the left edge
       // (right-aligned buttons floating mid-screen look broken when stacked).
-      e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
+      e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{ flex:'1 1 auto' }) } },
         navRow(false),
         yearRow(),
         regionLegend(),
@@ -3433,7 +3436,8 @@ function App() {
     return e('div', null,
       // Header
       e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
-        e('div', null,
+        // Same arrangement as the home header: shrinkable title column, growing nav column.
+        e('div', { style: isMobile ? {} : { flex:'1 1 380px', minWidth:0 } },
           // Small Photoplan lockup (same face as the home masthead), clickable home.
           e('div', { onClick:goToYear, onKeyDown:keyActivate(goToYear), role:'button', tabIndex:0, title:'Back to the home page', style:{ display:'inline-flex', alignItems:'center', gap:9, cursor:'pointer' } },
             e('img', { src:LOGO_SRC, alt:'', style:{ height:24, width:'auto', display:'block' } }),
@@ -3446,7 +3450,7 @@ function App() {
           e(Editable, { key:'tagline-'+month.key, tag:'div', value:month.tagline, onCommit:(t)=>editMonthField('tagline', t), title:"Click to edit this month's description", style:{ marginTop:8, marginLeft:-4, marginRight:-4, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'30ch', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px' } })
         ),
         // Same as the year page: left-align + full width once it wraps on a phone.
-        e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
+        e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{ flex:'1 1 auto' }) } },
           navRow(true),
           regionLegend(),
           addLocBtn()
