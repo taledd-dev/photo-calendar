@@ -2456,6 +2456,59 @@ function App() {
     return { ...lightAt(c[0], c[1], viewYear, i, 15), place: ref ? ref.l.name : 'London' };
   };
   const lightTitle = (m2, L) => 'Sunrise and sunset on 15 ' + m2.name + ' ' + viewYear + ' at ' + L.place + ' (' + L.zone + ')';
+
+  // ─── Coming up ────────────────────────────────────────────────────────────
+  // The next few events from today (real time, whatever year is picked):
+  // photo ops, moons, showers, nature windows… across the year boundary. A
+  // window already under way shows as "Now".
+  const UPCOMING_DAYS = 120;
+  const upcoming = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const horizon = new Date(today.getTime() + UPCOMING_DAYS * 86400000);
+    const items = [];
+    [today.getFullYear(), today.getFullYear() + 1].forEach(y => {
+      data.forEach((m2, i) => eventsFor(m2, y).forEach(ev => {
+        const s = ev.start != null ? ev.start : ev.day, en = ev.end != null ? ev.end : s;
+        const startD = new Date(y, i, s), endD = new Date(y, i, en);
+        if (endD < today || startD > horizon) return;
+        items.push({ ev, y, i, m2, date: startD < today ? today : startD, ongoing: startD < today, end: endD, multi: en !== s, thisYear: y === today.getFullYear() });
+      }));
+    });
+    items.sort((a, b) => (a.date - b.date) || ((a.ongoing ? 0 : 1) - (b.ongoing ? 0 : 1)));
+    return items.slice(0, 7);
+  }, [data]);
+
+  // ─── Calendar file (.ics) ─────────────────────────────────────────────────
+  // The selected year's events as all-day iCalendar entries (photo ops carry
+  // the location, its coordinates and the idea), downloaded as one file to
+  // import into a phone or desktop calendar.
+  const downloadIcs = () => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const dt = (y, m, d) => y + pad(m + 1) + pad(d);
+    const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+    const fold = (line) => { const out = []; while (line.length > 73) { out.push(line.slice(0, 73)); line = ' ' + line.slice(73); } out.push(line); return out; };
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Photoplan//photoplan.studio//EN', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:Photoplan ' + viewYear];
+    data.forEach((m2, i) => eventsFor(m2, viewYear).forEach(ev => {
+      const s = ev.start != null ? ev.start : ev.day, en = ev.end != null ? ev.end : s;
+      const endExcl = new Date(viewYear, i, en + 1); // DTEND is exclusive for all-day events
+      const loc = ev.kind === 'photoop' && ev.locId ? m2.locations.find(l => l.id === ev.locId) : null;
+      const kindName = KIND_LABEL[ev.kind] || ev.kindLabel || 'Event';
+      const desc = [kindName, loc && loc.where, loc && loc.idea, loc && loc.when, 'photoplan.studio'].filter(Boolean).join('\n');
+      lines.push('BEGIN:VEVENT', 'UID:' + ev.id + '-' + viewYear + '@photoplan.studio', 'DTSTAMP:' + stamp,
+        'DTSTART;VALUE=DATE:' + dt(viewYear, i, s), 'DTEND;VALUE=DATE:' + dt(endExcl.getFullYear(), endExcl.getMonth(), endExcl.getDate()),
+        'SUMMARY:' + esc((loc ? 'Photo op: ' : '') + ev.label), 'DESCRIPTION:' + esc(desc));
+      const c = loc && coordsOf(loc);
+      if (c) { lines.push('GEO:' + c[0] + ';' + c[1]); lines.push('LOCATION:' + esc(loc.name + (loc.where ? ', ' + loc.where : ''))); }
+      lines.push('END:VEVENT');
+    }));
+    lines.push('END:VCALENDAR');
+    const text = lines.flatMap(fold).join('\r\n') + '\r\n';
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/calendar;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'photoplan-' + viewYear + '.ics';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
   const mi = Math.min(monthIdx, data.length - 1);
   const month = monthForYear(data[mi], mi);
   const matted = heroFraming === 'Matted print';
@@ -2871,6 +2924,7 @@ function App() {
   const nextBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(1), title:'Next month', 'aria-label':'Next month', style:WhiteBtn }, '›');
   const mapBtn = e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map');
   const printBtn = e('button', { className:'btn-hover', onClick:goToPrint, title:'A printable wall calendar for the selected year', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⎙'), ' Print');
+  const icsBtn = e('button', { className:'btn-hover', onClick:downloadIcs, title:'Download the ' + viewYear + ' events as a calendar file (.ics) to add to your phone or desktop calendar', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⤓'), ' Calendar file');
   // Month view keeps both arrows; the year view drops the right arrow (it's the
   // same as the January button) and sits the left arrow just before January.
   // On phones the row is allowed to wrap and the thin dividers are dropped —
@@ -2893,7 +2947,7 @@ function App() {
         e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home')
       )
     : e('div', { style:navRowStyle },
-        mapBtn, editMode && printBtn, navDivider(), prevBtn,
+        mapBtn, editMode && printBtn, editMode && icsBtn, navDivider(), prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
 
@@ -3008,6 +3062,30 @@ function App() {
         e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:16, fontWeight:600, color:'#2A251E' } }, 'Twelve frames, twelve months')
       ),
       e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#8A7D63', letterSpacing:'.03em' } }, 'UK & international')
+    ),
+    // Coming up — the next few dates from today, as a row of small cards that
+    // open the month (and the location, for a photo op). Scrolls sideways on
+    // a phone rather than wrapping into a wall of cards.
+    upcoming.length > 0 && e('div', { style:{ marginTop:34 } },
+      e('div', { style:{ display:'flex', alignItems:'center', gap:14 } },
+        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'#8A7D63', whiteSpace:'nowrap' } }, 'Coming up'),
+        e('span', { style:{ flex:1, height:1, background:'#D2C7AC' } }),
+        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em', color:'#A89A7C', whiteSpace:'nowrap' } }, 'next ' + UPCOMING_DAYS + ' days')
+      ),
+      e('div', { style:{ display:'flex', gap:10, marginTop:14, overflowX:'auto', paddingBottom:6, WebkitOverflowScrolling:'touch' } },
+        upcoming.map(it => {
+          const st = styleOf(it.ev);
+          const fmt = (d) => d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+          const when = it.ongoing ? 'Now · until ' + fmt(it.end) : fmt(it.date) + (it.multi ? ' – ' + fmt(it.end) : '');
+          const open = () => { setViewYear(it.y); goToMonth(it.i, it.ev.kind === 'photoop' ? (it.ev.locId || null) : null); };
+          return e('div', { key: it.y + '-' + it.m2.key + '-' + it.ev.id, role:'button', tabIndex:0, onClick:open, onKeyDown:keyActivate(open), className:'map-chip', title:'Open ' + it.m2.name + ' ' + it.y,
+              style:{ flex:'0 0 auto', width: isMobile ? 168 : 196, padding:'10px 12px 11px', background:'#FBF7EC', border:'1px solid #C9BD9F', borderLeft:'4px solid ' + st.accent, cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.08)' } },
+            e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color: it.ongoing ? '#54632F' : '#9C8F71', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, when),
+            e('div', { style:{ marginTop:6, fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'#2A251E', lineHeight:1.25, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' } }, (st.glyph ? st.glyph + ' ' : '') + it.ev.label),
+            e('div', { style:{ marginTop:5, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#A89A7C', letterSpacing:'.06em' } }, it.m2.name + (it.thisYear ? '' : ' ' + it.y))
+          );
+        })
+      )
     ),
     // Month index
     e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:40 } },

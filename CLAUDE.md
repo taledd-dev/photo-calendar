@@ -176,6 +176,13 @@ a per-location "Light" row. `daylightNote` stays editorial.
   "Print these event types" / "Photo captions" chips on the print page,
   cloud-synced. The print grid uses `buildWeeks(..., { top:30, step:24 })`
   geometry with 21px bars and a per-page type key.
+- **Coming up** (home page, under the hero): `upcoming` memo — the next 7
+  events within `UPCOMING_DAYS` (120) of *today* (real date, this year and
+  next, via `eventsFor`), ongoing windows first as "Now · until …"; cards open
+  the month (and the location for a photo op) after switching `viewYear`.
+- **Calendar file**: `downloadIcs()` (home nav "⤓ Calendar file", owner only)
+  writes the selected year's events as all-day VEVENTs (folded lines, GEO +
+  LOCATION on photo ops) to `photoplan-<year>.ics` via a Blob download.
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
   `navRow(showYearBtn)` renders the top buttons. Month pages: `‹ › [month
