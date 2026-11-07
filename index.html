@@ -1274,7 +1274,9 @@ function makeData() {
 // older data (whose single `events` array was the 2026 calendar) and seeds any
 // missing year from YEAR_EVENTS below. The grid's weekday/day-count comes from
 // Date, so any year renders correctly.
-const YEARS = [2026, 2027, 2028];
+// The years on offer: 2026 up to ten years ahead of today, rolling — the
+// astronomy is computed, so any year works (see generatedEvents).
+const YEARS = (() => { const end = Math.max(2028, new Date().getFullYear() + 9); const a = []; for (let y = 2026; y <= end; y++) a.push(y); return a; })();
 
 // Seeded astro/nature events for the additional years. Moon phases, eclipses,
 // equinoxes/solstices and UK clock changes use that year's real dates (to ±1
@@ -1436,17 +1438,227 @@ const YEAR_EVENTS = {
   },
 };
 
+// ─── Astronomy ───────────────────────────────────────────────────────────────
+// Everything the calendar needs for any year, computed rather than typed in:
+// moon phases (Meeus, Astronomical Algorithms ch. 49 — good to a few minutes),
+// equinoxes/solstices (iterating the Sun's apparent longitude to the cardinal
+// points — good to ~15 min), UK clock changes, and sunrise/sunset/golden-hour
+// times at any coordinates (the NOAA solar-calculator method). Calendar dates
+// are taken in UK civil time (GMT/BST): this is a UK calendar. Checked against
+// the 2026 almanac and the hand-seeded 2027/28 years (scratch test, Nov 2026).
+const RAD = Math.PI / 180;
+const J2000 = 2451545.0;
+function jdFromDate(d) { return d.getTime() / 86400000 + 2440587.5; }
+function dateFromJd(jd) { return new Date((jd - 2440587.5) * 86400000); }
+function norm360(x) { return ((x % 360) + 360) % 360; }
+
+// UK civil time: BST (UTC+1) from 01:00 UTC on the last Sunday of March to
+// 01:00 UTC on the last Sunday of October.
+function lastSunday(year, monthIdx) { const d = new Date(Date.UTC(year, monthIdx + 1, 0)); return d.getUTCDate() - d.getUTCDay(); }
+function ukOffsetHours(date) {
+  const y = date.getUTCFullYear();
+  const start = Date.UTC(y, 2, lastSunday(y, 2), 1), end = Date.UTC(y, 9, lastSunday(y, 9), 1);
+  const t = date.getTime();
+  return (t >= start && t < end) ? 1 : 0;
+}
+// A UTC instant as UK-local calendar parts { y, m (0-11), d, hh, mm }.
+function ukParts(date) {
+  const t = new Date(date.getTime() + ukOffsetHours(date) * 3600000);
+  return { y: t.getUTCFullYear(), m: t.getUTCMonth(), d: t.getUTCDate(), hh: t.getUTCHours(), mm: t.getUTCMinutes() };
+}
+
+// The Sun for a Julian day: apparent longitude (deg), declination (deg) and
+// the equation of time (minutes). Low-precision series, about ±0.01°.
+function sunPosition(jd) {
+  const T = (jd - J2000) / 36525;
+  const L0 = norm360(280.46646 + T * (36000.76983 + 0.0003032 * T));
+  const M = norm360(357.52911 + T * (35999.05029 - 0.0001537 * T));
+  const ecc = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+  const Mr = M * RAD;
+  const C = Math.sin(Mr) * (1.914602 - T * (0.004817 + 0.000014 * T)) + Math.sin(2 * Mr) * (0.019993 - 0.000101 * T) + Math.sin(3 * Mr) * 0.000289;
+  const omega = 125.04 - 1934.136 * T;
+  const lambda = L0 + C - 0.00569 - 0.00478 * Math.sin(omega * RAD);
+  const eps0 = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60;
+  const eps = eps0 + 0.00256 * Math.cos(omega * RAD);
+  const decl = Math.asin(Math.sin(eps * RAD) * Math.sin(lambda * RAD)) / RAD;
+  const y = Math.tan(eps * RAD / 2) ** 2;
+  const L0r = L0 * RAD;
+  const eot = 4 * (y * Math.sin(2 * L0r) - 2 * ecc * Math.sin(Mr) + 4 * ecc * y * Math.sin(Mr) * Math.cos(2 * L0r) - 0.5 * y * y * Math.sin(4 * L0r) - 1.25 * ecc * ecc * Math.sin(2 * Mr)) / RAD;
+  return { lambda: norm360(lambda), decl, eot };
+}
+
+// Minutes past 0h UTC when the Sun's centre crosses a zenith angle on the
+// given UTC date (90.833° = rise/set, 84° = the 6°-up golden-hour edge, 96° =
+// civil dawn/dusk), or null when it never does (midnight sun / polar night).
+// `dir` is -1 for the morning crossing, +1 for the evening one.
+function sunCrossing(dateUTC, lat, lng, zenith, dir) {
+  const jd0 = Math.floor(jdFromDate(dateUTC) + 0.5) - 0.5; // 0h UT that day
+  let t = 720 - 4 * lng; // first guess: local solar noon
+  for (let i = 0; i < 3; i++) {
+    const s = sunPosition(jd0 + t / 1440);
+    const cosH = Math.cos(zenith * RAD) / (Math.cos(lat * RAD) * Math.cos(s.decl * RAD)) - Math.tan(lat * RAD) * Math.tan(s.decl * RAD);
+    if (cosH > 1 || cosH < -1) return null;
+    const H = Math.acos(cosH) / RAD;
+    t = 720 - 4 * (lng - dir * H) - s.eot;
+  }
+  return t;
+}
+// Sun times at a place on a UTC calendar date, as minutes past 0h UTC (or
+// null): rise/set, the golden-hour edges (Sun 6° up) and civil dawn/dusk.
+function sunTimes(dateUTC, lat, lng) {
+  return {
+    rise: sunCrossing(dateUTC, lat, lng, 90.833, -1), set: sunCrossing(dateUTC, lat, lng, 90.833, 1),
+    goldenEnd: sunCrossing(dateUTC, lat, lng, 84, -1), goldenStart: sunCrossing(dateUTC, lat, lng, 84, 1),
+    dawn: sunCrossing(dateUTC, lat, lng, 96, -1), dusk: sunCrossing(dateUTC, lat, lng, 96, 1),
+  };
+}
+// "HH:MM" for minutes past 0h UTC shifted into a zone `offsetH` hours ahead.
+function fmtMinutes(min, offsetH) {
+  if (min == null) return '—';
+  let t = Math.round(min + offsetH * 60); t = ((t % 1440) + 1440) % 1440;
+  return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+}
+const LONDON = [51.5074, -0.1278];
+// The light at a place on a date: times in UK civil time for UK coordinates
+// and in UTC elsewhere (there's no time-zone table for far-flung spots), plus
+// the day length in hours. `polar` names the case when the Sun never rises
+// ('polar night') or never sets ('midnight sun'); otherwise null.
+function lightAt(lat, lng, year, monthIdx, day) {
+  const date = new Date(Date.UTC(year, monthIdx, day, 12));
+  const uk = coordsInUK(lat, lng);
+  const off = uk ? ukOffsetHours(date) : 0;
+  const s = sunTimes(date, lat, lng);
+  const f = (m) => fmtMinutes(m, off);
+  const dayLen = (s.rise != null && s.set != null) ? Math.round((s.set - s.rise) / 6) / 10 : null;
+  let polar = null;
+  if (s.rise == null) { const noonAlt = 90 - Math.abs(lat - sunPosition(jdFromDate(date)).decl); polar = noonAlt > 0 ? 'midnight sun' : 'polar night'; }
+  return { zone: uk ? (off ? 'BST' : 'GMT') : 'UTC', rise: f(s.rise), set: f(s.set), goldenEnd: f(s.goldenEnd), goldenStart: f(s.goldenStart), dawn: f(s.dawn), dusk: f(s.dusk), dayLen, polar };
+}
+
+// ── Moon phases (Meeus ch. 49). k integer = new moon, k + 0.5 = full moon,
+// counted from the new moon of 2000-01-06. Returns the JDE (≈ UT).
+function moonPhaseJd(k) {
+  const T = k / 1236.85, T2 = T * T, T3 = T2 * T, T4 = T3 * T;
+  const jde = 2451550.09766 + 29.530588861 * k + 0.00015437 * T2 - 0.000000150 * T3 + 0.00000000073 * T4;
+  const E = 1 - 0.002516 * T - 0.0000074 * T2;
+  const M = (2.5534 + 29.10535670 * k - 0.0000014 * T2 - 0.00000011 * T3) * RAD;
+  const Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T2 + 0.00001238 * T3 - 0.000000058 * T4) * RAD;
+  const F = (160.7108 + 390.67050284 * k - 0.0016118 * T2 - 0.00000227 * T3 + 0.000000011 * T4) * RAD;
+  const Om = (124.7746 - 1.56375588 * k + 0.0020672 * T2 + 0.00000215 * T3) * RAD;
+  const full = Math.abs(k - Math.floor(k) - 0.5) < 0.01;
+  const s = Math.sin;
+  // The two series share every term but the first few coefficients.
+  const [c1, c2, c3, c4, c5, c6, c7] = full
+    ? [-0.40614, 0.17302, 0.01614, 0.01043, 0.00734, -0.00515, 0.00209]
+    : [-0.40720, 0.17241, 0.01608, 0.01039, 0.00739, -0.00514, 0.00208];
+  let c = c1 * s(Mp) + c2 * E * s(M) + c3 * s(2 * Mp) + c4 * s(2 * F) + c5 * E * s(Mp - M) + c6 * E * s(Mp + M) + c7 * E * E * s(2 * M)
+    - 0.00111 * s(Mp - 2 * F) - 0.00057 * s(Mp + 2 * F) + 0.00056 * E * s(2 * Mp + M) - 0.00042 * s(3 * Mp)
+    + 0.00042 * E * s(M + 2 * F) + 0.00038 * E * s(M - 2 * F) - 0.00024 * E * s(2 * Mp - M) - 0.00017 * s(Om)
+    - 0.00007 * s(Mp + 2 * M) + 0.00004 * s(2 * Mp - 2 * F) + 0.00004 * s(3 * M) + 0.00003 * s(Mp + M - 2 * F)
+    + 0.00003 * s(2 * Mp + 2 * F) - 0.00003 * s(Mp + M + 2 * F) + 0.00003 * s(Mp - M + 2 * F) - 0.00002 * s(Mp - M - 2 * F)
+    - 0.00002 * s(3 * Mp + M) + 0.00002 * s(4 * Mp);
+  // planetary arguments
+  [[299.77 + 0.107408 * k - 0.009173 * T2, 0.000325], [251.88 + 0.016321 * k, 0.000165], [251.83 + 26.651886 * k, 0.000164],
+   [349.42 + 36.412478 * k, 0.000126], [84.66 + 18.206239 * k, 0.000110], [141.74 + 53.303771 * k, 0.000062],
+   [207.14 + 2.453732 * k, 0.000060], [154.84 + 7.306860 * k, 0.000056], [34.52 + 27.261239 * k, 0.000047],
+   [207.19 + 0.121824 * k, 0.000042], [291.34 + 1.844379 * k, 0.000040], [161.72 + 24.198154 * k, 0.000037],
+   [239.56 + 25.513099 * k, 0.000035], [331.55 + 3.592518 * k, 0.000023]].forEach(([deg, coef]) => { c += coef * s(deg * RAD); });
+  return jde + c;
+}
+// Every new and full moon falling in a (UK) calendar year, in date order.
+function moonPhasesInYear(year) {
+  const out = [];
+  const k0 = Math.floor((year - 2000) * 12.3685) - 2;
+  for (let k = k0; k < k0 + 16; k++) {
+    [[k, 'new'], [k + 0.5, 'full']].forEach(([kk, phase]) => {
+      const date = dateFromJd(moonPhaseJd(kk));
+      if (ukParts(date).y === year) out.push({ phase, date });
+    });
+  }
+  return out.sort((a, b) => a.date - b.date);
+}
+
+// Equinoxes and solstices: when the Sun's apparent longitude reaches 0°, 90°,
+// 180°, 270° (index 0–3), found by iterating from a rough date.
+function seasonInstant(year, index) {
+  const approx = [[2, 20], [5, 21], [8, 22], [11, 21]][index];
+  let jd = jdFromDate(new Date(Date.UTC(year, approx[0], approx[1], 12)));
+  for (let i = 0; i < 8; i++) {
+    let diff = index * 90 - sunPosition(jd).lambda;
+    diff = ((diff % 360) + 540) % 360 - 180; // shortest way round
+    jd += diff * 365.2422 / 360;
+    if (Math.abs(diff) < 0.00001) break;
+  }
+  return dateFromJd(jd);
+}
+
+// ── A whole year of events, computed. Moons are named (Harvest = the full
+// moon nearest the autumn equinox; a second full moon in a month is a Blue
+// Moon); eclipses come from the short table (they can't be computed simply —
+// extend it as years roll on; the seeded 2026–28 years carry their own);
+// meteor showers and nature windows recur annually from the template. Same
+// shape as stored events; cached per year. Years with nothing stored in
+// eventsByYear show these, and the list is written into the data the first
+// time the owner edits that year (see saveEvent/deleteEvent).
+const MONTH_KEYS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+const FULL_MOON_NAMES = ['Wolf Moon','Snow Moon','Worm Moon','Pink Moon','Flower Moon','Strawberry Moon','Buck Moon','Sturgeon Moon','Corn Moon',"Hunter's Moon",'Beaver Moon','Cold Moon'];
+const ECLIPSES = { // month index, day (UK date), label — the notable ones only
+  2029: [{ m: 5, d: 26, label: 'Total lunar eclipse' }, { m: 11, d: 20, label: 'Total lunar eclipse' }],
+  2030: [{ m: 5, d: 1, label: 'Annular solar eclipse — partial from the UK' }, { m: 5, d: 15, label: 'Partial lunar eclipse' }, { m: 10, d: 25, label: 'Total solar eclipse — southern Africa & Australia' }],
+};
+const ANNUAL_TEMPLATE = Object.fromEntries(Object.entries(YEAR_EVENTS[2028]).map(([mk, evs]) => [mk, evs.filter(ev => ev.kind === 'meteor' || ev.kind === 'nature')]));
+const generatedCache = {};
+function generatedEvents(year) {
+  if (generatedCache[year]) return generatedCache[year];
+  const by = {}; MONTH_KEYS.forEach(k => { by[k] = []; });
+  let n = 0;
+  const add = (m, ev) => { by[MONTH_KEYS[m]].push({ id: 'g' + year + '-' + MONTH_KEYS[m] + '-' + (++n), ...ev }); };
+  const seasons = [0, 1, 2, 3].map(i => ukParts(seasonInstant(year, i)));
+  const moons = moonPhasesInYear(year);
+  const fulls = moons.filter(mo => mo.phase === 'full');
+  const eqTime = Date.UTC(seasons[2].y, seasons[2].m, seasons[2].d);
+  const harvest = fulls.reduce((best, mo) => (!best || Math.abs(mo.date - eqTime) < Math.abs(best.date - eqTime)) ? mo : best, null);
+  const seenFull = {};
+  moons.forEach(mo => {
+    const p = ukParts(mo.date);
+    if (mo.phase === 'new') { add(p.m, { type: 'day', day: p.d, kind: 'newmoon', label: 'New Moon' }); return; }
+    let label = mo === harvest ? 'Harvest Moon' : FULL_MOON_NAMES[p.m];
+    if (seenFull[p.m]) label = 'Blue Moon';
+    seenFull[p.m] = true;
+    add(p.m, { type: 'day', day: p.d, kind: 'fullmoon', label });
+  });
+  [['Spring equinox', 0], ['Summer solstice', 1], ['Autumn equinox', 2], ['Winter solstice', 3]].forEach(([label, i]) => add(seasons[i].m, { type: 'day', day: seasons[i].d, kind: 'season', label }));
+  add(2, { type: 'day', day: lastSunday(year, 2), kind: 'season', label: 'Clocks forward' });
+  add(9, { type: 'day', day: lastSunday(year, 9), kind: 'season', label: 'Clocks back' });
+  (ECLIPSES[year] || []).forEach(ec => add(ec.m, { type: 'day', day: ec.d, kind: 'eclipse', label: ec.label }));
+  MONTH_KEYS.forEach((mk, m) => (ANNUAL_TEMPLATE[mk] || []).forEach(ev => {
+    const copy = { type: ev.type, kind: ev.kind, label: ev.label };
+    if (ev.type === 'range') { copy.start = ev.start; copy.end = ev.end; } else copy.day = ev.day;
+    add(m, copy);
+  }));
+  const startOf = (ev) => ev.start != null ? ev.start : ev.day;
+  MONTH_KEYS.forEach(mk => by[mk].sort((a, b) => startOf(a) - startOf(b)));
+  generatedCache[year] = by;
+  return by;
+}
+// The events of a month in a year: what's stored, else the computed set.
+function eventsFor(m, year) {
+  const stored = m.eventsByYear && m.eventsByYear[String(year)];
+  return stored || generatedEvents(year)[m.key] || [];
+}
+
 // Upgrade any loaded dataset to the per-year shape, idempotently: an old-style
-// `events` array becomes the 2026 calendar, and any of YEARS missing from
-// eventsByYear is filled from the seed above. Unknown years are preserved.
+// `events` array becomes the 2026 calendar, and the hand-seeded years in
+// YEAR_EVENTS are filled in if missing. Other years aren't stored until the
+// owner edits them (they show the computed events meanwhile).
 function migrateYearEvents(arr) {
   if (!Array.isArray(arr)) return arr;
   return arr.map(m => {
     const by = {};
     Object.entries(m.eventsByYear || {}).forEach(([y, evs]) => { by[y] = evs; });
     if (!by['2026']) by['2026'] = m.events || [];
-    YEARS.forEach(y => {
-      if (!by[String(y)]) by[String(y)] = ((YEAR_EVENTS[y] || {})[m.key] || []).map(ev => ({ ...ev }));
+    Object.keys(YEAR_EVENTS).forEach(y => {
+      if (!by[y]) by[y] = (YEAR_EVENTS[y][m.key] || []).map(ev => ({ ...ev }));
     });
     const m2 = { ...m, eventsByYear: by };
     delete m2.events;
@@ -2234,8 +2446,16 @@ function App() {
     year: viewYear,
     dow: new Date(viewYear, i, 1).getDay(),
     days: new Date(viewYear, i + 1, 0).getDate(),
-    events: (m2.eventsByYear && m2.eventsByYear[yKey]) || [],
+    events: eventsFor(m2, viewYear),
   });
+  // Sunrise/sunset shown for a month: on the 15th of the selected year, at the
+  // month's first UK location with coordinates (else London).
+  const monthLight = (m2, i) => {
+    const ref = m2.locations.map(l => ({ l, c: coordsOf(l) })).find(x => x.c && coordsInUK(x.c[0], x.c[1]));
+    const c = ref ? ref.c : LONDON;
+    return { ...lightAt(c[0], c[1], viewYear, i, 15), place: ref ? ref.l.name : 'London' };
+  };
+  const lightTitle = (m2, L) => 'Sunrise and sunset on 15 ' + m2.name + ' ' + viewYear + ' at ' + L.place + ' (' + L.zone + ')';
   const mi = Math.min(monthIdx, data.length - 1);
   const month = monthForYear(data[mi], mi);
   const matted = heroFraming === 'Matted print';
@@ -2533,7 +2753,8 @@ function App() {
     const d2 = editingEvent;
     mutateData(d => {
       const by = d[monthIdx].eventsByYear;
-      const events = by[yKey] || (by[yKey] = []);
+      // A year not stored yet starts from its computed events (so they stay).
+      const events = by[yKey] || (by[yKey] = eventsFor(d[monthIdx], viewYear).map(ev => ({ ...ev })));
       // Drafts (isNew) don't exist in the data yet — Save is what creates them.
       let ev = events.find(e2 => e2.id === d2.id);
       if (!ev) { ev = { id: d2.id }; events.push(ev); }
@@ -2566,7 +2787,8 @@ function App() {
     if (editingEvent.isNew) { setEditingEvent(null); return; } // never saved — nothing to remove
     const evId = editingEvent.id;
     mutateData(d => {
-      const events = d[monthIdx].eventsByYear[yKey] || [];
+      const by = d[monthIdx].eventsByYear;
+      const events = by[yKey] || (by[yKey] = eventsFor(d[monthIdx], viewYear).map(ev => ({ ...ev })));
       const i = events.findIndex(e2 => e2.id === evId);
       if (i !== -1) events.splice(i, 1);
     });
@@ -2802,7 +3024,7 @@ function App() {
             e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, letterSpacing:'.12em', color:'#B7AD90' } }, String(i+1).padStart(2,'0')),
             e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:24, fontWeight:700, color:'#2A251E', lineHeight:'1.02', marginTop:3 } }, m2.name),
             e('div', { style:{ marginTop:9, fontSize:13, color:'#8A7D63', lineHeight:1.4 } }, m2.tagline),
-            e('div', { style:{ marginTop:11, fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.03em', color:'#54632F' } }, '↑ ' + m2.sunrise + '   ↓ ' + m2.sunset),
+            (() => { const L = monthLight(m2, i); return e('div', { title: lightTitle(m2, L), style:{ marginTop:11, fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.03em', color:'#54632F' } }, '↑ ' + L.rise + '   ↓ ' + L.set); })(),
             e('div', { style:{ marginTop:4, fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.06em', color:'#A89A7C' } }, m2.locations.length + (m2.locations.length === 1 ? ' spot' : ' spots'))
           ),
           e('div', null,
@@ -3034,6 +3256,30 @@ function App() {
                     e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'When'),
                     e(Editable, { key:'when-'+sel.id, tag:'div', value:sel.when, onCommit:(t)=>editField(sel.id,'when',t), title:'Click to edit', style:{ fontSize:15, color:'#3B3528', lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
                   ),
+                  // Light — computed for the 15th of this month in the selected
+                  // year at this spot: sun, golden hour (Sun below 6°), blue hour
+                  // (civil twilight), day length. Needs coordinates.
+                  (() => {
+                    const c = coordsOf(sel); if (!c) return null;
+                    const L = lightAt(c[0], c[1], viewYear, mi, 15);
+                    const mono = "'IBM Plex Mono',monospace";
+                    const cell = (k, v) => e('span', { key:k, style:{ display:'inline-flex', alignItems:'baseline', gap:6, whiteSpace:'nowrap' } },
+                      e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71' } }, k),
+                      e('span', { style:{ fontFamily:mono, fontSize:12.5, color:'#3B3528' } }, v));
+                    return e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                      e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Light'),
+                      e('div', null,
+                        L.polar
+                          ? e('div', { style:{ fontSize:14, color:'#6E6450', lineHeight:1.5 } }, (L.polar === 'midnight sun' ? 'Midnight sun — the Sun never sets here in mid-' : 'Polar night — the Sun never rises here in mid-') + month.name + '.')
+                          : e('div', { style:{ display:'flex', flexWrap:'wrap', gap:'7px 18px' } },
+                              cell('Sunrise', L.rise), cell('Sunset', L.set),
+                              cell('Golden', L.rise + '–' + L.goldenEnd + ' · ' + L.goldenStart + '–' + L.set),
+                              cell('Blue', L.dawn + '–' + L.rise + ' · ' + L.set + '–' + L.dusk),
+                              cell('Daylight', L.dayLen + ' h')),
+                        e('div', { style:{ marginTop:6, fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', color:'#B7AD90' } }, 'Mid-' + month.name + ' ' + viewYear + ' · ' + L.zone + (L.zone === 'UTC' ? ' — local clock time will differ' : ''))
+                      )
+                    );
+                  })(),
                   // Kit
                   e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
                     e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Kit'),
@@ -3104,7 +3350,7 @@ function App() {
         e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:isMobile?10:18, padding:isMobile?'10px 12px':'14px 18px', borderBottom:'1px solid #D2C7AC', background:'#F4EEDE', flexWrap:'wrap' } },
           e('div', { style:{ display:'flex', gap:20, alignItems:'center', flexWrap:'wrap' } },
             e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Typical light'),
-            e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:13, color:'#54632F', letterSpacing:'.02em' } }, '↑ ' + month.sunrise + '   ↓ ' + month.sunset),
+            (() => { const L = monthLight(month, mi); return e('span', { title: lightTitle(month, L), style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:13, color:'#54632F', letterSpacing:'.02em' } }, '↑ ' + L.rise + '   ↓ ' + L.set, e('span', { style:{ color:'#A89A7C', fontSize:10.5, marginLeft:10, letterSpacing:'.06em' } }, L.place)); })(),
             e('span', { style:{ fontSize:13, color:'#9C8F71' } }, month.daylightNote)
           ),
           e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:16, fontWeight:600, color:'#7A6F58' } }, month.name + ' ' + month.year)
@@ -3267,7 +3513,7 @@ function App() {
           ),
           e('img', { src:'assets/photoplan-lockup-light.svg', alt:'Photoplan', style:{ height:'11mm', width:'auto', display:'block', marginBottom:'0.5mm' } }),
           e('div', { style:{ textAlign:'right', fontFamily:mono, fontSize:'3mm', color:'#8A7D63', letterSpacing:'.04em', lineHeight:1.7 } },
-            e('div', { style:{ color:'#54632F' } }, '↑ ' + m2.sunrise + '   ↓ ' + m2.sunset),
+            (() => { const L = monthLight(m2, i); return e('div', { style:{ color:'#54632F' } }, '↑ ' + L.rise + '   ↓ ' + L.set + '  · ' + L.place); })(),
             e('div', null, m2.daylightNote)
           )
         ),

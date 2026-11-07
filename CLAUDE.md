@@ -4,16 +4,27 @@ A single-page **photography planning calendar** ("Photoplan"): month-by-month
 locations (UK + international), astro/nature events, drop-in photos, and a map
 of every spot. It's a personal planning tool for the owner; family can view it.
 
-**Years:** the calendar is year-agnostic. Locations (and their photos) are
-shared across years; **events and the day-grid are per-year**, stored in each
-month's `eventsByYear` map (keyed by year string). A year picker (`YEARS` =
-2026–2028, chips on the home + month pages, choice kept in
-`localStorage['calendar:year']`) switches the grid + events only. The grid's
-start-weekday/day-count is computed from `Date` for the selected year (the
-seeded `dow`/`days`/`year` fields on months are legacy, unused).
-`migrateYearEvents` upgrades old data on load — a bare `events` array becomes
-the 2026 calendar — and seeds missing years from `YEAR_EVENTS` (real moon/
-eclipse/season dates per year, annual meteor + nature windows).
+**Years:** the calendar is year-agnostic and **unbounded**. Locations (and
+their photos) are shared across years; **events and the day-grid are
+per-year**, stored in each month's `eventsByYear` map (keyed by year string).
+`YEARS` is a rolling range (2026 → today + 9) offered by the year pickers
+(choice kept in `localStorage['calendar:year']`). The grid's start-weekday/
+day-count is computed from `Date` (the seeded `dow`/`days`/`year` fields on
+months are legacy, unused). **Astronomy is computed** (the "Astronomy" block
+before `migrateYearEvents`): Meeus moon phases, equinoxes/solstices by
+iterating the Sun's longitude, UK clock changes, NOAA sunrise/sunset/golden/
+civil-twilight times at any coordinates (`lightAt`; UK coords in GMT/BST,
+elsewhere UTC). `generatedEvents(year)` builds a year's events from these
+(named full moons incl. Harvest/Blue, the `ECLIPSES` table for 2029–30 —
+extend it, and the annual meteor/nature windows taken from the 2028 seed);
+`eventsFor(m, year)` returns the stored list **or** the generated one, and
+`saveEvent`/`deleteEvent` materialise the generated list into the data the
+first time a year is edited. `migrateYearEvents` upgrades old data on load
+(bare `events` → 2026) and fills only the hand-seeded `YEAR_EVENTS` years
+(2027/28). The seeded `sunrise`/`sunset` month fields are **unused**: the
+home rows, month header and print grid show `monthLight(m2, i)` (15th of the
+month at the first UK location with coords, else London), and the brief has
+a per-location "Light" row. `daylightNote` stays editorial.
 
 ## Architecture at a glance
 
