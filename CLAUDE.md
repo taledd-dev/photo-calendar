@@ -32,9 +32,14 @@ eclipse/season dates per year, annual meteor + nature windows).
   `PHOTO_STORAGE_BASE` in `index.html`).
   - `GET /photo/<key>` is public (viewing). `PUT`/`DELETE` require the header
     `x-upload-key` matching the Worker secret `UPLOAD_PASSWORD`.
-  - Each photo is stored twice: `<base>` (hero, ~1600px) and `<base>-thumb`
-    (~500px), under a **`photos/` folder**. `base = photoBase(monthKey, locId) =
+  - Each photo is stored three times: `<base>` (hero, ~1600px, the slideshows),
+    `<base>-thumb` (~500px, tiles) and `<base>-print` (`PRINT_MAX_EDGE` =
+    3200px, ~290 dpi across A4 — only the printable calendar loads it), under
+    a **`photos/` folder**. `base = photoBase(monthKey, locId) =
     "photos/<monthKey>-ref-<locId>"`, e.g. `photos/jan-ref-lake-district`.
+    Photos uploaded before the print size existed have no `-print` copy; the
+    print page falls back to the hero and shows an on-screen "web size only"
+    flag (`printSizeBadge`) until the photo is dropped on again.
     New locations get a readable slug id from their name (`slugify`), so
     added-location photos get readable filenames too. The Worker key sanitizer
     allows `/` for the folder.
@@ -112,21 +117,26 @@ eclipse/season dates per year, annual meteor + nature windows).
   `LocThumb` (tile thumbnail), `LocationPhoto` (the upload control),
   `KitField` (pill chips that flip to an editable line), `Editable` (inline
   click-to-edit text), `MapView`, and `App`.
-- **Print view** (`renderPrintPage`, "Print" button on the home nav): an
-  **A4-landscape** wall calendar for the selected year, page order: cover photo
-  → per month a full-bleed photo page then a grid page → two photo-index pages
-  (6 month photos each) → back-cover photo. `.print-sheet` CSS keeps sheets at
+- **Print view** (`renderPrintPage`, "Print" button on the home nav —
+  **owner only**: the button and the view are gated on `editMode`, and an
+  effect leaves the view when editing goes off): an **A4-landscape** wall
+  calendar for the selected year, page order: cover photo → per month a
+  full-bleed photo page then a grid page → two photo-index pages (6 month
+  photos each) → back-cover photo. `.print-sheet` CSS keeps sheets at
   281×193mm (aspect-ratio preview on screen; exact one-page height in
   `@media print`; `.pad` adds the grid page's padding; `.print-label` is the
   on-screen-only page caption). Cover/back photos are `LocationPhoto` slots
-  on R2 keys `photos/print-cover` / `photos/print-back` (owner drops a photo
-  on the sheet; visitors see it). `PrintMonthPhoto` (variant `page` with
-  caption, or `tile`) shows the month's **starred** location (`month.printLoc`,
-  ★ on the month-page tiles) if it has a photo, else the first with one. What
-  prints: per-event `noPrint` (checkbox in the event editor) **and**
+  (`full: true` → print-size image) on R2 keys `photos/print-cover` /
+  `photos/print-back`. `PrintMonthPhoto` (variant `page` with caption, or
+  `tile`) shows the month's **starred** location (`month.printLoc`, ★ on the
+  month-page tiles) if it has a photo, else the first with one, using the
+  `-print` copy when it exists. Grid pages carry the light lockup
+  (`assets/photoplan-lockup-light.svg`) centred in the header row and
+  `@IG_HANDLE` (with `igGlyph`) bottom-right under the grid. What prints:
+  per-event `noPrint` (checkbox in the event editor) **and**
   `data[0].printPrefs` = `{ hideKinds:[kind…], captions:bool }` — the
-  "Print these event types" / "Photo captions" chips on the print page, owner
-  only, cloud-synced. The print grid uses `buildWeeks(..., { top:30, step:24 })`
+  "Print these event types" / "Photo captions" chips on the print page,
+  cloud-synced. The print grid uses `buildWeeks(..., { top:30, step:24 })`
   geometry with 21px bars and a per-page type key.
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
@@ -167,8 +177,9 @@ eclipse/season dates per year, annual meteor + nature windows).
   moves in the data. Blocked if the target month already has that location id.
 - The **map already has touch gestures** (pinch-to-zoom + one/two-finger pan via
   pointer events on the SVG, `touchAction:'none'`) — don't rebuild them.
-- The **2026 page** has an Instagram link (`@llandscapist`, `.ig-link`) beside the
-  header label; it's year-page only.
+- The **home page** has an Instagram link (`@llandscapist` = `IG_HANDLE`,
+  `.ig-link`) beside the header label; it's home-page only on screen, and the
+  handle also prints on every grid page of the printable calendar.
 - **Custom event types** live on the events themselves (`kind:'x-<slug>'` plus
   `kindLabel` and a `kindColor` palette key from `CUSTOM_PALETTES`), so they sync
   through the shared data with no schema change; the editor's type list derives

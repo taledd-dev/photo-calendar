@@ -119,6 +119,10 @@ const e = React.createElement;
 // version suits the site's cream background; the favicon/app icon variants are
 // linked from the <head>.
 const LOGO_SRC = 'assets/photoplan-mark.svg';
+const IG_HANDLE = 'llandscapist'; // the owner's Instagram (home page + printed grid pages)
+// Longest edge of the print-size photo copy (<base>-print): 3200px is ~290 dpi
+// across an A4-landscape sheet, enough for a photo-book / print-shop calendar.
+const PRINT_MAX_EDGE = 3200;
 
 // Whether editing controls are shown (the owner, with the password) or the page
 // is view-only (family). Editable, KitField and LocationPhoto read it through
@@ -259,22 +263,30 @@ const Storage = {
       return { ok: true, savedAt };
     } catch (_) { return { ok: false, reason: 'network' }; }
   },
-  // Save an uploaded photo as two sizes: a small thumbnail (<base>-thumb) for the
-  // location cards and a larger hero version (<base>) for the slideshows.
+  // Save an uploaded photo as three sizes: a small thumbnail (<base>-thumb) for
+  // the location cards, a hero (<base>, 1600px) for the slideshows, and a
+  // print-size copy (<base>-print, PRINT_MAX_EDGE) for the printable calendar.
+  // Web pages never load the print copy. Photos uploaded before the print size
+  // existed have no -print copy; the print page flags those for re-upload.
   async savePhotoVariants(base, file, key) {
-    let hero, thumb;
+    let hero, thumb, print;
     try {
       hero = await resizeImage(file, 1600, 0.85);
       thumb = await resizeImage(file, 500, 0.8);
+      print = await resizeImage(file, PRINT_MAX_EDGE, 0.9);
     } catch (_) { alert('Could not process that image — please try a different photo.'); return false; }
     const okHero = await this.saveImage(base, hero || file, key);
     if (!okHero) return false;
     const okThumb = await this.saveImage(base + '-thumb', thumb || hero || file, key);
-    return okThumb;
+    if (!okThumb) return false;
+    const okPrint = await this.saveImage(base + '-print', print || hero || file, key);
+    if (!okPrint) alert('The photo was saved, but its print-size copy did not upload — please drop the photo on again.');
+    return okPrint;
   },
   async removePhotoVariants(base, key) {
     const ok = await this.removeImage(base, key);
     await this.removeImage(base + '-thumb', key);
+    await this.removeImage(base + '-print', key);
     return ok;
   },
   // Copy a stored photo to a new name (photos are keyed by month, so moving a
@@ -288,14 +300,17 @@ const Storage = {
       return await this.saveImage(toId, blob, key);
     } catch (_) { return false; }
   },
-  // Move both sizes of a location's photo to a new base name. The originals are
-  // only deleted once at least one copy has landed safely.
+  // Move every size of a location's photo to a new base name. The originals are
+  // only deleted once at least one copy has landed safely. (An older photo may
+  // have no -print copy; that copy simply fails and is skipped.)
   async movePhotoVariants(fromBase, toBase, key) {
     const okHero = await this.copyImage(fromBase, toBase, key);
     const okThumb = await this.copyImage(fromBase + '-thumb', toBase + '-thumb', key);
+    const okPrint = await this.copyImage(fromBase + '-print', toBase + '-print', key);
     if (okHero || okThumb) {
       await this.removeImage(fromBase, key);
       await this.removeImage(fromBase + '-thumb', key);
+      if (okPrint) await this.removeImage(fromBase + '-print', key);
     }
     return okHero || okThumb;
   },
@@ -599,12 +614,16 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
     if (ok) { knownRef.current = false; setSrc(null); if (onChange) onChange(); }
   }, [base, onChange]);
 
-  // `src` (the thumbnail) doubles as "a photo exists"; what's shown may be the hero.
-  const imgSrc = src && full ? Storage.photoUrl(base, bust || epoch || undefined) : src;
+  // `src` (the thumbnail) doubles as "a photo exists"; what's shown may be the
+  // print-size copy (if this photo has one — anything uploaded here does) or
+  // the hero.
+  const hasPrint = knownRef.current === true || !!(photoIndex && photoIndex.has(base + '-print'));
+  const imgSrc = src && full ? Storage.photoUrl(hasPrint ? base + '-print' : base, bust || epoch || undefined) : src;
+  const sizeFlag = full && src && photoIndex && !hasPrint && printSizeBadge();
   // View-only: just the photo (or a quiet placeholder) — no upload or remove.
   if (!canEdit) {
     return e('div', { className: 'image-slot', style },
-      src ? e('img', { src: imgSrc, alt: '' }) : e('div', { className: 'placeholder-text' }, 'No photo yet'));
+      src ? e('img', { src: imgSrc, alt: '' }) : e('div', { className: 'placeholder-text' }, 'No photo yet'), sizeFlag);
   }
   return e('div', {
     className: 'image-slot' + (dragOver ? ' drag-over' : ''),
@@ -617,6 +636,7 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
     e('input', { ref: fileRef, type: 'file', accept: 'image/*', style: { display: 'none' },
       onChange: (ev) => { const f = ev.target.files[0]; ev.target.value = ''; uploadFile(f); } }),
     src && e('img', { src: imgSrc, alt: '' }),
+    sizeFlag,
     src && !busy && e('button', {
       onClick: handleClear,
       title: 'Remove photo',
@@ -702,11 +722,27 @@ function KitField({ value, onCommit }) {
 }
 
 // ─── Print month photo ────────────────────────────────────────────────────────
+// On-screen-only flag on a print-page photo that has no print-size copy (it was
+// uploaded before -print existed): it will print from the 1600px hero.
+function printSizeBadge() {
+  return e('div', { className:'no-print', style:{ position:'absolute', top:'4mm', right:'4mm', zIndex:3, background:'rgba(42,37,30,0.80)', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', padding:'5px 9px', borderRadius:3, pointerEvents:'none' } },
+    'Web size only · re-upload for print quality');
+}
+
+// Instagram glyph (outline camera) in a single colour, for print.
+function igGlyph(size, stroke) {
+  return e('svg', { width:size, height:size, viewBox:'0 0 24 24', fill:'none', stroke, strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true', style:{ display:'block' } },
+    e('rect', { x:2, y:2, width:20, height:20, rx:5, ry:5 }),
+    e('path', { d:'M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z' }),
+    e('line', { x1:17.5, y1:6.5, x2:17.51, y2:6.5 }));
+}
+
 // The photo for a printed month: the starred location (the month's `printLoc`,
 // set via the ★ on the month-page tiles) if it has a photo, else the first
 // location (in the month's tile order) that has one — so a stale or photo-less
-// star falls back gracefully. Renders hero-size, filling its parent (which must
-// be position:relative). variant 'page' is the full-page photo with the usual
+// star falls back gracefully. Uses the print-size copy when the photo has one,
+// else the hero (with an on-screen flag). Fills its parent (which must be
+// position:relative). variant 'page' is the full-page photo with the usual
 // caption; 'tile' is a bare photo for the index pages.
 function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoIndex, variant = 'page', caption = true }) {
   const [pick, setPick] = useState(null);
@@ -719,7 +755,7 @@ function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoInde
     if (photoIndex === undefined) return; // index still loading
     if (photoIndex) {
       const l = ordered.find(x => photoIndex.has(photoBase(monthKey, x.id) + '-thumb'));
-      setPick(l ? { base: photoBase(monthKey, l.id), name: l.name, year: (l.photoYear || '').trim() } : null);
+      setPick(l ? { base: photoBase(monthKey, l.id), name: l.name, year: (l.photoYear || '').trim(), print: photoIndex.has(photoBase(monthKey, l.id) + '-print') } : null);
       return;
     }
     (async () => { // no index (older Worker): probe in order
@@ -732,7 +768,7 @@ function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoInde
           im.src = Storage.photoUrl(base + '-thumb', epoch || undefined);
         });
         if (cancelled) return;
-        if (ok) { setPick({ base, name: l.name, year: (l.photoYear || '').trim() }); return; }
+        if (ok) { setPick({ base, name: l.name, year: (l.photoYear || '').trim(), print: null }); return; } // unknown without an index
       }
       if (!cancelled) setPick(null);
     })();
@@ -745,7 +781,8 @@ function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoInde
       variant === 'tile' ? monthName : 'No photo yet for ' + monthName);
   }
   return e('div', { style: fill },
-    e('img', { src: Storage.photoUrl(pick.base, epoch || undefined), alt:'', style:{ width:'100%', height:'100%', objectFit:'cover', display:'block' } }),
+    e('img', { src: Storage.photoUrl(pick.print ? pick.base + '-print' : pick.base, epoch || undefined), alt:'', style:{ width:'100%', height:'100%', objectFit:'cover', display:'block' } }),
+    pick.print === false && printSizeBadge(),
     variant === 'page' && caption && e('div', { style:{ position:'absolute', left:0, bottom:0, background:'#000', color:'#fff', fontFamily:"'IBM Plex Mono',monospace", fontSize:'3.2mm', lineHeight:1.4, padding:'1.8mm 3.5mm', letterSpacing:'.02em' } },
       pick.name + ' · ' + (monthName || '').slice(0, 3) + (pick.year ? " '" + pick.year : ''))
   );
@@ -1859,6 +1896,9 @@ function App() {
   // Editing controls shown (owner) or view-only (family). Starts on for a
   // device that already holds the password; "Unlock editing" turns it on.
   const [editMode, setEditMode] = useState(() => !!Storage.peekUploadKey());
+  // The printable calendar is the owner's: leave it whenever editing goes off
+  // (controls hidden, or re-locked by a 401), and its button only shows in edit mode.
+  useEffect(() => { if (!editMode) setPrintView(false); }, [editMode]);
 
   // ── In-app prompt dialog ───────────────────────────────────────────────────
   // Replaces the browser's prompt() for the edit password and short names, in
@@ -2460,7 +2500,7 @@ function App() {
         editMode && e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), isMobile ? ' Add' : ' Add location')
       )
     : e('div', { style:navRowStyle },
-        mapBtn, printBtn, navDivider(), prevBtn,
+        mapBtn, editMode && printBtn, navDivider(), prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
 
@@ -2521,7 +2561,7 @@ function App() {
     e('div', { style:{ marginTop:isMobile?14:18, display:'flex', alignItems:'baseline', gap:'6px 16px', flexWrap:'wrap' } },
       e('div', { style:{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' } },
         e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'#8A7D63' } }, 'Photo Location Calendar'),
-        e('a', { href:'https://instagram.com/llandscapist', target:'_blank', rel:'noopener noreferrer', className:'ig-link', title:'Follow @llandscapist on Instagram', style:{ display:'inline-flex', alignItems:'center', gap:6, textDecoration:'none', color:'#8A7D63', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em' } },
+        e('a', { href:'https://instagram.com/' + IG_HANDLE, target:'_blank', rel:'noopener noreferrer', className:'ig-link', title:'Follow @' + IG_HANDLE + ' on Instagram', style:{ display:'inline-flex', alignItems:'center', gap:6, textDecoration:'none', color:'#8A7D63', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em' } },
           e('svg', { width:16, height:16, viewBox:'0 0 24 24', fill:'none', stroke:'url(#ig-grad)', strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true', style:{ display:'block' } },
             e('defs', null,
               e('linearGradient', { id:'ig-grad', x1:'0', y1:'1', x2:'1', y2:'0' },
@@ -2536,7 +2576,7 @@ function App() {
             e('path', { d:'M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z' }),
             e('line', { x1:17.5, y1:6.5, x2:17.51, y2:6.5 })
           ),
-          e('span', null, '@llandscapist')
+          e('span', null, '@' + IG_HANDLE)
         )
       ),
       e('div', { style:{ marginLeft:'auto', textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'#8A7D63' } },
@@ -2979,11 +3019,13 @@ function App() {
       ));
       pages.push(label('l-' + m2.key + '-g', m2.name + ' — calendar'));
       pages.push(e('div', { key:m2.key + '-grid', className:'print-sheet pad' },
-        e('div', { style:{ flex:'none', display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:'6mm', marginBottom:'4mm' } },
+        // header: month + year | Photoplan lockup, centred on the page | light
+        e('div', { style:{ flex:'none', display:'grid', gridTemplateColumns:'1fr auto 1fr', alignItems:'end', gap:'6mm', marginBottom:'4mm' } },
           e('div', { style:{ display:'flex', alignItems:'baseline', gap:'4mm' } },
             e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'12mm', lineHeight:1, color:'#2A251E' } }, m2.name),
             e('div', { style:{ fontFamily:mono, fontSize:'5mm', color:'#A89A7C', letterSpacing:'.08em' } }, String(viewYear))
           ),
+          e('img', { src:'assets/photoplan-lockup-light.svg', alt:'Photoplan', style:{ height:'11mm', width:'auto', display:'block', marginBottom:'0.5mm' } }),
           e('div', { style:{ textAlign:'right', fontFamily:mono, fontSize:'3mm', color:'#8A7D63', letterSpacing:'.04em', lineHeight:1.7 } },
             e('div', { style:{ color:'#54632F' } }, '↑ ' + m2.sunrise + '   ↓ ' + m2.sunset),
             e('div', null, m2.daylightNote)
@@ -3011,15 +3053,19 @@ function App() {
             )
           )
         ),
-        // key to the event types on this page
-        legendKinds.length > 0 && e('div', { style:{ flex:'none', display:'flex', gap:'6mm', flexWrap:'wrap', marginTop:'3mm', fontFamily:mono, fontSize:'2.8mm', letterSpacing:'.06em', color:'#8A7D63' } },
-          legendKinds.map(k => {
-            const sample = printable.find(ev => ev.kind === k) || { kind: k };
-            const st = styleOf(sample);
-            return e('span', { key:k, style:{ display:'inline-flex', alignItems:'center', gap:'1.6mm' } },
-              e('span', { style:{ display:'inline-block', width:'3.2mm', height:'3.2mm', background:st.bg, borderLeft:'1mm solid ' + st.accent } }),
-              (st.glyph ? st.glyph + ' ' : '') + kindLabel(k));
-          })
+        // footer: key to the event types on this page | Instagram handle
+        e('div', { style:{ flex:'none', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'6mm', marginTop:'3mm' } },
+          e('div', { style:{ display:'flex', gap:'6mm', flexWrap:'wrap', fontFamily:mono, fontSize:'2.8mm', letterSpacing:'.06em', color:'#8A7D63' } },
+            legendKinds.map(k => {
+              const sample = printable.find(ev => ev.kind === k) || { kind: k };
+              const st = styleOf(sample);
+              return e('span', { key:k, style:{ display:'inline-flex', alignItems:'center', gap:'1.6mm' } },
+                e('span', { style:{ display:'inline-block', width:'3.2mm', height:'3.2mm', background:st.bg, borderLeft:'1mm solid ' + st.accent } }),
+                (st.glyph ? st.glyph + ' ' : '') + kindLabel(k));
+            })
+          ),
+          e('div', { style:{ flex:'none', display:'inline-flex', alignItems:'center', gap:'1.8mm', fontFamily:mono, fontSize:'3mm', letterSpacing:'.06em', color:'#8A7D63', whiteSpace:'nowrap' } },
+            igGlyph('3.8mm', '#8A7D63'), '@' + IG_HANDLE)
         )
       ));
     });
@@ -3061,8 +3107,9 @@ function App() {
         ),
         e('div', { style:{ fontFamily:mono, fontSize:11, color:'#8A7D63', letterSpacing:'.03em', lineHeight:1.6, maxWidth:'110ch' } },
           'In the print dialog choose A4, Landscape, default margins and 100% scale (switch "Background graphics" on if colours print pale); "Save as PDF" keeps a copy. ' +
-          'Each month uses its ★-starred location’s photo, or its first location with a photo.' +
-          (editMode ? ' Drop a photo onto the cover and back-cover sheets below. Untick "Shown on the printable calendar" in an event’s editor to keep a single event off.' : '') +
+          'Each month uses its ★-starred location’s photo, or its first location with a photo. ' +
+          'Drop a photo onto the cover and back-cover sheets below. Untick "Shown on the printable calendar" in an event’s editor to keep a single event off. ' +
+          'Photos now upload with a print-size copy (' + PRINT_MAX_EDGE + 'px); a sheet flagged "web size only" holds an older photo — drop it on again to replace it at print quality.' +
           (isMobile ? ' Best previewed and printed from a desktop browser.' : '')
         )
       ),
@@ -3235,7 +3282,7 @@ function App() {
       renderCloudBanner(),
       mapView
         ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro, editMode, editControl: editToggle() })
-        : printView
+        : (printView && editMode)
           ? renderPrintPage()
           : (yearView ? renderYearPage() : renderMonthPage()),
       renderEventModal(),
