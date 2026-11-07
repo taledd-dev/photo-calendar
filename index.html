@@ -562,8 +562,11 @@ function LocThumb({ base, epoch = 0, photoIndex }) {
 // The upload control on a location: drop/click a photo and it saves both a
 // thumbnail and a hero version. Shows the thumbnail once set.
 // `full` shows the hero-size image instead of the thumbnail (the printable
-// calendar's cover sheets, where the thumbnail would print soft).
-function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, epoch = 0, full = false }) {
+// calendar's cover sheets, where the thumbnail would print soft). `compact`
+// is the small-square form used in the brief's "more photos" strip: a bare
+// "+" placeholder and a smaller remove button. `onChange` is called with
+// 'uploaded' or 'removed' after the cloud write succeeds.
+function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, epoch = 0, full = false, compact = false }) {
   const canEdit = React.useContext(EditCtx);
   const [src, setSrc] = useState(null);
   const [bust, setBust] = useState(0); // cache-buster after an upload here
@@ -596,7 +599,7 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
     setBusy(true);
     const ok = await Storage.savePhotoVariants(base, file, key);
     setBusy(false);
-    if (ok) { knownRef.current = true; const now = Date.now(); setBust(now); setSrc(thumb(now)); if (onChange) onChange(); }
+    if (ok) { knownRef.current = true; const now = Date.now(); setBust(now); setSrc(thumb(now)); if (onChange) onChange('uploaded'); }
   }, [base, onChange]);
 
   const handleDrop = useCallback((ev) => {
@@ -612,7 +615,7 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
     setBusy(true);
     const ok = await Storage.removePhotoVariants(base, key);
     setBusy(false);
-    if (ok) { knownRef.current = false; setSrc(null); if (onChange) onChange(); }
+    if (ok) { knownRef.current = false; setSrc(null); if (onChange) onChange('removed'); }
   }, [base, onChange]);
 
   // `src` (the thumbnail) doubles as "a photo exists"; what's shown may be the
@@ -626,9 +629,11 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
     return e('div', { className: 'image-slot', style },
       src ? e('img', { src: imgSrc, alt: '' }) : e('div', { className: 'placeholder-text' }, 'No photo yet'), sizeFlag);
   }
+  const btn = compact ? { top: 3, right: 3, width: 20, height: 20, fontSize: 11 } : { top: 6, right: 6, width: 24, height: 24, fontSize: 13 };
   return e('div', {
     className: 'image-slot' + (dragOver ? ' drag-over' : ''),
     style: { cursor: (src || busy) ? 'default' : 'pointer', ...style },
+    title: compact && !src ? placeholder : undefined,
     onDragOver: (ev) => { ev.preventDefault(); setDragOver(true); },
     onDragLeave: () => setDragOver(false),
     onDrop: handleDrop,
@@ -640,14 +645,16 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
     sizeFlag,
     src && !busy && e('button', {
       onClick: handleClear,
-      title: 'Remove photo',
-      style: { position: 'absolute', top: 6, right: 6, zIndex: 10, width: 24, height: 24, background: 'rgba(42,37,30,0.6)', border: 'none', color: '#FBF7EC', borderRadius: '50%', cursor: 'pointer', fontSize: 13, lineHeight: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+      title: 'Remove photo', 'aria-label': 'Remove photo',
+      style: { position: 'absolute', zIndex: 10, background: 'rgba(42,37,30,0.6)', border: 'none', color: '#FBF7EC', borderRadius: '50%', cursor: 'pointer', lineHeight: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', ...btn }
     }, '×'),
-    busy && e('div', { className: 'placeholder-text', style: { zIndex: 2 } }, 'Uploading…'),
-    !src && !busy && e('div', { className: 'placeholder-text' },
-      e('div', null, '↓ drop or click to add a photo'),
-      e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } }, placeholder)
-    )
+    busy && e('div', { className: 'placeholder-text', style: { zIndex: 2 } }, compact ? '…' : 'Uploading…'),
+    !src && !busy && (compact
+      ? e('div', { className: 'placeholder-text', style: { fontSize: 22, lineHeight: 1, padding: 0, color: '#B7AD90' } }, '+')
+      : e('div', { className: 'placeholder-text' },
+          e('div', null, '↓ drop or click to add a photo'),
+          e('div', { style: { marginTop: 4, fontSize: 10, opacity: 0.7 } }, placeholder)
+        ))
   );
 }
 
@@ -755,13 +762,13 @@ function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoInde
       : locs;
     if (photoIndex === undefined) return; // index still loading
     if (photoIndex) {
-      const l = ordered.find(x => photoIndex.has(photoBase(monthKey, x.id) + '-thumb'));
-      setPick(l ? { base: photoBase(monthKey, l.id), name: l.name, year: (l.photoYear || '').trim(), print: photoIndex.has(photoBase(monthKey, l.id) + '-print') } : null);
+      const l = ordered.find(x => photoIndex.has(mainBase(monthKey, x) + '-thumb'));
+      setPick(l ? { base: mainBase(monthKey, l), name: l.name, year: mainYear(l), print: photoIndex.has(mainBase(monthKey, l) + '-print') } : null);
       return;
     }
     (async () => { // no index (older Worker): probe in order
       for (const l of ordered) {
-        const base = photoBase(monthKey, l.id);
+        const base = mainBase(monthKey, l);
         const ok = await new Promise(res => {
           const im = new Image();
           im.onload = () => res(true);
@@ -769,7 +776,7 @@ function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoInde
           im.src = Storage.photoUrl(base + '-thumb', epoch || undefined);
         });
         if (cancelled) return;
-        if (ok) { setPick({ base, name: l.name, year: (l.photoYear || '').trim(), print: null }); return; } // unknown without an index
+        if (ok) { setPick({ base, name: l.name, year: mainYear(l), print: null }); return; } // unknown without an index
       }
       if (!cancelled) setPick(null);
     })();
@@ -1504,6 +1511,20 @@ function locCoordText(loc) {
 // Photos live under a "photos/" folder in R2, keyed by month + location id, kept
 // separate from the calendar-data.json file at the bucket root.
 function photoBase(monthKey, locId) { return 'photos/' + monthKey + '-ref-' + locId; }
+// A location can hold several photos. `loc.photos` is an ordered list of
+// { slot, year }: the FIRST is the main photo (tiles, print, the brief's big
+// photo) and every photo carries its own caption year. Slot 1 is stored at
+// photoBase(...), slot n > 1 at photoBase(...) + '.' + n (slug ids never
+// contain a dot, so names can't collide). A location without `photos` is the
+// legacy single photo: slot 1 with loc.photoYear. All readers go through these.
+function locPhotos(loc) {
+  return (Array.isArray(loc.photos) && loc.photos.length) ? loc.photos : [{ slot: 1, year: loc.photoYear || '' }];
+}
+function slotBase(monthKey, locId, slot) { return photoBase(monthKey, locId) + (slot > 1 ? '.' + slot : ''); }
+function mainBase(monthKey, loc) { return slotBase(monthKey, loc.id, locPhotos(loc)[0].slot); }
+function mainYear(loc) { return (locPhotos(loc)[0].year || '').trim(); }
+// "Location · Mon 'YY" — the caption shown on heroes and the printed photo pages.
+function photoCaption(loc, monthName, year) { const y = (year || '').trim(); return loc.name + ' · ' + monthName.slice(0, 3) + (y ? " '" + y : ''); }
 
 // Rough "is this in the UK?" test, used to auto-set a location's region when
 // coordinates are pasted: a Great Britain + Northern Ireland bounding box,
@@ -2227,11 +2248,11 @@ function App() {
     const target = month.locations.find(l => l.id === id);
     const name = target ? target.name : 'this location';
     // Irreversible (the photo goes too), so confirm.
-    if (!window.confirm('Delete "' + name + '" from ' + month.name + '?\n\nIts photo will be removed from the cloud as well. This cannot be undone.')) return;
-    // Also remove this location's photo (hero + thumbnail) from R2, so deleting a
-    // spot doesn't leave orphaned images in the bucket.
+    if (!window.confirm('Delete "' + name + '" from ' + month.name + '?\n\nIts photos will be removed from the cloud as well. This cannot be undone.')) return;
+    // Also remove every photo of this location (all sizes) from R2, so deleting
+    // a spot doesn't leave orphaned images in the bucket.
     const key = Storage.peekUploadKey();
-    if (key) Storage.removePhotoVariants(photoBase(month.key, id), key);
+    if (key && target) locPhotos(target).forEach(p => Storage.removePhotoVariants(slotBase(month.key, id, p.slot), key));
     mutateData(d => {
       const locs = d[monthIdx].locations;
       const i = locs.findIndex(l => l.id === id);
@@ -2255,7 +2276,7 @@ function App() {
       return;
     }
     const key = Storage.peekUploadKey();
-    if (key) await Storage.movePhotoVariants(photoBase(month.key, locId), photoBase(data[toIdx].key, locId), key);
+    if (key) for (const p of locPhotos(loc)) await Storage.movePhotoVariants(slotBase(month.key, locId, p.slot), slotBase(data[toIdx].key, locId, p.slot), key);
     mutateData(d => {
       const fromArr = d[monthIdx].locations;
       const i = fromArr.findIndex(l => l.id === locId);
@@ -2324,10 +2345,40 @@ function App() {
     mutateData(d => { const m2 = d[monthIdx]; m2.printLoc = m2.printLoc === locId ? undefined : locId; });
   };
 
-  const setPhotoYear = (locId, year) => {
+  // ── A location's photos (see locPhotos) ───────────────────────────────────
+  // Each photo's caption year. Slot 1 also keeps the legacy loc.photoYear in step.
+  const setPhotoYear = (locId, slot, year) => {
     const y = (year || '').trim();
-    mutateData(d => { const loc = d[monthIdx].locations.find(l => l.id === locId); if (loc) loc.photoYear = y; });
+    mutateData(d => {
+      const loc = d[monthIdx].locations.find(l => l.id === locId); if (!loc) return;
+      if (Array.isArray(loc.photos) && loc.photos.length) { const p = loc.photos.find(x => x.slot === slot); if (p) p.year = y; }
+      if (slot === 1) loc.photoYear = y;
+    });
   };
+  // Called once an extra photo has landed in R2: record it (the list is
+  // materialised from the legacy single photo on first use).
+  const addPhotoSlot = (locId, slot) => mutateData(d => {
+    const loc = d[monthIdx].locations.find(l => l.id === locId); if (!loc) return;
+    const list = locPhotos(loc).map(p => ({ ...p }));
+    if (!list.some(p => p.slot === slot)) list.push({ slot, year: '' });
+    loc.photos = list;
+  });
+  // Called once a photo has been removed from R2. Removing the main photo
+  // promotes the next one; an emptied list reverts to the legacy shape.
+  const removePhotoSlot = (locId, slot) => mutateData(d => {
+    const loc = d[monthIdx].locations.find(l => l.id === locId); if (!loc) return;
+    const list = locPhotos(loc).filter(p => p.slot !== slot).map(p => ({ ...p }));
+    if (list.length) { loc.photos = list; loc.photoYear = list[0].year || ''; } else { delete loc.photos; }
+  });
+  // Make an extra the main photo (tiles, print, the brief) — a reorder only.
+  const makeMainPhoto = (locId, slot) => mutateData(d => {
+    const loc = d[monthIdx].locations.find(l => l.id === locId); if (!loc) return;
+    const list = locPhotos(loc).map(p => ({ ...p }));
+    const i = list.findIndex(p => p.slot === slot); if (i <= 0) return;
+    const [pick] = list.splice(i, 1);
+    loc.photos = [pick, ...list];
+    loc.photoYear = pick.year || '';
+  });
 
   // Set a location's map coordinates from pasted "latitude, longitude" text.
   // Clearing the field removes them (so it falls back to any built-in coords).
@@ -2613,10 +2664,10 @@ function App() {
         epoch: imgEpoch,
         intervalMs: 15000,
         boxStyle: { aspectRatio: '3 / 2' },
-        items: data.flatMap(m => m.locations.map(loc => {
-          const yr = (loc.photoYear || '').trim();
-          return { key: m.key + '-' + loc.id, base: photoBase(m.key, loc.id), caption: loc.name + ' · ' + m.name.slice(0, 3) + (yr ? " '" + yr : '') };
-        })),
+        // every photo of every location, extras included, each with its own year
+        items: data.flatMap(m => m.locations.flatMap(loc => locPhotos(loc).map(p =>
+          ({ key: m.key + '-' + loc.id + ':' + p.slot, base: slotBase(m.key, loc.id, p.slot), caption: photoCaption(loc, m.name, p.year) })
+        ))),
       })
     ),
     e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
@@ -2711,10 +2762,10 @@ function App() {
           epoch: imgEpoch,
           intervalMs: 15000,
           boxStyle: { aspectRatio: '3 / 2' },
-          items: month.locations.map(loc => {
-            const yr = (loc.photoYear || '').trim();
-            return { key: loc.id, base: photoBase(month.key, loc.id), caption: loc.name + ' · ' + month.name.slice(0, 3) + (yr ? " '" + yr : '') };
-          }),
+          // this month's photos, extras included, each with its own year
+          items: month.locations.flatMap(loc => locPhotos(loc).map(p =>
+            ({ key: loc.id + ':' + p.slot, base: slotBase(month.key, loc.id, p.slot), caption: photoCaption(loc, month.name, p.year) })
+          )),
         })
       ),
       // Locations section header
@@ -2746,7 +2797,7 @@ function App() {
             l.id === dragOverLoc && l.id !== draggingLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px dashed #54632F', background:'rgba(84,99,47,0.08)', pointerEvents:'none', zIndex:5 } }),
             e('div', { style:{ height:4, background: l.region==='UK' ? '#54632F' : '#9E4B26' } }),
             e('div', { style:{ position:'relative', height:76, overflow:'hidden', backgroundImage:'repeating-linear-gradient(135deg,#EFE7D2 0,#EFE7D2 7px,#E6DCC2 7px,#E6DCC2 14px)', borderBottom:'1px solid #E0D6BE' } },
-              e(LocThumb, { base: photoBase(month.key, l.id), epoch: imgEpoch, photoIndex }),
+              e(LocThumb, { base: mainBase(month.key, l), epoch: imgEpoch, photoIndex }),
               // drag-to-reorder is mouse-only, so the handle hides on touch layouts
               editMode && !isMobile && e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, zIndex:3, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#EFE7D2', textShadow:'0 1px 2px rgba(0,0,0,0.45)', cursor:'grab' } }, '⠿'),
               // view-only: a static tick when done, nothing otherwise
@@ -2799,12 +2850,49 @@ function App() {
                 // Phones: the photo column takes the full width (a fixed 300px
                 // basis leaves a dead sliver beside it on a ~350px screen).
                 e('div', { style:{ flex:isMobile?'1 1 100%':'0 0 300px', maxWidth:'100%' } },
-                  e(LocationPhoto, { base: photoBase(month.key, sel.id), placeholder:'Add a photo of ' + sel.name, onChange: bumpImg, photoIndex, epoch: imgEpoch, style:{ height:206, borderRadius:4, border:'1px solid #D2C7AC' } }),
+                  // The main photo (tiles, print). Removing it promotes the next extra.
+                  e(LocationPhoto, { key: mainBase(month.key, sel), base: mainBase(month.key, sel), placeholder:'Add a photo of ' + sel.name, photoIndex, epoch: imgEpoch, style:{ height:206, borderRadius:4, border:'1px solid #D2C7AC' },
+                    onChange: (what) => { bumpImg(); if (what === 'removed') removePhotoSlot(sel.id, locPhotos(sel)[0].slot); } }),
                   // view-only: only shown when a year is set
-                  (editMode || (sel.photoYear || '').trim()) && e('div', { style:{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 } },
+                  (editMode || mainYear(sel)) && e('div', { style:{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 } },
                     e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71' } }, 'Year taken'),
-                    e(Editable, { key:'year-'+sel.id, tag:'span', value: sel.photoYear || '', onCommit:(t)=>setPhotoYear(sel.id, t), title:'Set the year this photo was taken', className:'year-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, padding:'4px 12px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:64, textAlign:'center', letterSpacing:'.1em', cursor:'text', outline:'none' } })
+                    e(Editable, { key:'year-'+sel.id+'-'+locPhotos(sel)[0].slot, tag:'span', value: locPhotos(sel)[0].year || '', onCommit:(t)=>setPhotoYear(sel.id, locPhotos(sel)[0].slot, t), title:'Set the year this photo was taken', className:'year-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, padding:'4px 12px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:64, textAlign:'center', letterSpacing:'.1em', cursor:'text', outline:'none' } })
                   ),
+                  // More photos: extras cycle in the hero slideshows with their
+                  // own caption year; ↑ makes one the main photo. The owner also
+                  // gets an empty "+" slot for the next one. Thumbs are keyed by
+                  // their storage name so a just-uploaded slot keeps its state.
+                  (() => {
+                    const list = locPhotos(sel);
+                    const extras = list.slice(1);
+                    if (!editMode && !extras.length) return null;
+                    const nextSlot = Math.max(1, ...list.map(p => p.slot)) + 1;
+                    const mono = "'IBM Plex Mono',monospace";
+                    const thumbStyle = { width:88, height:66, borderRadius:3, border:'1px solid #D2C7AC' };
+                    return e('div', { style:{ marginTop:10 } },
+                      e('div', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71', marginBottom:6 } }, 'More photos'),
+                      e('div', { style:{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'flex-start' } },
+                        extras.map(p => {
+                          const base = slotBase(month.key, sel.id, p.slot);
+                          return e('div', { key: base, style:{ width:88 } },
+                            e(LocationPhoto, { base, compact:true, photoIndex, epoch: imgEpoch, style: thumbStyle,
+                              onChange: (what) => { bumpImg(); if (what === 'removed') removePhotoSlot(sel.id, p.slot); } }),
+                            editMode
+                              ? e('div', { style:{ marginTop:4, display:'flex', alignItems:'center', justifyContent:'space-between', gap:4 } },
+                                  e(Editable, { key:'year-'+sel.id+'-'+p.slot, tag:'span', value: p.year || '', onCommit:(t)=>setPhotoYear(sel.id, p.slot, t), title:'Set the year this photo was taken', className:'year-input', style:{ fontFamily:mono, fontSize:10, padding:'2px 6px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:38, textAlign:'center', letterSpacing:'.1em', cursor:'text', outline:'none' } }),
+                                  e('button', { onClick:()=>makeMainPhoto(sel.id, p.slot), title:'Use as the main photo (tiles and the printable calendar)', 'aria-label':'Use as the main photo', style:{ flex:'none', width:22, height:22, background:'#FBF7EC', border:'1px solid #D2C7AC', color:'#54632F', cursor:'pointer', fontSize:12, lineHeight:1, padding:0 } }, '↑')
+                                )
+                              : ((p.year || '').trim() ? e('div', { style:{ marginTop:3, fontFamily:mono, fontSize:10, color:'#9C8F71', letterSpacing:'.08em', textAlign:'center' } }, "'" + p.year.trim()) : null)
+                          );
+                        }),
+                        editMode && (() => {
+                          const base = slotBase(month.key, sel.id, nextSlot);
+                          return e(LocationPhoto, { key: base, base, compact:true, placeholder:'Add another photo of ' + sel.name, photoIndex, epoch: imgEpoch, style:{ ...thumbStyle, borderStyle:'dashed' },
+                            onChange: (what) => { bumpImg(); if (what === 'uploaded') addPhotoSlot(sel.id, nextSlot); } });
+                        })()
+                      )
+                    );
+                  })(),
                   // view-only: only shown when there are coordinates (with the map links)
                   (editMode || coordsOf(sel)) && e('div', { style:{ marginTop:8 } },
                     e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:5 } },

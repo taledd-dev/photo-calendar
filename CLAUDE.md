@@ -43,6 +43,21 @@ eclipse/season dates per year, annual meteor + nature windows).
     New locations get a readable slug id from their name (`slugify`), so
     added-location photos get readable filenames too. The Worker key sanitizer
     allows `/` for the folder.
+  - **Several photos per location.** `loc.photos` is an ordered list of
+    `{ slot, year }` — the **first is the main photo** (tiles, print, the
+    brief's big photo), and **each photo has its own caption year**. Slot 1
+    lives at `photoBase(...)`, slot n>1 at `photoBase(...) + '.' + n`. A
+    location without `photos` is the legacy single photo (slot 1 +
+    `loc.photoYear`). **Always read through the helpers** next to `photoBase`:
+    `locPhotos(loc)`, `slotBase(mk, id, slot)`, `mainBase(mk, loc)`,
+    `mainYear(loc)`, `photoCaption(loc, monthName, year)`. In `App`:
+    `setPhotoYear(locId, slot, y)`, `addPhotoSlot` (after an extra uploads),
+    `removePhotoSlot` (after a removal; removing the main promotes the next),
+    `makeMainPhoto` (reorder). The brief shows a "More photos" strip of
+    compact `LocationPhoto`s (year + ↑ make-main each) plus an empty "+" slot
+    for the next number; hero slideshows cycle every photo, extras included.
+    Delete/move a location handles every slot. `LocationPhoto.onChange` is
+    called with `'uploaded'` or `'removed'`.
   - The **whole calendar dataset** (locations, events, edits, coordinates, years,
     done/visited ticks) is shared via `calendar-data.json` in R2, shaped
     `{ version, savedAt, data }`. Everyone reads it; only the owner (password)
@@ -170,7 +185,7 @@ eclipse/season dates per year, annual meteor + nature windows).
 - Photos are **public to view, owner-only to upload** (password gate).
 - Hero captions are **auto** (`Location · Mon 'YY`, month abbreviated, year
   shown with a leading apostrophe); only the **year** is user-entered (raw,
-  e.g. `24`), and it's cloud-synced so viewers see it.
+  e.g. `24`), per photo, and it's cloud-synced so viewers see it.
 - **Visited is the `done` tick.** Coordinates come from the built-in table and
   are **per-location editable**; the old **postcode** field was removed.
 - The **2026 cover** slideshow cycles *all* location photos; each **month hero**
@@ -178,9 +193,10 @@ eclipse/season dates per year, annual meteor + nature windows).
 - Deleting a photo (×) **and** deleting a location both remove the R2 images —
   both ask for confirmation first (irreversible).
 - Locations can be **moved between months** ("Move to…" select in the brief's
-  footer): the R2 photo (hero + thumb) is copied to the new month's key first,
-  the old objects deleted only after a copy lands, then the location object
-  moves in the data. Blocked if the target month already has that location id.
+  footer): every photo (all sizes, all slots) is copied to the new month's key
+  first, the old objects deleted only after a copy lands, then the location
+  object moves in the data. Blocked if the target month already has that
+  location id.
 - The **map already has touch gestures** (pinch-to-zoom + one/two-finger pan via
   pointer events on the SVG, `touchAction:'none'`) — don't rebuild them.
 - The **home page** has an Instagram link (`@llandscapist` = `IG_HANDLE`,
