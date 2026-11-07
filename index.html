@@ -737,6 +737,95 @@ function KitField({ value, onCommit }) {
   });
 }
 
+// ─── Links field ──────────────────────────────────────────────────────────────
+// Per-location web links (tide tables, permits, parking info…). Stored as text,
+// one per line, "Label | https://…" or a bare address; shown as chips that open
+// in a new tab. The owner edits the text behind an "edit" button.
+function parseLinks(text) {
+  return (text || '').split('\n').map(s => s.trim()).filter(Boolean).map(line => {
+    const m = line.match(/^(.*?)\s*\|\s*(\S+)$/);
+    let label = m ? m[1].trim() : '';
+    let url = (m ? m[2] : line).trim();
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    if (!label) { try { label = new URL(url).hostname.replace(/^www\./, ''); } catch (_) { label = url; } }
+    return { label, url };
+  });
+}
+function LinksField({ value, onCommit }) {
+  const canEdit = React.useContext(EditCtx);
+  const [editing, setEditing] = useState(false);
+  const mono = "'IBM Plex Mono',monospace";
+  const links = parseLinks(value);
+  const chip = (l, i) => e('a', { key: i, href: l.url, target: '_blank', rel: 'noopener noreferrer', className: 'map-link', title: l.url, style: { fontFamily: mono, fontSize: 10.5, letterSpacing: '.06em', padding: '4px 9px', background: '#EFE7D2', border: '1px solid #DDD2B8', color: '#54632F', textDecoration: 'none', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, l.label + ' ↗');
+  if (!canEdit) return links.length ? e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 7 } }, links.map(chip)) : null;
+  if (!editing) {
+    return e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 7, alignItems: 'center' } },
+      links.map(chip),
+      e('button', { onClick: () => setEditing(true), title: links.length ? 'Edit the links' : 'Add a link', style: { background: 'none', border: '1px dashed #C9BD9F', color: '#9C8F71', fontFamily: mono, fontSize: 10.5, letterSpacing: '.06em', padding: '4px 9px', cursor: 'pointer' } }, links.length ? '✎ edit' : '+ add a link')
+    );
+  }
+  return e('textarea', {
+    autoFocus: true,
+    defaultValue: value || '',
+    onBlur: (ev) => { const t = ev.target.value.trim(); if (t !== (value || '')) onCommit(t); setEditing(false); },
+    onKeyDown: (ev) => { if (ev.key === 'Escape') setEditing(false); },
+    placeholder: 'One per line, e.g.\nTide times | https://www.tidetimes.org.uk/…\nwww.nationaltrust.org.uk/…',
+    style: { width: '100%', minHeight: 84, fontFamily: mono, fontSize: 12, lineHeight: 1.6, color: '#2A251E', background: '#FFFDF5', border: '1px solid #C9BD9F', borderRadius: 3, padding: '8px 10px', outline: 'none', resize: 'vertical' },
+  });
+}
+
+// ─── Mini map (location card) ─────────────────────────────────────────────────
+// A small Leaflet map on OpenStreetMap tiles under the card's coordinates: the
+// location (green dot) and, when set, where to park (P), framed to fit both.
+// Leaflet loads lazily from the CDN the first time a card with coordinates
+// opens; if it can't load, the card simply shows no map. Scroll-wheel zoom is
+// off so the page keeps scrolling; the +/− buttons, drag and pinch work.
+const LEAFLET_JS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js';
+const LEAFLET_CSS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css';
+function ensureStyle(href) {
+  return new Promise((resolve) => {
+    const existing = document.querySelector('link[href="' + href + '"]');
+    if (existing) { if (existing.getAttribute('data-loaded')) return resolve(); existing.addEventListener('load', () => resolve()); existing.addEventListener('error', () => resolve()); return; }
+    const l = document.createElement('link');
+    l.rel = 'stylesheet'; l.href = href;
+    l.onload = () => { l.setAttribute('data-loaded', '1'); resolve(); };
+    l.onerror = () => resolve(); // still try to draw; the map just looks rough
+    document.head.appendChild(l);
+    setTimeout(resolve, 4000);
+  });
+}
+function MiniMap({ coords, parking, name, height = 190 }) {
+  const ref = useRef(null);
+  const [failed, setFailed] = useState(false);
+  const sig = (coords || []).join(',') + '|' + (parking || []).join(',');
+  useEffect(() => {
+    if (!coords) return;
+    let map = null, cancelled = false;
+    (async () => {
+      try {
+        await ensureStyle(LEAFLET_CSS);
+        if (!window.L) await ensureScript(LEAFLET_JS);
+      } catch (_) { if (!cancelled) setFailed(true); return; }
+      if (cancelled || !ref.current || !window.L) return;
+      const L = window.L;
+      map = L.map(ref.current, { scrollWheelZoom: false, zoomControl: true, attributionControl: true });
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' }).addTo(map);
+      L.circleMarker(coords, { radius: 8, color: '#FBF7EC', weight: 2, fillColor: '#54632F', fillOpacity: 1 }).addTo(map).bindTooltip(name || 'Location');
+      if (parking) {
+        const icon = L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11], html: '<div style="width:22px;height:22px;border-radius:50%;background:#9E4B26;border:2px solid #FBF7EC;color:#FBF7EC;font:700 12px/18px \'IBM Plex Mono\',monospace;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.35)">P</div>' });
+        L.marker(parking, { icon }).addTo(map).bindTooltip('Parking');
+        map.fitBounds(L.latLngBounds([coords, parking]), { padding: [30, 30], maxZoom: 16 });
+      } else {
+        map.setView(coords, 13);
+      }
+    })();
+    return () => { cancelled = true; if (map) { map.remove(); map = null; } };
+  }, [sig]);
+  if (!coords || failed) return null;
+  // zIndex:0 makes a stacking context so Leaflet's controls (z 1000) stay under the app's dialogs.
+  return e('div', { ref, style: { height, position: 'relative', zIndex: 0, border: '1px solid #D2C7AC', borderRadius: 4, overflow: 'hidden', background: '#EFE7D2' } });
+}
+
 // ─── Print month photo ────────────────────────────────────────────────────────
 // On-screen-only flag on a print-page photo that has no print-size copy (it was
 // uploaded before -print existed): it will print from the 1600px hero.
@@ -2922,7 +3011,9 @@ function App() {
                     ),
                     e(Editable, { key:'coords-'+sel.id, tag:'div', value: locCoordText(sel), onCommit:(t)=>setLocCoords(sel.id, t), title:'Paste "latitude, longitude" to place this location on the map', className:'coord-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11.5, padding:'6px 10px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', letterSpacing:'.02em', cursor:'text', outline:'none', wordBreak:'break-all' } }),
                     // deep links for the drive there
-                    mapLinks(coordsOf(sel), sel.name, { marginTop:7 })
+                    mapLinks(coordsOf(sel), sel.name, { marginTop:7 }),
+                    // and a small map of the spot (+ parking, when set)
+                    e('div', { style:{ marginTop:8 } }, e(MiniMap, { coords: coordsOf(sel), parking: parkingOf(sel), name: sel.name }))
                   )
                 ),
                 e('div', { style:{ flex:1, minWidth:280 } },
@@ -2959,6 +3050,11 @@ function App() {
                       ),
                       mapLinks(parkingOf(sel), 'Parking · ' + sel.name, { marginTop:7 })
                     )
+                  ),
+                  // Links — tide tables, permits, parking info… view-only: only when set.
+                  (editMode || parseLinks(sel.links).length > 0) && e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                    e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Links'),
+                    e(LinksField, { key:'links-'+sel.id, value:sel.links, onCommit:(t)=>editField(sel.id,'links',t) })
                   )
                 )
               ),

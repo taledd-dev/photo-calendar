@@ -131,6 +131,14 @@ eclipse/season dates per year, annual meteor + nature windows).
   (`parkingOf(loc)` / `parkingText(loc)`, stored as `loc.parkLat`/`parkLng`,
   set by `setLocParking` in `App`) is a second coordinate box in the brief's
   right column under Kit, with the same map links; it isn't on the map page.
+- **`MiniMap`** — a small Leaflet map (1.9.4 + CSS lazy-loaded from jsDelivr
+  via `ensureScript`/`ensureStyle`, OpenStreetMap tiles) under the brief's
+  coordinates: green dot = location, "P" = parking, fitted to both. Scroll-wheel
+  zoom off; wrapper has `zIndex:0` so Leaflet's controls stay under the app's
+  dialogs. Renders nothing without coordinates or if the CDN fails.
+- **`LinksField` / `parseLinks`** — per-location links (`loc.links`, text, one
+  per line, `Label | url` or a bare address) shown as chips in a "Links" row
+  under Parking; owner edits via an "edit" button → textarea.
 - **Components:** `HeroCaption` (read-only caption overlay), `PhotoSlideshow`
   (hero slideshows — random order, 15s, pause button, cache-busts via `epoch`),
   `LocThumb` (tile thumbnail), `LocationPhoto` (the upload control),
