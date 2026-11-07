@@ -112,15 +112,22 @@ eclipse/season dates per year, annual meteor + nature windows).
   `LocThumb` (tile thumbnail), `LocationPhoto` (the upload control),
   `KitField` (pill chips that flip to an editable line), `Editable` (inline
   click-to-edit text), `MapView`, and `App`.
-- **Print view** (`renderPrintPage`, "Print" button on the home nav): a cover
-  sheet + one A4-portrait `.print-sheet` per month (photo, light strip, that
-  year's day-grid) for the selected year; printing/PDF goes through the
-  browser's dialog. `@media print` CSS hides `.no-print` chrome and page-breaks
-  the sheets. `PrintMonthPhoto` shows the month's **starred** location
-  (`month.printLoc`, ★ button on the month-page tiles, one per month,
-  cloud-synced) if it has a photo, else the first location with one. Events
-  print **by default**; a checkbox in the event editor sets `noPrint: true`
-  to keep an event off the printed grid (calendar pages unaffected).
+- **Print view** (`renderPrintPage`, "Print" button on the home nav): an
+  **A4-landscape** wall calendar for the selected year, page order: cover photo
+  → per month a full-bleed photo page then a grid page → two photo-index pages
+  (6 month photos each) → back-cover photo. `.print-sheet` CSS keeps sheets at
+  281×193mm (aspect-ratio preview on screen; exact one-page height in
+  `@media print`; `.pad` adds the grid page's padding; `.print-label` is the
+  on-screen-only page caption). Cover/back photos are `LocationPhoto` slots
+  on R2 keys `photos/print-cover` / `photos/print-back` (owner drops a photo
+  on the sheet; visitors see it). `PrintMonthPhoto` (variant `page` with
+  caption, or `tile`) shows the month's **starred** location (`month.printLoc`,
+  ★ on the month-page tiles) if it has a photo, else the first with one. What
+  prints: per-event `noPrint` (checkbox in the event editor) **and**
+  `data[0].printPrefs` = `{ hideKinds:[kind…], captions:bool }` — the
+  "Print these event types" / "Photo captions" chips on the print page, owner
+  only, cloud-synced. The print grid uses `buildWeeks(..., { top:30, step:24 })`
+  geometry with 21px bars and a per-page type key.
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
   `navRow(showYearBtn)` renders the top buttons (year page drops the redundant
