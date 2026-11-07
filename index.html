@@ -3229,11 +3229,11 @@ function App() {
       data.map((m2, i) => e('option', { key:m2.key, value:i }, m2.name))),
     e('span', { 'aria-hidden':'true', style:{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:12, color:'#54632F' } }, '▾')
   );
-  // Month page: arrows + month picker | Map | Home (Add location sits at the
-  // foot of the nav column, see addLocBtn).
+  // Month page: month picker + arrows | Map | Weather | Home (Add location
+  // sits at the foot of the nav column, see addLocBtn).
   const navRow = (showYearBtn) => showYearBtn
     ? e('div', { style:navRowStyle },
-        prevBtn, nextBtn, monthPicker(), navDivider(), mapBtn, weatherBtn, navDivider(),
+        monthPicker(), prevBtn, nextBtn, navDivider(), mapBtn, weatherBtn, navDivider(),
         e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home')
       )
     : e('div', { style:navRowStyle },

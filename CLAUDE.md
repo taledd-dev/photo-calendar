@@ -204,9 +204,10 @@ a per-location "Light" row. `daylightNote` stays editorial.
   per kind of shoot — editorial, edit the array). All fetches fail quietly.
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView` / `weatherView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
-  `navRow(showYearBtn)` renders the top buttons. Month pages: `‹ › [month
-  picker] | Map | ← Home`, with the owner's "+ Add location" (`addLocBtn`) at
-  the foot of the nav column; home: `Map Print | ‹ January →`. `monthPicker`
+  `navRow(showYearBtn)` renders the top buttons. Month pages: `[month picker]
+  ‹ › | Map Weather | ← Home`, with the owner's "+ Add location" (`addLocBtn`)
+  at the foot of the nav column; home: `Map Weather (Print, Calendar file —
+  owner) | ‹ January →`. `monthPicker`
   and `yearPicker(size)` are native `<select>`s styled in place (`appearance:
   none` + a chevron span) — the year is the quiet dotted-underline picker
   beside the month name (`'title'`), and `yearRow()` (label + `'small'`
