@@ -1641,10 +1641,24 @@ function generatedEvents(year) {
   generatedCache[year] = by;
   return by;
 }
-// The events of a month in a year: what's stored, else the computed set.
-function eventsFor(m, year) {
+// A month's own events for a year: what's stored, else the computed set.
+function storedOrGenerated(m, year) {
   const stored = m.eventsByYear && m.eventsByYear[String(year)];
   return stored || generatedEvents(year)[m.key] || [];
+}
+// Everything shown for a month in a year: the yearly repeaters first
+// (month.annualEvents — birthdays and the like, flagged `annual: true`, their
+// dates clamped to that year's month length), then the year's own events.
+function eventsFor(m, year) {
+  const yearly = storedOrGenerated(m, year);
+  const annual = m.annualEvents || [];
+  if (!annual.length) return yearly;
+  const days = new Date(year, MONTH_KEYS.indexOf(m.key) + 1, 0).getDate();
+  return annual.map(ev => {
+    const s0 = ev.start != null ? ev.start : ev.day, e0 = ev.end != null ? ev.end : s0;
+    const s = Math.min(s0, days), en = Math.min(e0, days);
+    return (s === s0 && en === e0) ? ev : { ...ev, start: s, end: en, day: s };
+  }).concat(yearly);
 }
 
 // Upgrade any loaded dataset to the per-year shape, idempotently: an old-style
@@ -1666,9 +1680,10 @@ function migrateYearEvents(arr) {
   });
 }
 
-// Every event in a month across all years (used to derive custom event types).
+// Every event in a month across all years, repeaters included (used to derive
+// custom event types).
 function allMonthEvents(m) {
-  return Object.values(m.eventsByYear || {}).reduce((a, evs) => a.concat(evs), []);
+  return Object.values(m.eventsByYear || {}).reduce((a, evs) => a.concat(evs), []).concat(m.annualEvents || []);
 }
 
 const EVENT_STYLE = {
@@ -2588,7 +2603,7 @@ function App() {
 
   const mutateData = (fn) => {
     if (!ensureUnlocked(() => mutateData(fn))) return;
-    setData(prev => { const d = prev.map(m => ({ ...m, locations: m.locations.map(l => ({ ...l })), eventsByYear: Object.keys(m.eventsByYear || {}).reduce((o, y) => { o[y] = m.eventsByYear[y].map(e2 => ({ ...e2 })); return o; }, {}) })); fn(d); return d; });
+    setData(prev => { const d = prev.map(m => ({ ...m, locations: m.locations.map(l => ({ ...l })), eventsByYear: Object.keys(m.eventsByYear || {}).reduce((o, y) => { o[y] = m.eventsByYear[y].map(e2 => ({ ...e2 })); return o; }, {}), ...(m.annualEvents ? { annualEvents: m.annualEvents.map(e2 => ({ ...e2 })) } : {}) })); fn(d); return d; });
   };
 
   // Toggle a location's "done"/visited state wherever it lives (used by the map,
@@ -2798,19 +2813,27 @@ function App() {
     if (!ev) return;
     const s = ev.start != null ? ev.start : ev.day;
     const e2 = ev.end != null ? ev.end : ev.day;
-    setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, kindLabel: ev.kindLabel, kindColor: ev.kindColor, locId: ev.locId || null, noPrint: !!ev.noPrint, isNew: false });
+    setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, kindLabel: ev.kindLabel, kindColor: ev.kindColor, locId: ev.locId || null, noPrint: !!ev.noPrint, annual: !!ev.annual, isNew: false });
   };
 
   const saveEvent = () => {
     if (!editingEvent) return;
     const d2 = editingEvent;
     mutateData(d => {
-      const by = d[monthIdx].eventsByYear;
+      const m = d[monthIdx];
+      const by = m.eventsByYear;
       // A year not stored yet starts from its computed events (so they stay).
-      const events = by[yKey] || (by[yKey] = eventsFor(d[monthIdx], viewYear).map(ev => ({ ...ev })));
+      const yearList = by[yKey] || (by[yKey] = storedOrGenerated(m, viewYear).map(ev => ({ ...ev })));
+      const annualList = m.annualEvents || (m.annualEvents = []);
       // Drafts (isNew) don't exist in the data yet — Save is what creates them.
-      let ev = events.find(e2 => e2.id === d2.id);
-      if (!ev) { ev = { id: d2.id }; events.push(ev); }
+      // Toggling "repeats every year" moves an event between the year's list
+      // and the month's yearly repeaters.
+      let ev = yearList.find(e2 => e2.id === d2.id) || annualList.find(e2 => e2.id === d2.id);
+      const target = d2.annual ? annualList : yearList;
+      if (!ev) { ev = { id: d2.id }; target.push(ev); }
+      else if (!target.includes(ev)) { const from = target === annualList ? yearList : annualList; from.splice(from.indexOf(ev), 1); target.push(ev); }
+      if (d2.annual) ev.annual = true; else delete ev.annual;
+      if (!annualList.length) delete m.annualEvents;
       let s = parseInt(d2.start, 10); if (isNaN(s)) s = 1;
       let en = parseInt(d2.end, 10); if (isNaN(en)) en = s;
       const days = month.days;
@@ -2840,8 +2863,12 @@ function App() {
     if (editingEvent.isNew) { setEditingEvent(null); return; } // never saved — nothing to remove
     const evId = editingEvent.id;
     mutateData(d => {
-      const by = d[monthIdx].eventsByYear;
-      const events = by[yKey] || (by[yKey] = eventsFor(d[monthIdx], viewYear).map(ev => ({ ...ev })));
+      const m = d[monthIdx];
+      const annualList = m.annualEvents || [];
+      const ai = annualList.findIndex(e2 => e2.id === evId);
+      if (ai !== -1) { annualList.splice(ai, 1); if (!annualList.length) delete m.annualEvents; return; }
+      const by = m.eventsByYear;
+      const events = by[yKey] || (by[yKey] = storedOrGenerated(m, viewYear).map(ev => ({ ...ev })));
       const i = events.findIndex(e2 => e2.id === evId);
       if (i !== -1) events.splice(i, 1);
     });
@@ -3761,6 +3788,11 @@ function App() {
           e('label', { style:{ marginTop:16, display:'flex', alignItems:'center', gap:9, cursor:'pointer', userSelect:'none' } },
             e('input', { type:'checkbox', checked:!draft.noPrint, onChange:(ev)=>{ const on = ev.target.checked; setEditingEvent(p=>p&&({ ...p, noPrint:!on })); }, style:{ width:15, height:15, margin:0, accentColor:'#54632F', cursor:'pointer' } }),
             e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.04em', color: draft.noPrint ? '#A89A7C' : '#5A513B' } }, draft.noPrint ? 'Hidden from the printable calendar' : 'Shown on the printable calendar')
+          ),
+          // Yearly repeater — birthdays, anniversaries: the same dates every year
+          e('label', { style:{ marginTop:10, display:'flex', alignItems:'center', gap:9, cursor:'pointer', userSelect:'none' } },
+            e('input', { type:'checkbox', checked:!!draft.annual, onChange:(ev)=>{ const on = ev.target.checked; setEditingEvent(p=>p&&({ ...p, annual:on })); }, style:{ width:15, height:15, margin:0, accentColor:'#54632F', cursor:'pointer' } }),
+            e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.04em', color: draft.annual ? '#5A513B' : '#A89A7C' } }, draft.annual ? 'Repeats every year (birthdays, anniversaries)' : 'Repeats every year')
           ),
           // Save / Delete
           e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginTop:22, paddingTop:15, borderTop:'1px solid #E6DECA' } },

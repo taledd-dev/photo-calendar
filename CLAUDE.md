@@ -17,9 +17,14 @@ civil-twilight times at any coordinates (`lightAt`; UK coords in GMT/BST,
 elsewhere UTC). `generatedEvents(year)` builds a year's events from these
 (named full moons incl. Harvest/Blue, the `ECLIPSES` table for 2029–30 —
 extend it, and the annual meteor/nature windows taken from the 2028 seed);
-`eventsFor(m, year)` returns the stored list **or** the generated one, and
-`saveEvent`/`deleteEvent` materialise the generated list into the data the
-first time a year is edited. `migrateYearEvents` upgrades old data on load
+`storedOrGenerated(m, year)` returns the stored list **or** the generated
+one; `eventsFor(m, year)` prepends the month's **yearly repeaters**
+(`month.annualEvents`, events flagged `annual: true` — birthdays etc., set
+by the "Repeats every year" checkbox in the event editor; dates clamped to
+the month length) and is what every view uses. `saveEvent`/`deleteEvent`
+materialise the generated list into the data the first time a year is
+edited, and move an event between the year list and `annualEvents` when the
+checkbox is toggled (`mutateData`'s deep copy clones `annualEvents` too). `migrateYearEvents` upgrades old data on load
 (bare `events` → 2026) and fills only the hand-seeded `YEAR_EVENTS` years
 (2027/28). The seeded `sunrise`/`sunset` month fields are **unused**: the
 home rows, month header and print grid show `monthLight(m2, i)` (15th of the
