@@ -363,7 +363,8 @@ function mapLinks(coords, name, style) {
 function parkingOf(loc) {
   return (typeof loc.parkLat === 'number' && typeof loc.parkLng === 'number') ? [loc.parkLat, loc.parkLng] : null;
 }
-function parkingText(loc) { const p = parkingOf(loc); return p ? p[0] + ', ' + p[1] : ''; }
+// Shown to five decimals (~1 m), like the location's own coordinates.
+function parkingText(loc) { const p = parkingOf(loc); return p ? p[0].toFixed(5) + ', ' + p[1].toFixed(5) : ''; }
 
 // Fisher–Yates shuffle — returns a new array in random order.
 function shuffle(arr) {
