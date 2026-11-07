@@ -87,6 +87,19 @@ export default {
       return json({ backups });
     }
 
+    // ── Public: which photos exist (every key under photos/), so the site can
+    // show thumbnails and slideshows from one request instead of probing. ──────
+    if (url.pathname === '/list' && request.method === 'GET') {
+      const keys = [];
+      let cursor;
+      do {
+        const page = await env.BUCKET.list({ prefix: 'photos/', cursor });
+        page.objects.forEach(o => keys.push(o.key));
+        cursor = page.truncated ? page.cursor : undefined;
+      } while (cursor);
+      return json({ keys });
+    }
+
     const match = url.pathname.match(/^\/photo\/(.+)$/);
     if (!match) {
       return json({ error: 'Not found' }, 404);

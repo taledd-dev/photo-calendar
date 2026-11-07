@@ -9,11 +9,25 @@
   <link rel="icon" href="/favicon.ico" sizes="48x48">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta name="theme-color" content="#272e1b">
+  <meta name="description" content="Photoplan — a photography planning calendar: the year's locations, light and astro events month by month, with a map of every spot.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Photoplan">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Photoplan">
+  <meta property="og:title" content="Photoplan — Photo Location Calendar">
+  <meta property="og:description" content="A year of places to point a camera: locations, light and astro events month by month, with a map of every spot.">
+  <meta property="og:url" content="https://photoplan.studio/">
+  <meta property="og:image" content="https://photoplan.studio/assets/social-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- Only the weights actually used: Zilla 600/700, Spectral 400, Plex Mono 400/500/600. -->
+  <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&family=Spectral:wght@400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- React 18.3.1 UMD builds, self-hosted (assets/vendor) so the site has no render-blocking third party. -->
+  <script src="/assets/vendor/react.production.min.js"></script>
+  <script src="/assets/vendor/react-dom.production.min.js"></script>
   <link rel="preload" href="/assets/fonts/Figtree-Variable.woff2" as="font" type="font/woff2" crossorigin>
   <style>
     /* Brand fonts from the logo pack, self-hosted. Figtree is the wordmark
@@ -26,6 +40,9 @@
     ::selection { background: #54632F; color: #FBF7EC; }
     [contenteditable] { outline: none; }
     [contenteditable]:focus { box-shadow: 0 0 0 2px rgba(84,99,47,0.35); background: #FFFDF5; border-radius: 3px; }
+    /* Keyboard focus ring for everything clickable (role=button divs included). */
+    button:focus-visible, a:focus-visible, select:focus-visible, [role=button]:focus-visible { outline: 2px solid #54632F; outline-offset: 2px; }
+    .map-link:hover { color: #2A251E !important; border-color: #2A251E !important; }
     .btn-hover:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 rgba(42,37,30,0.16) !important; }
     .btn-hover:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 rgba(42,37,30,0.12) !important; }
     .tile:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(42,37,30,0.12) !important; }
@@ -97,6 +114,11 @@ const e = React.createElement;
 // version suits the site's cream background; the favicon/app icon variants are
 // linked from the <head>.
 const LOGO_SRC = 'assets/photoplan-mark.svg';
+
+// Whether editing controls are shown (the owner, with the password) or the page
+// is view-only (family). Editable, KitField and LocationPhoto read it through
+// this context, so call sites don't need to know.
+const EditCtx = React.createContext(true);
 
 // ─── Storage ────────────────────────────────────────────────────────────────
 // The single "switch" for where saved data lives. Calendar text (locations,
@@ -279,6 +301,17 @@ const Storage = {
     }
     return okHero || okThumb;
   },
+  // Every stored photo key (under photos/) in one request, from the Worker's
+  // GET /list — replaces probing each thumbnail. Resolves to a Set of keys, or
+  // null when the Worker predates /list (callers then fall back to probing).
+  async loadPhotoIndex() {
+    try {
+      const res = await fetch(PHOTO_STORAGE_BASE + '/list?t=' + Date.now(), { cache: 'no-store' });
+      if (!res.ok) return null;
+      const parsed = await res.json();
+      return Array.isArray(parsed.keys) ? new Set(parsed.keys) : null;
+    } catch (_) { return null; }
+  },
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -286,6 +319,30 @@ const Storage = {
 // in the cloud (see the cloud-sync notes in App). Read on the next visit.
 function readUnsavedFlag() { try { return localStorage.getItem('calendar:dirty') === '1'; } catch (_) { return false; } }
 function writeUnsavedFlag(on) { try { if (on) localStorage.setItem('calendar:dirty', '1'); else localStorage.removeItem('calendar:dirty'); } catch (_) {} }
+
+// Keyboard activation for non-<button> elements that act as buttons (they carry
+// role="button" + tabIndex): Enter or Space fires the same handler as a click.
+function keyActivate(handler) {
+  return (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); handler(ev); } };
+}
+
+// A location's coordinates as [lat, lng] — its own if set, else the built-in
+// table's, else null — plus deep links into the two phone map apps.
+function coordsOf(loc) {
+  const fb = LOCATION_COORDS[loc.id] || [];
+  const la = typeof loc.lat === 'number' ? loc.lat : fb[0];
+  const lo = typeof loc.lng === 'number' ? loc.lng : fb[1];
+  return (typeof la === 'number' && typeof lo === 'number') ? [la, lo] : null;
+}
+function mapLinks(coords, name, style) {
+  if (!coords) return null;
+  const [la, lo] = coords;
+  const linkStyle = { fontFamily: "'IBM Plex Mono',monospace", fontSize: 10.5, letterSpacing: '.08em', textTransform: 'uppercase', color: '#54632F', textDecoration: 'none', borderBottom: '1px solid #C9D4A8', paddingBottom: 1 };
+  return e('div', { style: { display: 'flex', gap: 14, flexWrap: 'wrap', ...style } },
+    e('a', { className: 'map-link', href: 'https://www.google.com/maps/search/?api=1&query=' + la + ',' + lo, target: '_blank', rel: 'noopener noreferrer', style: linkStyle }, 'Google Maps ↗'),
+    e('a', { className: 'map-link', href: 'https://maps.apple.com/?ll=' + la + ',' + lo + '&q=' + encodeURIComponent(name || 'Location'), target: '_blank', rel: 'noopener noreferrer', style: linkStyle }, 'Apple Maps ↗')
+  );
+}
 
 // Fisher–Yates shuffle — returns a new array in random order.
 function shuffle(arr) {
@@ -380,7 +437,7 @@ function HeroCaption({ value, onCommit }) {
 // Each item is { key (unique), base (image name), caption }. It checks which
 // photos exist using the small thumbnails (fast), then shows the hero version of
 // whichever slide is current. Used for both the 2026 cover and each month's hero.
-function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0 }) {
+function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0, photoIndex }) {
   const [keys, setKeys] = useState([]); // item keys that have a photo, in order
   const [pos, setPos] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -389,13 +446,20 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0 }) {
   const sig = items.map(it => it.key + ':' + it.base).join('|');
 
   // Work out which items actually have a photo uploaded (skip empty ones).
+  // Only adopt a new key list when it actually differs — a fresh array with the
+  // same contents would reshuffle and restart the show (the index refreshes on
+  // every cloud re-sync).
+  const setKeysIfChanged = (next) => setKeys(prev => (prev.length === next.length && prev.every((k, i) => k === next[i])) ? prev : next);
   useEffect(() => {
     let cancelled = false;
     const candidates = items.filter(it => it.base);
-    if (!candidates.length) { setKeys([]); return; }
+    if (!candidates.length) { setKeysIfChanged([]); return; }
+    if (photoIndex === undefined) return; // index still loading
+    if (photoIndex) { setKeysIfChanged(candidates.filter(c => photoIndex.has(c.base + '-thumb')).map(c => c.key)); return; }
+    // No index (older Worker): probe each thumbnail.
     let pending = candidates.length;
     const ok = [];
-    const finish = () => { if (!cancelled) setKeys(candidates.filter(c => ok.includes(c.key)).map(c => c.key)); };
+    const finish = () => { if (!cancelled) setKeysIfChanged(candidates.filter(c => ok.includes(c.key)).map(c => c.key)); };
     candidates.forEach(c => {
       const img = new Image();
       img.onload = () => { ok.push(c.key); if (--pending === 0) finish(); };
@@ -403,7 +467,7 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0 }) {
       img.src = Storage.photoUrl(c.base + '-thumb', epoch || undefined);
     });
     return () => { cancelled = true; };
-  }, [sig, epoch]);
+  }, [sig, epoch, photoIndex]);
 
   // Build a fresh random order whenever the set of photos changes; start playing.
   useEffect(() => {
@@ -425,6 +489,16 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0 }) {
     }, intervalMs);
     return () => clearInterval(t);
   }, [keys, intervalMs, paused]);
+
+  // Warm the cache with the next slide's hero image so the change-over is
+  // instant instead of fading in from blank while it downloads.
+  useEffect(() => {
+    if (paused || keys.length <= 1) return;
+    const order = orderRef.current;
+    if (!order.length) return;
+    const nextItem = items.find(it => it.key === keys[order[(posRef.current + 1) % order.length]]);
+    if (nextItem) { const im = new Image(); im.src = Storage.photoUrl(nextItem.base, epoch || undefined); }
+  }, [pos, keys, paused]);
 
   if (keys.length === 0) {
     return e('div', { className: 'image-slot', style: { ...boxStyle } },
@@ -453,17 +527,19 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0 }) {
 
 // ─── Location thumbnail ──────────────────────────────────────────────────────
 // Shows the small thumbnail of a location's photo on its card (nothing if none).
-function LocThumb({ base, epoch = 0 }) {
+function LocThumb({ base, epoch = 0, photoIndex }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let cancelled = false;
     const url = Storage.photoUrl(base + '-thumb', epoch || undefined);
-    const probe = new Image();
+    if (photoIndex === undefined) { setSrc(null); return; }
+    if (photoIndex) { setSrc(photoIndex.has(base + '-thumb') ? url : null); return; }
+    const probe = new Image(); // no index (older Worker): probe
     probe.onload = () => { if (!cancelled) setSrc(url); };
     probe.onerror = () => { if (!cancelled) setSrc(null); };
     probe.src = url;
     return () => { cancelled = true; };
-  }, [base, epoch]);
+  }, [base, epoch, photoIndex]);
   if (!src) return null;
   return e('img', { src, alt: '', style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 } });
 }
@@ -471,21 +547,30 @@ function LocThumb({ base, epoch = 0 }) {
 // ─── Location photo uploader ─────────────────────────────────────────────────
 // The upload control on a location: drop/click a photo and it saves both a
 // thumbnail and a hero version. Shows the thumbnail once set.
-function LocationPhoto({ base, placeholder, style = {}, onChange }) {
+function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, epoch = 0 }) {
+  const canEdit = React.useContext(EditCtx);
   const [src, setSrc] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
+  // After an upload/removal here we know the answer; trust it over an index
+  // that hasn't refreshed yet (reset when pointed at a different location).
+  const knownRef = useRef(null);
   const thumb = (bust) => Storage.photoUrl(base + '-thumb', bust);
 
+  useEffect(() => { knownRef.current = null; }, [base]);
   useEffect(() => {
     let cancelled = false;
-    const probe = new Image();
-    probe.onload = () => { if (!cancelled) setSrc(thumb()); };
+    const url = thumb(epoch || undefined);
+    if (knownRef.current != null) { setSrc(knownRef.current ? url : null); return; }
+    if (photoIndex === undefined) return; // index still loading
+    if (photoIndex) { setSrc(photoIndex.has(base + '-thumb') ? url : null); return; }
+    const probe = new Image(); // no index (older Worker): probe
+    probe.onload = () => { if (!cancelled) setSrc(url); };
     probe.onerror = () => { if (!cancelled) setSrc(null); };
-    probe.src = thumb();
+    probe.src = url;
     return () => { cancelled = true; };
-  }, [base]);
+  }, [base, epoch, photoIndex]);
 
   const uploadFile = useCallback(async (file) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -494,7 +579,7 @@ function LocationPhoto({ base, placeholder, style = {}, onChange }) {
     setBusy(true);
     const ok = await Storage.savePhotoVariants(base, file, key);
     setBusy(false);
-    if (ok) { setSrc(thumb(Date.now())); if (onChange) onChange(); }
+    if (ok) { knownRef.current = true; setSrc(thumb(Date.now())); if (onChange) onChange(); }
   }, [base, onChange]);
 
   const handleDrop = useCallback((ev) => {
@@ -510,9 +595,14 @@ function LocationPhoto({ base, placeholder, style = {}, onChange }) {
     setBusy(true);
     const ok = await Storage.removePhotoVariants(base, key);
     setBusy(false);
-    if (ok) { setSrc(null); if (onChange) onChange(); }
+    if (ok) { knownRef.current = false; setSrc(null); if (onChange) onChange(); }
   }, [base, onChange]);
 
+  // View-only: just the photo (or a quiet placeholder) — no upload or remove.
+  if (!canEdit) {
+    return e('div', { className: 'image-slot', style },
+      src ? e('img', { src, alt: '' }) : e('div', { className: 'placeholder-text' }, 'No photo yet'));
+  }
   return e('div', {
     className: 'image-slot' + (dragOver ? ' drag-over' : ''),
     style: { cursor: (src || busy) ? 'default' : 'pointer', ...style },
@@ -542,19 +632,30 @@ function LocationPhoto({ base, placeholder, style = {}, onChange }) {
 // redraw this box (which is what used to throw the cursor to the start and make
 // text appear backwards). It only saves your change once you click away (blur).
 function Editable({ tag = 'div', value, onCommit, title, style, className }) {
+  const canEdit = React.useContext(EditCtx);
   const ref = useRef(null);
   // Put the starting text in once when the box first appears (or when it's
-  // pointed at a different location), without touching it again while editing.
+  // pointed at a different location, or editing is switched on), without
+  // touching it again while editing.
   useEffect(() => {
-    if (ref.current && ref.current.textContent !== (value || '')) {
+    if (canEdit && ref.current && ref.current.textContent !== (value || '')) {
       ref.current.textContent = value || '';
     }
-  }, []);
+  }, [canEdit]);
+  // View-only: plain text, and nothing at all when empty (no placeholders).
+  // The two branches carry different keys so React swaps the element instead
+  // of reusing a node whose text was set imperatively.
+  if (!canEdit) {
+    if (!value) return null;
+    const ro = { ...(style || {}) }; delete ro.cursor; delete ro.outline;
+    return e(tag, { key: 'ro', style: ro }, value);
+  }
   const handleBlur = () => {
     const text = ref.current ? ref.current.textContent : '';
     if (text !== value) onCommit(text);
   };
   return e(tag, {
+    key: 'rw',
     ref,
     contentEditable: true,
     suppressContentEditableWarning: true,
@@ -576,10 +677,14 @@ function KitField({ value, onCommit }) {
     if (joined !== (value || '')) onCommit(joined);
     setEditing(false);
   };
+  const canEdit = React.useContext(EditCtx);
+  const chip = (k, i) => e('span', { key: i, style: { fontFamily: mono, fontSize: 11, padding: '4px 9px', background: '#EFE7D2', border: '1px solid #DDD2B8', color: '#5A513B' } }, k);
+  // View-only: the chips, not clickable; nothing when no kit is listed.
+  if (!canEdit) return items.length ? e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 7 } }, items.map(chip)) : null;
   if (!editing) {
     return e('div', { className: 'kit-view', onClick: () => setEditing(true), title: 'Click to edit', style: { display: 'flex', flexWrap: 'wrap', gap: 7, cursor: 'pointer' } },
       items.length
-        ? items.map((k, i) => e('span', { key: i, style: { fontFamily: mono, fontSize: 11, padding: '4px 9px', background: '#EFE7D2', border: '1px solid #DDD2B8', color: '#5A513B' } }, k))
+        ? items.map(chip)
         : e('span', { style: { fontFamily: mono, fontSize: 11, color: '#B7AD90' } }, 'Click to add kit')
     );
   }
@@ -599,7 +704,7 @@ function KitField({ value, onCommit }) {
 // the first location (in the month's tile order) that has one — so a stale or
 // photo-less star falls back gracefully.
 // Shows the hero-size image for print quality, with the usual caption.
-function PrintMonthPhoto({ monthKey, locs, preferId, epoch }) {
+function PrintMonthPhoto({ monthKey, locs, preferId, epoch, photoIndex }) {
   const [pick, setPick] = useState(null);
   const sig = monthKey + '|' + (preferId || '') + '|' + locs.map(l => l.id).join(',');
   useEffect(() => {
@@ -607,7 +712,13 @@ function PrintMonthPhoto({ monthKey, locs, preferId, epoch }) {
     const ordered = preferId
       ? locs.filter(l => l.id === preferId).concat(locs.filter(l => l.id !== preferId))
       : locs;
-    (async () => {
+    if (photoIndex === undefined) return; // index still loading
+    if (photoIndex) {
+      const l = ordered.find(x => photoIndex.has(photoBase(monthKey, x.id) + '-thumb'));
+      setPick(l ? { base: photoBase(monthKey, l.id), name: l.name, year: (l.photoYear || '').trim() } : null);
+      return;
+    }
+    (async () => { // no index (older Worker): probe in order
       for (const l of ordered) {
         const base = photoBase(monthKey, l.id);
         const ok = await new Promise(res => {
@@ -622,7 +733,7 @@ function PrintMonthPhoto({ monthKey, locs, preferId, epoch }) {
       if (!cancelled) setPick(null);
     })();
     return () => { cancelled = true; };
-  }, [sig, epoch]);
+  }, [sig, epoch, photoIndex]);
   if (!pick) {
     return e('div', { style:{ height:'108mm', background:'#F1EBDB', border:'1px solid #E0D6BE', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:'3.5mm', color:'#A89A7C', letterSpacing:'.06em' } }, 'No photo yet for this month');
   }
@@ -1387,7 +1498,7 @@ function ensureScript(src) {
   });
 }
 
-function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEditIntro }) {
+function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEditIntro, editMode, editControl }) {
   const VW = 1000, VH = 640, VMIN = 1, VMAX = 20, PAPER = '#FCFAF1';
   const isMobile = useIsMobile();
   const [hoveredId, setHoveredId] = useState(null);
@@ -1594,13 +1705,14 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEd
         e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9C8F71', flex: '0 0 auto' } }, 'Where'),
         e('span', { style: { fontSize: 14.5, color: '#2A251E' } }, activeLoc.where)
       ),
+      mapLinks([activeLoc.lat, activeLoc.lng], activeLoc.name, { marginTop: 8 }),
       e('div', { style: { marginTop: 12, paddingTop: 11, borderTop: '1px solid #E6DECA' } },
         e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 } },
           e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9C8F71' } }, 'Shoots'),
           activeLoc.shoots.length > 1 && e('span', { style: { fontFamily: MAP_MONO, fontSize: 9, letterSpacing: '.06em', color: '#9E4B26' } }, activeLoc.shoots.length + ' visits')
         ),
         e('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
-          readoutShoots.map(s => e('div', { key: s.mi, className: 'map-shootrow', onClick: () => onOpenMonth(s.mi, activeLoc.id), role: 'button', tabIndex: 0, title: 'Open ' + s.monthName + ' in the calendar', style: { display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 10, alignItems: 'center', padding: '6px 7px', margin: '0 -7px', borderRadius: 3, cursor: 'pointer', background: 'transparent', transition: 'background .12s ease' } },
+          readoutShoots.map(s => e('div', { key: s.mi, className: 'map-shootrow', onClick: () => onOpenMonth(s.mi, activeLoc.id), onKeyDown: keyActivate(() => onOpenMonth(s.mi, activeLoc.id)), role: 'button', tabIndex: 0, title: 'Open ' + s.monthName + ' in the calendar', style: { display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 10, alignItems: 'center', padding: '6px 7px', margin: '0 -7px', borderRadius: 3, cursor: 'pointer', background: 'transparent', transition: 'background .12s ease' } },
             e('span', { style: { fontFamily: MAP_MONO, fontSize: 11, fontWeight: 600, letterSpacing: '.04em', color: acColor } }, MAP_ABBR[s.mi]),
             e('span', { style: { fontSize: 14, color: '#3B3528', lineHeight: 1.3 } }, s.tag),
             e('span', { style: { fontFamily: MAP_MONO, fontSize: 10.5, fontWeight: 600, color: '#B7AD90', whiteSpace: 'nowrap' } }, '→')
@@ -1608,7 +1720,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEd
         ),
         e('div', { style: { marginTop: 9, fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.05em', color: '#B0A487', lineHeight: 1.4 } }, '↳ Tap a month to open its page in the calendar.')
       ),
-      e('button', { className: 'map-visitbtn', onClick: () => onToggleVisited(activeLoc.id), style: { marginTop: 14, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 38, background: activeLoc.visited ? '#54632F' : '#FBF7EC', color: activeLoc.visited ? '#FBF7EC' : '#54632F', border: '1px solid ' + (activeLoc.visited ? '#2A251E' : '#54632F'), fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '2px 2px 0 rgba(42,37,30,0.12)' } }, activeLoc.visited ? '✓ Visited — tap to undo' : 'Mark as visited')
+      editMode && e('button', { className: 'map-visitbtn', onClick: () => onToggleVisited(activeLoc.id), style: { marginTop: 14, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 38, background: activeLoc.visited ? '#54632F' : '#FBF7EC', color: activeLoc.visited ? '#FBF7EC' : '#54632F', border: '1px solid ' + (activeLoc.visited ? '#2A251E' : '#54632F'), fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '2px 2px 0 rgba(42,37,30,0.12)' } }, activeLoc.visited ? '✓ Visited — tap to undo' : 'Mark as visited')
     )
   );
 
@@ -1616,7 +1728,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEd
     // header
     e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' } },
       e('div', null,
-        e('div', { onClick: onBack, role: 'button', tabIndex: 0, title: 'Back to the home page', style: { display: 'inline-flex', alignItems: 'center', gap: 9, cursor: 'pointer' } },
+        e('div', { onClick: onBack, onKeyDown: keyActivate(onBack), role: 'button', tabIndex: 0, title: 'Back to the home page', style: { display: 'inline-flex', alignItems: 'center', gap: 9, cursor: 'pointer' } },
           e('img', { src: LOGO_SRC, alt: '', style: { height: 24, width: 'auto', display: 'block' } }),
           e('div', { style: { fontFamily: "'Figtree',system-ui,sans-serif", fontWeight: 700, fontSize: 12.5, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#201e1d' } }, 'Photoplan')
         ),
@@ -1637,7 +1749,8 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEd
             e('span', null, 'Ticked off'), e('span', { style: { color: '#54632F' } }, visitedCount + ' / ' + places.length)),
           e('div', { style: { height: 7, background: '#E1D5B7', border: '1px solid #CBBF9F', position: 'relative', overflow: 'hidden' } },
             e('div', { style: { position: 'absolute', inset: '0 auto 0 0', width: visitedPct, background: '#54632F' } }))
-        )
+        ),
+        editControl
       )
     ),
     e('div', { style: { height: 1, background: '#D2C7AC', margin: isMobile ? '16px 0 16px' : '22px 0 20px' } }),
@@ -1692,7 +1805,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEd
     ),
     // legend
     e('div', { style: { marginTop: 12, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.03em', color: '#9C8F71', display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' } },
-      e('span', null, isMobile ? 'Tap a pin for its details · pinch to zoom, drag to pan.' : 'Hover a pin for details · click to keep it open, then tick it off.'),
+      e('span', null, isMobile ? 'Tap a pin for its details · pinch to zoom, drag to pan.' : ('Hover a pin for details · click to keep it open' + (editMode ? ', then tick it off.' : '.'))),
       e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, e('circle', { cx: 7, cy: 7, r: 5, fill: '#54632F', stroke: '#FBF7EC', strokeWidth: 1.5 })), ' Visited'),
       e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, e('circle', { cx: 7, cy: 7, r: 4.4, fill: '#FCFAF1', stroke: '#54632F', strokeWidth: 2 })), ' To visit'),
       e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 16, height: 14, viewBox: '0 0 16 14' }, e('circle', { cx: 8, cy: 7, r: 6.2, fill: 'none', stroke: '#54632F', strokeWidth: 1.3 }), e('circle', { cx: 8, cy: 7, r: 4, fill: '#54632F' })), ' Shot in 2+ months')
@@ -1723,7 +1836,18 @@ function App() {
   const [showEvents] = useState(true);
   const [heroFraming] = useState('Matted print');
   const [imgEpoch, setImgEpoch] = useState(0); // bumped after an upload so tiles + slideshows refresh
-  const bumpImg = () => setImgEpoch(n => n + 1);
+  // Which photos exist, as a Set of R2 keys from the Worker's /list — one
+  // request instead of probing every thumbnail. undefined = not loaded yet;
+  // null = the Worker predates /list, so components fall back to probing.
+  const [photoIndex, setPhotoIndex] = useState(undefined);
+  const refreshPhotoIndex = () => Storage.loadPhotoIndex().then(idx => { setPhotoIndex(idx); return idx; });
+  useEffect(() => { refreshPhotoIndex(); }, []);
+  // After an upload/removal: refresh the index first, then bump the epoch so
+  // tiles and slideshows re-read with fresh (cache-busted) URLs.
+  const bumpImg = () => { refreshPhotoIndex().then(() => setImgEpoch(n => n + 1)); };
+  // Editing controls shown (owner) or view-only (family). Starts on for a
+  // device that already holds the password; "Unlock editing" turns it on.
+  const [editMode, setEditMode] = useState(() => !!Storage.peekUploadKey());
   const uidRef = useRef(100);
   const unlockedRef = useRef(false);   // true once the edit password has been entered on this device
 
@@ -1778,6 +1902,7 @@ function App() {
     cloudStamp.current = cur.savedAt;
     setData(d);
     setDirty(false);
+    refreshPhotoIndex(); // another device may have added or removed photos
   };
 
   const loadingRef = useRef(false); // one load at a time (tab switches fire focus + visibility together)
@@ -1840,6 +1965,7 @@ function App() {
           // The stored password was rejected (and has been cleared). The change
           // stays local and dirty; the banner offers to re-enter it and retry.
           unlockedRef.current = false;
+          setEditMode(false);
           setCloudStatus('unsaved');
           break;
         } else {
@@ -1989,6 +2115,7 @@ function App() {
     if (!entered || !entered.trim()) return false;
     Storage.setUploadKey(entered.trim());
     unlockedRef.current = true;
+    setEditMode(true);
     return true;
   };
 
@@ -2281,8 +2408,8 @@ function App() {
   const Divider = () => e('span', { style:{ width:1, height:28, background:'#D2C7AC', margin:'0 4px' } });
 
   // Nav buttons shared
-  const prevBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(-1), style:WhiteBtn }, '‹');
-  const nextBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(1), style:WhiteBtn }, '›');
+  const prevBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(-1), title:'Previous month', 'aria-label':'Previous month', style:WhiteBtn }, '‹');
+  const nextBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(1), title:'Next month', 'aria-label':'Next month', style:WhiteBtn }, '›');
   const mapBtn = e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map');
   const printBtn = e('button', { className:'btn-hover', onClick:goToPrint, title:'A printable wall calendar for the selected year', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⎙'), ' Print');
   // Month view keeps both arrows; the year view drops the right arrow (it's the
@@ -2295,7 +2422,7 @@ function App() {
     ? e('div', { style:navRowStyle },
         e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
         navDivider(), prevBtn, nextBtn, navDivider(), mapBtn, navDivider(),
-        e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), isMobile ? ' Add' : ' Add location')
+        editMode && e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), isMobile ? ' Add' : ' Add location')
       )
     : e('div', { style:navRowStyle },
         mapBtn, printBtn, navDivider(), prevBtn,
@@ -2309,6 +2436,15 @@ function App() {
       style:{ height:30, padding:'0 12px', background: y===viewYear ? '#54632F' : '#FBF7EC', color: y===viewYear ? '#FBF7EC' : '#5A513B', border:'1px solid ' + (y===viewYear ? '#2A251E' : '#C9BD9F'), fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.10)' }
     }, String(y)))
   );
+
+  // Owner-only controls switch. "Unlock editing" asks for the password (once per
+  // device); when on, "hide controls" previews the page as a visitor sees it
+  // without forgetting the password.
+  const editToggle = () => e('button', {
+    onClick: editMode ? () => setEditMode(false) : () => { if (ensureUnlocked()) setEditMode(true); },
+    title: editMode ? 'Hide the editing controls and view the page as a visitor sees it' : 'Enter the edit password to make changes',
+    style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', color: editMode ? '#54632F' : '#8A7D63', textDecoration:'underline', textUnderlineOffset:3 }
+  }, editMode ? '✎ Editing on · hide controls' : '✎ Unlock editing');
 
   const regionLegend = () => e('div', { style:{ display:'flex', gap:16, alignItems:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', color:'#6E6450' } },
     e('span', { style:{ display:'flex', alignItems:'center', gap:7 } }, dot('#54632F'), 'UK'),
@@ -2340,7 +2476,8 @@ function App() {
       e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
         navRow(false),
         yearPicker(),
-        regionLegend()
+        regionLegend(),
+        editToggle()
       )
     ),
     // Bottom header row, just above the divider: the calendar label + IG link
@@ -2375,7 +2512,7 @@ function App() {
     e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'8px 0 18px':'10px 0 24px' } }),
     // Hero
     e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
-      e(PhotoSlideshow, {
+      e(PhotoSlideshow, { photoIndex,
         epoch: imgEpoch,
         intervalMs: 15000,
         boxStyle: { aspectRatio: '3 / 2' },
@@ -2403,7 +2540,7 @@ function App() {
         // Phones: the 150px month column would squeeze the location text into a
         // sliver, so the month header stacks above its locations instead.
         e('div', { key: m2.key, style:{ display:'grid', gridTemplateColumns:isMobile?'1fr':'150px 1fr', gap:isMobile?10:26, padding:isMobile?'18px 0':'22px 0', borderTop:'1px solid #D2C7AC' } },
-          e('div', { className:'month-link', onClick:()=>goToMonth(i, null), role:'button', tabIndex:0, style:{ cursor:'pointer', alignSelf:'start' } },
+          e('div', { className:'month-link', onClick:()=>goToMonth(i, null), onKeyDown:keyActivate(()=>goToMonth(i, null)), role:'button', tabIndex:0, 'aria-label':'Open ' + m2.name, style:{ cursor:'pointer', alignSelf:'start' } },
             e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, letterSpacing:'.12em', color:'#B7AD90' } }, String(i+1).padStart(2,'0')),
             e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:24, fontWeight:700, color:'#2A251E', lineHeight:'1.02', marginTop:3 } }, m2.name),
             e('div', { style:{ marginTop:9, fontSize:13, color:'#8A7D63', lineHeight:1.4 } }, m2.tagline),
@@ -2414,7 +2551,7 @@ function App() {
             m2.locations.map((loc, j) =>
               e('div', { key: loc.id },
                 j > 0 && e('div', { style:{ height:1, background:'#ECE3CD', marginLeft:26 } }),
-                e('div', { className:'loc-row', onClick:()=>goToMonth(i, loc.id), role:'button', tabIndex:0, style:{ display:'grid', gridTemplateColumns:'14px 1fr', gap:12, padding:'13px 10px 13px 0', cursor:'pointer', borderRadius:3 } },
+                e('div', { className:'loc-row', onClick:()=>goToMonth(i, loc.id), onKeyDown:keyActivate(()=>goToMonth(i, loc.id)), role:'button', tabIndex:0, style:{ display:'grid', gridTemplateColumns:'14px 1fr', gap:12, padding:'13px 10px 13px 0', cursor:'pointer', borderRadius:3 } },
                   e('div', { style:{ paddingTop:6 } },
                     e('span', { style:{ width:9, height:9, borderRadius:'50%', background: loc.region==='UK' ? '#54632F' : '#9E4B26', display:'inline-block' } })
                   ),
@@ -2450,13 +2587,13 @@ function App() {
       e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
         e('div', null,
           // Small Photoplan lockup (same face as the home masthead), clickable home.
-          e('div', { onClick:goToYear, role:'button', tabIndex:0, title:'Back to the home page', style:{ display:'inline-flex', alignItems:'center', gap:9, cursor:'pointer' } },
+          e('div', { onClick:goToYear, onKeyDown:keyActivate(goToYear), role:'button', tabIndex:0, title:'Back to the home page', style:{ display:'inline-flex', alignItems:'center', gap:9, cursor:'pointer' } },
             e('img', { src:LOGO_SRC, alt:'', style:{ height:24, width:'auto', display:'block' } }),
             e('div', { style:{ fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, fontSize:12.5, letterSpacing:'0.24em', textTransform:'uppercase', color:'#201e1d' } }, 'Photoplan')
           ),
           e('div', { style:{ display:'flex', alignItems:'baseline', gap:isMobile?10:14, marginTop:6, flexWrap:'wrap' } },
             e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, month.name),
-            e('span', { className:'year-link', onClick:goToYear, role:'button', tabIndex:0, style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:isMobile?19:26, fontWeight:500, color:'#A89A7C', cursor:'pointer' } }, String(month.year))
+            e('span', { className:'year-link', onClick:goToYear, onKeyDown:keyActivate(goToYear), role:'button', tabIndex:0, title:'Back to the home page', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:isMobile?19:26, fontWeight:500, color:'#A89A7C', cursor:'pointer' } }, String(month.year))
           ),
           e(Editable, { key:'tagline-'+month.key, tag:'div', value:month.tagline, onCommit:(t)=>editMonthField('tagline', t), title:"Click to edit this month's description", style:{ marginTop:8, marginLeft:-4, marginRight:-4, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'30ch', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px' } })
         ),
@@ -2464,14 +2601,15 @@ function App() {
         e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
           navRow(true),
           yearPicker(),
-          regionLegend()
+          regionLegend(),
+          editToggle()
         )
       ),
       e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 18px':'22px 0 24px' } }),
 
       // Hero
       e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
-        e(PhotoSlideshow, {
+        e(PhotoSlideshow, { photoIndex,
           epoch: imgEpoch,
           intervalMs: 15000,
           boxStyle: { aspectRatio: '3 / 2' },
@@ -2496,8 +2634,10 @@ function App() {
             key: l.id,
             className: 'tile',
             role: 'button', tabIndex: 0,
-            draggable: true,
+            'aria-label': l.name + (l.id === selectedLoc ? ' (open)' : ''),
+            draggable: editMode,
             onClick: () => setSelectedLoc(prev => prev === l.id ? null : l.id),
+            onKeyDown: keyActivate(() => setSelectedLoc(prev => prev === l.id ? null : l.id)),
             onDragStart: (ev) => { setDraggingLoc(l.id); setDragOverLoc(null); try { ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setData('text/plain',l.id); } catch(_){} },
             onDragOver: (ev) => { ev.preventDefault(); if (dragOverLoc !== l.id) setDragOverLoc(l.id); },
             onDrop: (ev) => { ev.preventDefault(); reorderLoc(draggingLoc, l.id); setDraggingLoc(null); setDragOverLoc(null); },
@@ -2508,13 +2648,16 @@ function App() {
             l.id === dragOverLoc && l.id !== draggingLoc && e('div', { style:{ position:'absolute', inset:0, border:'2px dashed #54632F', background:'rgba(84,99,47,0.08)', pointerEvents:'none', zIndex:5 } }),
             e('div', { style:{ height:4, background: l.region==='UK' ? '#54632F' : '#9E4B26' } }),
             e('div', { style:{ position:'relative', height:76, overflow:'hidden', backgroundImage:'repeating-linear-gradient(135deg,#EFE7D2 0,#EFE7D2 7px,#E6DCC2 7px,#E6DCC2 14px)', borderBottom:'1px solid #E0D6BE' } },
-              e(LocThumb, { base: photoBase(month.key, l.id), epoch: imgEpoch }),
+              e(LocThumb, { base: photoBase(month.key, l.id), epoch: imgEpoch, photoIndex }),
               // drag-to-reorder is mouse-only, so the handle hides on touch layouts
-              !isMobile && e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, zIndex:3, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#EFE7D2', textShadow:'0 1px 2px rgba(0,0,0,0.45)', cursor:'grab' } }, '⠿'),
-              l.done
+              editMode && !isMobile && e('span', { title:'Drag to reorder', style:{ position:'absolute', top:5, left:9, zIndex:3, fontFamily:"'IBM Plex Mono',monospace", fontSize:13, lineHeight:1, color:'#EFE7D2', textShadow:'0 1px 2px rgba(0,0,0,0.45)', cursor:'grab' } }, '⠿'),
+              // view-only: a static tick when done, nothing otherwise
+              !editMode
+                ? (l.done && e('span', { title:'Done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, lineHeight:1, border:'1.5px solid #54632F', background:'#54632F', color:'#FBF7EC' } }, '✓'))
+                : l.done
                 ? e('button', { onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as not done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, lineHeight:1, border:'1.5px solid #54632F', background:'#54632F', color:'#FBF7EC' } }, '✓')
                 : e('button', { className:'tick-btn', onClick:(ev)=>{ev.stopPropagation();toggleDone(l.id);}, title:'Mark as done', style:{ position:'absolute', top:6, right:6, zIndex:4, width:23, height:23, borderRadius:'50%', padding:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', border:'1.5px solid #B3A988', background:'#FCFAF1' } }),
-              e('button', {
+              editMode && e('button', {
                 className:'star-btn',
                 onClick:(ev)=>{ev.stopPropagation();togglePrintStar(l.id);},
                 title: month.printLoc === l.id ? 'Starred — this photo fronts the printable calendar (click to unstar)' : "Star — use this location's photo on the printable calendar",
@@ -2545,28 +2688,34 @@ function App() {
                   e(Editable, { key:'tag-'+sel.id, tag:'div', value:sel.tag, onCommit:(t)=>editField(sel.id,'tag',t), title:'Click to edit the label', className:'tag-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px', alignSelf:'flex-start' } }),
                   e('div', { style:{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' } },
                     e(Editable, { key:'name-'+sel.id, tag:'h2', value:sel.name, onCommit:(t)=>editField(sel.id,'name',t), title:'Click to edit', style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?22:27, color:'#2A251E', lineHeight:1, cursor:'text', outline:'none', borderRadius:3, padding:'2px 6px', margin:'-2px -6px' } }),
-                    sel.region==='UK'
+                    !editMode
+                      ? e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.12em', textTransform:'uppercase', padding:'4px 9px', background: sel.region==='UK' ? '#E4E8D0' : '#F1DECF', color: sel.region==='UK' ? '#54632F' : '#9E4B26', border:'1px solid ' + (sel.region==='UK' ? '#54632F' : '#9E4B26') } }, sel.region==='UK' ? 'UK' : 'International')
+                      : sel.region==='UK'
                       ? e('button', { className:'region-uk', onClick:()=>toggleRegion(sel.id), title:'Switch to International', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.12em', textTransform:'uppercase', padding:'4px 9px', background:'#E4E8D0', color:'#54632F', border:'1px solid #54632F', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 } }, 'UK ', e('span', { style:{ opacity:.6 } }, '⇄'))
                       : e('button', { className:'region-int', onClick:()=>toggleRegion(sel.id), title:'Switch to UK', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.12em', textTransform:'uppercase', padding:'4px 9px', background:'#F1DECF', color:'#9E4B26', border:'1px solid #9E4B26', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 } }, 'International ', e('span', { style:{ opacity:.6 } }, '⇄'))
                   )
                 ),
-                e('button', { className:'close-btn', onClick:()=>setSelectedLoc(null), style:{ flex:'none', width:30, height:30, background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontSize:17, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
+                e('button', { className:'close-btn', onClick:()=>setSelectedLoc(null), title:'Close', 'aria-label':'Close the location brief', style:{ flex:'none', width:30, height:30, background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontSize:17, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
               ),
               e('div', { style:{ display:'flex', gap:isMobile?14:24, marginTop:isMobile?14:18, flexWrap:'wrap' } },
                 // Phones: the photo column takes the full width (a fixed 300px
                 // basis leaves a dead sliver beside it on a ~350px screen).
                 e('div', { style:{ flex:isMobile?'1 1 100%':'0 0 300px', maxWidth:'100%' } },
-                  e(LocationPhoto, { base: photoBase(month.key, sel.id), placeholder:'Add a photo of ' + sel.name, onChange: bumpImg, style:{ height:206, borderRadius:4, border:'1px solid #D2C7AC' } }),
-                  e('div', { style:{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 } },
+                  e(LocationPhoto, { base: photoBase(month.key, sel.id), placeholder:'Add a photo of ' + sel.name, onChange: bumpImg, photoIndex, epoch: imgEpoch, style:{ height:206, borderRadius:4, border:'1px solid #D2C7AC' } }),
+                  // view-only: only shown when a year is set
+                  (editMode || (sel.photoYear || '').trim()) && e('div', { style:{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 } },
                     e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71' } }, 'Year taken'),
                     e(Editable, { key:'year-'+sel.id, tag:'span', value: sel.photoYear || '', onCommit:(t)=>setPhotoYear(sel.id, t), title:'Set the year this photo was taken', className:'year-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, padding:'4px 12px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:64, textAlign:'center', letterSpacing:'.1em', cursor:'text', outline:'none' } })
                   ),
-                  e('div', { style:{ marginTop:8 } },
+                  // view-only: only shown when there are coordinates (with the map links)
+                  (editMode || coordsOf(sel)) && e('div', { style:{ marginTop:8 } },
                     e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:5 } },
                       e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71' } }, 'Map coordinates'),
-                      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#B7AD90' } }, 'lat, lng')
+                      editMode && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#B7AD90' } }, 'lat, lng')
                     ),
-                    e(Editable, { key:'coords-'+sel.id, tag:'div', value: locCoordText(sel), onCommit:(t)=>setLocCoords(sel.id, t), title:'Paste "latitude, longitude" to place this location on the map', className:'coord-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11.5, padding:'6px 10px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', letterSpacing:'.02em', cursor:'text', outline:'none', wordBreak:'break-all' } })
+                    e(Editable, { key:'coords-'+sel.id, tag:'div', value: locCoordText(sel), onCommit:(t)=>setLocCoords(sel.id, t), title:'Paste "latitude, longitude" to place this location on the map', className:'coord-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11.5, padding:'6px 10px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', letterSpacing:'.02em', cursor:'text', outline:'none', wordBreak:'break-all' } }),
+                    // deep links for the drive there
+                    mapLinks(coordsOf(sel), sel.name, { marginTop:7 })
                   )
                 ),
                 e('div', { style:{ flex:1, minWidth:280 } },
@@ -2597,7 +2746,7 @@ function App() {
               // Footer
               // Phones: the two action buttons share a full-width row and the
               // delete sits alone underneath; desktop keeps the spread row.
-              e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:isMobile?'stretch':'center', gap:isMobile?8:12, marginTop:isMobile?16:20, paddingTop:14, borderTop:'1px solid #E6DECA', flexWrap:'wrap', ...(isMobile?{flexDirection:'column'}:{}) } },
+              editMode && e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:isMobile?'stretch':'center', gap:isMobile?8:12, marginTop:isMobile?16:20, paddingTop:14, borderTop:'1px solid #E6DECA', flexWrap:'wrap', ...(isMobile?{flexDirection:'column'}:{}) } },
                 e('div', { style:{ display:'flex', alignItems:isMobile?'stretch':'center', gap:isMobile?8:9, flexWrap:'wrap' } },
                   sel.done
                     ? e('button', { onClick:()=>toggleDone(sel.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer', ...(isMobile?{flex:1, justifyContent:'center'}:{}) } }, e('span', { style:{ fontSize:12, lineHeight:1 } }, '✓'), ' Completed')
@@ -2668,10 +2817,10 @@ function App() {
                 key: it.id,
                 title: it.label,
                 className: 'ev-chip',
-                onClick: () => openEventEditor(it.ev.id),
+                onClick: editMode ? () => openEventEditor(it.ev.id) : undefined,
                 // lineHeight must clear the font's descenders — at 1 the label
                 // span's own line box clips the tails of p/g/y.
-                style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height:19, display:'flex', alignItems:'center', justifyContent: glyphOnly ? 'center' : 'flex-start', gap:isMobile?4:5, padding: glyphOnly ? 0 : (isMobile ? '0 4px' : '0 6px'), background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 9.5 : 10, fontWeight:500, lineHeight:1.4, whiteSpace:'nowrap', overflow:'hidden', cursor:'pointer' }
+                style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height:19, display:'flex', alignItems:'center', justifyContent: glyphOnly ? 'center' : 'flex-start', gap:isMobile?4:5, padding: glyphOnly ? 0 : (isMobile ? '0 4px' : '0 6px'), background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 9.5 : 10, fontWeight:500, lineHeight:1.4, whiteSpace:'nowrap', overflow:'hidden', cursor: editMode ? 'pointer' : 'default' }
               },
                 it.hasGlyph && e('span', { style:{ flex:'none' } }, it.glyph),
                 !glyphOnly && e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis' } }, it.label),
@@ -2691,7 +2840,7 @@ function App() {
                 const st = styleOf(ev);
                 const s = ev.start != null ? ev.start : ev.day;
                 const e2 = ev.end != null ? ev.end : ev.day;
-                return e('div', { key:ev.id, className:'ev-chip', onClick:()=>openEventEditor(ev.id), role:'button', tabIndex:0, style:{ display:'grid', gridTemplateColumns:'44px 1fr', gap:9, alignItems:'center', padding:'6px 8px', background:st.bg, color:st.fg, borderLeft:'3px solid '+st.accent, borderRadius:2, cursor:'pointer' } },
+                return e('div', { key:ev.id, className:'ev-chip', ...(editMode ? { onClick:()=>openEventEditor(ev.id), onKeyDown:keyActivate(()=>openEventEditor(ev.id)), role:'button', tabIndex:0 } : {}), style:{ display:'grid', gridTemplateColumns:'44px 1fr', gap:9, alignItems:'center', padding:'6px 8px', background:st.bg, color:st.fg, borderLeft:'3px solid '+st.accent, borderRadius:2, cursor: editMode ? 'pointer' : 'default' } },
                   e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, fontWeight:600, letterSpacing:'.02em' } }, s === e2 ? String(s) : (s + '–' + e2)),
                   e('span', { style:{ display:'flex', alignItems:'center', gap:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:500, minWidth:0 } },
                     st.glyph && e('span', { style:{ flex:'none' } }, st.glyph),
@@ -2717,15 +2866,15 @@ function App() {
                 .map(ev => e('span', { key:ev.kind, style:{ color: paletteFor(ev.kindColor).accent } }, CUSTOM_KIND_GLYPH + ' ' + (ev.kindLabel || 'Custom')));
             })()
           ),
-          e('button', { className:'add-ev-btn', onClick:addEvent, style:{ marginLeft:'auto', display:'inline-flex', alignItems:'center', gap:6, padding:'6px 12px', background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.12)' } },
+          editMode && e('button', { className:'add-ev-btn', onClick:addEvent, style:{ marginLeft:'auto', display:'inline-flex', alignItems:'center', gap:6, padding:'6px 12px', background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.12)' } },
             e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1 } }, '+'), ' Add event'
           )
         )
       ),
       e('div', { style:{ marginTop:18, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#A89A7C', letterSpacing:'.03em', display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' } },
-        e('span', null, 'Drag a tile to reorder · tick the circle to mark a spot done.'),
-        e('span', { style:{ color:'#C2B695' } }, '·'),
-        e('span', null, 'Click a tile for its brief · drop a photo on its slot.')
+        ...(editMode
+          ? [e('span', { key:'a' }, 'Drag a tile to reorder · tick the circle to mark a spot done.'), e('span', { key:'b', style:{ color:'#C2B695' } }, '·'), e('span', { key:'c' }, 'Click a tile for its brief · drop a photo on its slot.')]
+          : [e('span', { key:'v' }, (isMobile ? 'Tap' : 'Click') + ' a tile to open its shoot brief — where it is, the idea, the timing and the kit.')])
       )
     );
   };
@@ -2754,7 +2903,7 @@ function App() {
           e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'10mm', lineHeight:1, color:'#2A251E' } }, m2.name),
           e('div', { style:{ fontFamily:mono, fontSize:'4mm', color:'#8A7D63', letterSpacing:'.14em' } }, String(viewYear))
         ),
-        e(PrintMonthPhoto, { monthKey:m2.key, locs:m2.locations, preferId:m2.printLoc, epoch:imgEpoch }),
+        e(PrintMonthPhoto, { monthKey:m2.key, locs:m2.locations, preferId:m2.printLoc, epoch:imgEpoch, photoIndex }),
         e('div', { style:{ display:'flex', justifyContent:'space-between', gap:'4mm', margin:'2.5mm 0 3.5mm', fontFamily:mono, fontSize:'3mm', color:'#8A7D63', letterSpacing:'.04em' } },
           e('span', { style:{ color:'#54632F' } }, '↑ ' + m2.sunrise + '   ↓ ' + m2.sunset),
           e('span', null, m2.daylightNote)
@@ -2821,7 +2970,7 @@ function App() {
         e('div', { style:{ padding:'17px 20px 20px' } },
           e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 } },
             e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, draftView.heading),
-            e('button', { className:'close-btn', onClick:()=>setEditingEvent(null), style:{ width:28, height:28, background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontSize:16, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
+            e('button', { className:'close-btn', onClick:()=>setEditingEvent(null), title:'Close', 'aria-label':'Close the event editor', style:{ width:28, height:28, background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontSize:16, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
           ),
           // Preview chip
           e('div', { style:{ marginTop:15, display:'flex', alignItems:'center', gap:8, padding:'9px 11px', background:draftView.bg, color:draftView.fg, borderLeft:'3px solid '+draftView.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:500 } },
@@ -2913,17 +3062,17 @@ function App() {
     );
   };
 
-  return e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
+  return e(EditCtx.Provider, { value: editMode }, e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       renderCloudBanner(),
       mapView
-        ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro })
+        ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro, editMode, editControl: editToggle() })
         : printView
           ? renderPrintPage()
           : (yearView ? renderYearPage() : renderMonthPage()),
       renderEventModal()
     )
-  );
+  ));
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(e(App));
