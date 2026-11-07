@@ -152,15 +152,8 @@ const Storage = {
   photoUrl(id, bust) {
     return PHOTO_STORAGE_BASE + '/photo/' + encodeURIComponent(id) + (bust ? ('?t=' + bust) : '');
   },
-  getUploadKey() {
-    let k = null;
-    try { k = localStorage.getItem('calendar:uploadKey'); } catch (_) {}
-    if (!k) {
-      k = window.prompt('Enter your upload password to add or change photos:');
-      if (k) { try { localStorage.setItem('calendar:uploadKey', k); } catch (_) {} }
-    }
-    return k;
-  },
+  // (The password itself is asked for by the app's own dialog — see
+  // ensureUnlocked in App — never by a browser prompt.)
   clearUploadKey() {
     try { localStorage.removeItem('calendar:uploadKey'); } catch (_) {}
   },
@@ -574,8 +567,8 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
 
   const uploadFile = useCallback(async (file) => {
     if (!file || !file.type.startsWith('image/')) return;
-    const key = Storage.getUploadKey();
-    if (!key) return;
+    const key = Storage.peekUploadKey();
+    if (!key) { alert('Unlock editing first (the ✎ link at the top of the page) to change photos.'); return; }
     setBusy(true);
     const ok = await Storage.savePhotoVariants(base, file, key);
     setBusy(false);
@@ -590,8 +583,8 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
   const handleClear = useCallback(async (ev) => {
     ev.stopPropagation();
     if (!window.confirm('Remove this photo? It will be deleted from the cloud — this cannot be undone.')) return;
-    const key = Storage.getUploadKey();
-    if (!key) return;
+    const key = Storage.peekUploadKey();
+    if (!key) { alert('Unlock editing first (the ✎ link at the top of the page) to change photos.'); return; }
     setBusy(true);
     const ok = await Storage.removePhotoVariants(base, key);
     setBusy(false);
@@ -1848,6 +1841,24 @@ function App() {
   // Editing controls shown (owner) or view-only (family). Starts on for a
   // device that already holds the password; "Unlock editing" turns it on.
   const [editMode, setEditMode] = useState(() => !!Storage.peekUploadKey());
+
+  // ── In-app prompt dialog ───────────────────────────────────────────────────
+  // Replaces the browser's prompt() for the edit password and short names, in
+  // the site's own style. askText(opts) resolves to the entered string, or null
+  // on Cancel/Escape/backdrop. kind:'password' masks the input with a reveal
+  // (eye) toggle. Only one dialog at a time — a new ask supersedes an open one.
+  const [dialog, setDialog] = useState(null);
+  const dialogResolve = useRef(null);
+  const askText = (opts) => new Promise(resolve => {
+    if (dialogResolve.current) dialogResolve.current(null);
+    dialogResolve.current = resolve;
+    setDialog({ value: opts.initial || '', reveal: false, ...opts });
+  });
+  const closeDialog = (result) => {
+    const r = dialogResolve.current; dialogResolve.current = null;
+    setDialog(null);
+    if (r) r(result);
+  };
   const uidRef = useRef(100);
   const unlockedRef = useRef(false);   // true once the edit password has been entered on this device
 
@@ -2101,7 +2112,7 @@ function App() {
   // change anything, they're asked for it; enter it once and everything's
   // editable (and syncs). Leave it blank and it's view-only — the change is
   // blocked. A device that already holds the password never gets asked.
-  const ensureUnlocked = () => {
+  const ensureUnlocked = (retry) => {
     // No edits until the cloud copy has been read: an edit made on top of a
     // stale local cache would overwrite whatever is really in the cloud.
     if (!cloudReadyRef.current) {
@@ -2111,16 +2122,22 @@ function App() {
       return false;
     }
     if (unlockedRef.current || Storage.peekUploadKey()) { unlockedRef.current = true; return true; }
-    const entered = window.prompt('Enter the edit password to make changes.\n(Leave blank if you just want to look around.)');
-    if (!entered || !entered.trim()) return false;
-    Storage.setUploadKey(entered.trim());
-    unlockedRef.current = true;
-    setEditMode(true);
-    return true;
+    // Not unlocked yet: ask with the in-app dialog (asynchronous, unlike the old
+    // browser prompt) and run `retry` once the password is in. Callers treat
+    // the `false` as "not now" and simply return.
+    askText({ kind:'password', title:'Edit password', label:'Enter the edit password to make changes.', placeholder:'Password', hint:'Just looking? Cancel keeps everything view-only.', confirm:'Unlock' }).then(entered => {
+      const k = (entered || '').trim();
+      if (!k) return;
+      Storage.setUploadKey(k);
+      unlockedRef.current = true;
+      setEditMode(true);
+      if (retry) retry();
+    });
+    return false;
   };
 
   const mutateData = (fn) => {
-    if (!ensureUnlocked()) return;
+    if (!ensureUnlocked(() => mutateData(fn))) return;
     setData(prev => { const d = prev.map(m => ({ ...m, locations: m.locations.map(l => ({ ...l })), eventsByYear: Object.keys(m.eventsByYear || {}).reduce((o, y) => { o[y] = m.eventsByYear[y].map(e2 => ({ ...e2 })); return o; }, {}) })); fn(d); return d; });
   };
 
@@ -2130,9 +2147,9 @@ function App() {
     mutateData(d => { for (const m of d) { const loc = m.locations.find(l => l.id === locId); if (loc) { loc.done = !loc.done; break; } } });
   };
 
-  const addLocation = () => {
-    if (!ensureUnlocked()) return;
-    const nameInput = window.prompt('Name of the new location:', '');
+  const addLocation = async () => {
+    if (!ensureUnlocked(addLocation)) return;
+    const nameInput = await askText({ kind:'text', title:'New location', label:'Name the new location — it will be added to ' + month.name + '.', placeholder:'e.g. Buttermere', confirm:'Add location' });
     if (nameInput === null) return; // cancelled
     const name = nameInput.trim() || 'New location';
     // Readable, unique id derived from the name — this becomes part of the photo filename.
@@ -2147,11 +2164,11 @@ function App() {
   };
 
   const deleteLocation = (id) => {
+    if (!ensureUnlocked(() => deleteLocation(id))) return;
     const target = month.locations.find(l => l.id === id);
     const name = target ? target.name : 'this location';
-    // Irreversible (the photo goes too), so confirm before anything else.
+    // Irreversible (the photo goes too), so confirm.
     if (!window.confirm('Delete "' + name + '" from ' + month.name + '?\n\nIts photo will be removed from the cloud as well. This cannot be undone.')) return;
-    if (!ensureUnlocked()) return;
     // Also remove this location's photo (hero + thumbnail) from R2, so deleting a
     // spot doesn't leave orphaned images in the bucket.
     const key = Storage.peekUploadKey();
@@ -2171,7 +2188,7 @@ function App() {
   // open, so the move is visible.
   const moveLocation = async (locId, toIdx) => {
     if (toIdx === monthIdx || toIdx < 0 || toIdx >= data.length) return;
-    if (!ensureUnlocked()) return;
+    if (!ensureUnlocked(() => moveLocation(locId, toIdx))) return;
     const loc = month.locations.find(l => l.id === locId);
     if (!loc) return;
     if (data[toIdx].locations.some(l => l.id === locId)) {
@@ -2346,8 +2363,8 @@ function App() {
 
   // Create (or reuse) a user-defined event type and select it on the draft.
   // Colour comes from the first preset palette not already in use.
-  const addCustomKind = () => {
-    const name = (window.prompt('Name the new event type:', '') || '').trim();
+  const addCustomKind = async () => {
+    const name = ((await askText({ kind:'text', title:'New event type', label:'Name the new type of event.', placeholder:'e.g. Tide window', confirm:'Create type' })) || '').trim();
     if (!name) return;
     const slug = 'x-' + (slugify(name) || 'type');
     let label = name, color = null;
@@ -3052,13 +3069,56 @@ function App() {
         : 'Your latest change has not reached the shared calendar yet — retrying automatically.';
     const onRetry = () => {
       if (offline) { loadFromCloud(); return; }
-      if (!Storage.peekUploadKey() && !ensureUnlocked()) return;
+      if (!Storage.peekUploadKey() && !ensureUnlocked(pushToCloud)) return;
       pushToCloud();
     };
     return e('div', { className:'no-print', role:'status', style:{ display:'flex', alignItems:'center', gap:'8px 14px', flexWrap:'wrap', marginBottom:isMobile?14:20, padding:'9px 12px', background:'#F3E3D6', border:'1px solid #D9B3A6', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.04em', lineHeight:1.5, color:'#7A3A22' } },
       e('span', { style:{ flex:'1 1 240px' } }, '⚠ ' + msg),
       e('button', { className:'btn-hover', onClick:onRetry, style:{ height:30, padding:'0 12px', background:'#FBF7EC', border:'1px solid #9C3B22', color:'#9C3B22', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.10)' } },
         offline ? 'Retry now' : (noKey ? 'Enter password & retry' : 'Retry now'))
+    );
+  };
+
+  // ─── Prompt dialog (password / short names) ────────────────────────────────
+  const renderDialog = () => {
+    if (!dialog) return null;
+    const mono = "'IBM Plex Mono',monospace";
+    const isPw = dialog.kind === 'password';
+    const eye = (slashed) => e('svg', { width:18, height:18, viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true' },
+      e('path', { d:'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z' }),
+      e('circle', { cx:12, cy:12, r:3 }),
+      slashed && e('line', { x1:4, y1:4, x2:20, y2:20 })
+    );
+    return e('div', { onClick:()=>closeDialog(null), style:{ position:'fixed', inset:0, background:'rgba(42,37,30,0.34)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:70 } },
+      e('div', { role:'dialog', 'aria-modal':'true', 'aria-labelledby':'pp-dialog-title', onClick:(ev)=>ev.stopPropagation(), style:{ width:380, maxWidth:'100%', background:'#FBF7EC', border:'1px solid #2A251E', boxShadow:'9px 9px 0 rgba(42,37,30,0.20)' } },
+        e('div', { style:{ height:5, background:'#54632F' } }),
+        e('form', { onSubmit:(ev)=>{ ev.preventDefault(); closeDialog(dialog.value); }, style:{ padding:'17px 20px 20px' } },
+          e('div', { id:'pp-dialog-title', style:{ fontFamily:mono, fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, dialog.title),
+          e('div', { style:{ marginTop:10, fontSize:15, color:'#3B3528', lineHeight:1.5 } }, dialog.label),
+          e('div', { style:{ marginTop:14, display:'flex', gap:8 } },
+            e('input', {
+              type: isPw && !dialog.reveal ? 'password' : 'text',
+              value: dialog.value,
+              autoFocus: true,
+              autoComplete: isPw ? 'current-password' : 'off',
+              autoCapitalize: isPw ? 'off' : 'words',
+              spellCheck: false,
+              placeholder: dialog.placeholder || '',
+              'aria-label': dialog.title,
+              onChange: (ev) => setDialog(d => d && ({ ...d, value: ev.target.value })),
+              onKeyDown: (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeDialog(null); } },
+              style:{ flex:1, minWidth:0, background:'#FFFDF5', border:'1px solid #C9BD9F', color:'#2A251E', fontFamily: isPw ? mono : "'Spectral',serif", fontSize:15, padding:'9px 11px', outline:'none', letterSpacing: (isPw && !dialog.reveal) ? '.15em' : 0 }
+            }),
+            // eye = reveal; slashed eye = hide again
+            isPw && e('button', { type:'button', className:'close-btn', onClick:()=>setDialog(d => d && ({ ...d, reveal:!d.reveal })), title: dialog.reveal ? 'Hide the password' : 'Show the password', 'aria-label': dialog.reveal ? 'Hide the password' : 'Show the password', 'aria-pressed': dialog.reveal ? 'true' : 'false', style:{ width:42, flex:'none', background:'none', border:'1px solid #C9BD9F', color: dialog.reveal ? '#54632F' : '#8A7D63', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center' } }, eye(dialog.reveal))
+          ),
+          dialog.hint && e('div', { style:{ marginTop:8, fontFamily:mono, fontSize:10, color:'#A89A7C', letterSpacing:'.04em', lineHeight:1.5 } }, dialog.hint),
+          e('div', { style:{ display:'flex', justifyContent:'flex-end', alignItems:'center', gap:10, marginTop:20, paddingTop:15, borderTop:'1px solid #E6DECA' } },
+            e('button', { type:'button', className:'close-btn', onClick:()=>closeDialog(null), style:{ background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 13px', cursor:'pointer' } }, 'Cancel'),
+            e('button', { type:'submit', className:'save-btn', style:{ background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'9px 17px', cursor:'pointer', boxShadow:'3px 3px 0 rgba(42,37,30,0.14)' } }, dialog.confirm || 'OK')
+          )
+        )
+      )
     );
   };
 
@@ -3070,7 +3130,8 @@ function App() {
         : printView
           ? renderPrintPage()
           : (yearView ? renderYearPage() : renderMonthPage()),
-      renderEventModal()
+      renderEventModal(),
+      renderDialog()
     )
   ));
 }

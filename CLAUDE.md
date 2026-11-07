@@ -66,12 +66,15 @@ eclipse/season dates per year, annual meteor + nature windows).
     `syncedRef` marks the data object that came from the cloud so the save
     effect never echoes it back. The old per-year `photo-meta.json` is
     superseded (`loadMeta`/`saveMeta` remain in `Storage` but are unused).
-  - **Editing is password-gated.** `ensureUnlocked()` guards `mutateData` (and
-    `addLocation`/`deleteLocation` early): the first edit of any kind prompts for
-    the upload password; enter it once (stored in `calendar:uploadKey`) and you're
-    unlocked on that device forever; leave blank = view-only. A 401 on save
-    re-locks. NB `localStorage` is **per-origin**, so moving to the custom domain
-    reset every device's unlock (expected).
+  - **Editing is password-gated.** `ensureUnlocked(retry)` guards `mutateData`
+    (and `addLocation`/`deleteLocation`/`moveLocation` early): with no password
+    stored it opens the **in-app dialog** (`askText`, `renderDialog` — masked
+    input with an eye toggle; also used for the new-location and new-event-type
+    names; never a browser `prompt()`), returns `false`, and runs `retry` once
+    the password is entered (so the attempted action completes by itself).
+    Enter it once (stored in `calendar:uploadKey`) and you're unlocked on that
+    device forever. A 401 on save re-locks. NB `localStorage` is **per-origin**,
+    so moving to the custom domain reset every device's unlock (expected).
   - **View-only mode.** `editMode` state in `App` (starts true only when the
     device holds the password) is published through the `EditCtx` React context;
     `Editable`, `KitField` and `LocationPhoto` read it and render plain
@@ -92,8 +95,8 @@ eclipse/season dates per year, annual meteor + nature windows).
 
 ## Key pieces in `index.html`
 
-- **`Storage`** — the single seam to persistence. `photoUrl`, `getUploadKey`
-  (prompts) / `peekUploadKey` (silent), `saveImage`/`removeImage`,
+- **`Storage`** — the single seam to persistence. `photoUrl`, `peekUploadKey` /
+  `setUploadKey` / `clearUploadKey` (never prompts), `saveImage`/`removeImage`,
   `savePhotoVariants`/`removePhotoVariants` (resize + upload/delete both sizes),
   `loadCloudData`/`saveCloudData` (the shared `calendar-data.json`),
   `loadData`/`saveData` (localStorage cache).
