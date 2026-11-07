@@ -127,7 +127,10 @@ eclipse/season dates per year, annual meteor + nature windows).
   divs/spans (month rows, tiles, lockups, agenda rows…); icon-only buttons carry
   `title` + `aria-label`; a `:focus-visible` ring is in the CSS.
 - **`coordsOf(loc)` / `mapLinks(coords, name)`** — Google/Apple Maps deep links
-  shown under the brief's coordinates and on the map card.
+  shown under the brief's coordinates and on the map card. **Parking**
+  (`parkingOf(loc)` / `parkingText(loc)`, stored as `loc.parkLat`/`parkLng`,
+  set by `setLocParking` in `App`) is a second coordinate box in the brief's
+  right column under Kit, with the same map links; it isn't on the map page.
 - **Components:** `HeroCaption` (read-only caption overlay), `PhotoSlideshow`
   (hero slideshows — random order, 15s, pause button, cache-busts via `epoch`),
   `LocThumb` (tile thumbnail), `LocationPhoto` (the upload control),

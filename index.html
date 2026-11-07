@@ -358,6 +358,13 @@ function mapLinks(coords, name, style) {
   );
 }
 
+// Where to park for a location — its own [lat, lng] (loc.parkLat/parkLng) or
+// null. Shown in the brief under Kit with the same map deep links.
+function parkingOf(loc) {
+  return (typeof loc.parkLat === 'number' && typeof loc.parkLng === 'number') ? [loc.parkLat, loc.parkLng] : null;
+}
+function parkingText(loc) { const p = parkingOf(loc); return p ? p[0] + ', ' + p[1] : ''; }
+
 // Fisher–Yates shuffle — returns a new array in random order.
 function shuffle(arr) {
   const a = arr.slice();
@@ -2400,6 +2407,19 @@ function App() {
       }
     });
   };
+  // Where to park, from pasted "latitude, longitude" (clearing removes it).
+  const setLocParking = (locId, text) => {
+    const nums = (text || '').split(/[,\s]+/).map(x => parseFloat(x)).filter(x => !isNaN(x));
+    mutateData(d => {
+      for (const m of d) {
+        const loc = m.locations.find(l => l.id === locId);
+        if (loc) {
+          if (nums.length >= 2) { loc.parkLat = nums[0]; loc.parkLng = nums[1]; } else { delete loc.parkLat; delete loc.parkLng; }
+          break;
+        }
+      }
+    });
+  };
 
   // "Add event" only opens the editor with a draft — nothing touches the data
   // (or asks for the password) until Save is actually clicked. Closing or
@@ -2926,6 +2946,18 @@ function App() {
                   e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
                     e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Kit'),
                     e(KitField, { key:'kit-'+sel.id, value:sel.kit, onCommit:(t)=>editField(sel.id,'kit',t) })
+                  ),
+                  // Parking — a precise spot to park, same coordinate box and map
+                  // links as the location itself. view-only: only when set.
+                  (editMode || parkingOf(sel)) && e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                    e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Parking'),
+                    e('div', null,
+                      e('div', { style:{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' } },
+                        e(Editable, { key:'park-'+sel.id, tag:'div', value: parkingText(sel), onCommit:(t)=>setLocParking(sel.id, t), title:'Paste "latitude, longitude" of where to park', className:'coord-input', style:{ flex:'1 1 200px', maxWidth:300, fontFamily:"'IBM Plex Mono',monospace", fontSize:11.5, padding:'6px 10px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', letterSpacing:'.02em', cursor:'text', outline:'none', wordBreak:'break-all' } }),
+                        editMode && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#B7AD90' } }, 'lat, lng')
+                      ),
+                      mapLinks(parkingOf(sel), 'Parking · ' + sel.name, { marginTop:7 })
+                    )
                   )
                 )
               ),
