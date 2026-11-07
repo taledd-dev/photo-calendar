@@ -50,6 +50,7 @@
     .loc-row:hover { background: #F4EEDE !important; }
     .month-link:hover { opacity: 0.65; }
     .year-link:hover { color: #54632F !important; }
+    .year-pick:hover select, .year-pick select:focus-visible { color: #54632F !important; border-bottom-color: #54632F !important; }
     .del-btn:hover { background: #9C3B22 !important; color: #FBF7EC !important; border-color: #9C3B22 !important; }
     .add-ev-btn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.16) !important; }
     .add-ev-btn:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 rgba(42,37,30,0.12) !important; }
@@ -2493,24 +2494,45 @@ function App() {
   // they read as clutter once the buttons flow onto two lines.
   const navRowStyle = { display:'flex', gap:9, alignItems:'center', ...(isMobile ? { flexWrap:'wrap', gap:8 } : {}) };
   const navDivider = () => isMobile ? null : e(Divider);
+  // Month picker — a native <select> dressed as one of the nav buttons, so on a
+  // phone it opens the platform's own list. Jumps straight to that month.
+  const monthPicker = () => e('span', { style:{ position:'relative', display:'inline-flex' } },
+    e('select', { value: mi, onChange: (ev) => goToMonth(parseInt(ev.target.value, 10), null), 'aria-label':'Go to month', title:'Jump to a month',
+      style:{ ...BtnBase, appearance:'none', WebkitAppearance:'none', MozAppearance:'none', background:'#FBF7EC', color:'#2A251E', padding:'0 32px 0 15px', borderRadius:0 } },
+      data.map((m2, i) => e('option', { key:m2.key, value:i }, m2.name))),
+    e('span', { 'aria-hidden':'true', style:{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:12, color:'#54632F' } }, '▾')
+  );
+  // Month page: arrows + month picker | Map | Home (Add location sits at the
+  // foot of the nav column, see addLocBtn).
   const navRow = (showYearBtn) => showYearBtn
     ? e('div', { style:navRowStyle },
-        e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
-        navDivider(), prevBtn, nextBtn, navDivider(), mapBtn, navDivider(),
-        editMode && e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), isMobile ? ' Add' : ' Add location')
+        prevBtn, nextBtn, monthPicker(), navDivider(), mapBtn, navDivider(),
+        e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home')
       )
     : e('div', { style:navRowStyle },
         mapBtn, editMode && printBtn, navDivider(), prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
 
-  // Year picker — switches the calendar grid + events; locations are unaffected.
-  const yearPicker = () => e('div', { style:{ display:'flex', gap:7, alignItems:'center' } },
-    YEARS.map(y => e('button', {
-      key:y, className:'map-chip', onClick:()=>setViewYear(y), title:'Show the ' + y + ' calendar',
-      style:{ height:30, padding:'0 12px', background: y===viewYear ? '#54632F' : '#FBF7EC', color: y===viewYear ? '#FBF7EC' : '#5A513B', border:'1px solid ' + (y===viewYear ? '#2A251E' : '#C9BD9F'), fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.10)' }
-    }, String(y)))
+  // Year picker — a quiet native <select> on the year itself (dotted underline,
+  // small chevron); switches the calendar grid + events, locations unaffected.
+  // 'title' is the big one beside the month name on month pages; 'small' sits
+  // in the home page's nav column (with a label) and on the print page.
+  const yearPicker = (size = 'small') => {
+    const big = size === 'title';
+    return e('span', { className:'year-pick', title:'Choose the year to show', style:{ position:'relative', display:'inline-flex', alignItems:'center' } },
+      e('select', { value: viewYear, onChange: (ev) => setViewYear(parseInt(ev.target.value, 10)), 'aria-label':'Calendar year',
+        style:{ appearance:'none', WebkitAppearance:'none', MozAppearance:'none', background:'none', border:'none', borderBottom:'1px dotted #C9BD9F', borderRadius:0, margin:0, padding: big ? '0 22px 2px 0' : '0 16px 1px 0', fontFamily:"'IBM Plex Mono',monospace", fontSize: big ? (isMobile ? 19 : 26) : 13, fontWeight: big ? 500 : 400, letterSpacing: big ? 0 : '.08em', color: big ? '#A89A7C' : '#5A513B', cursor:'pointer', lineHeight:1.2 } },
+        YEARS.map(y => e('option', { key:y, value:y }, String(y)))),
+      e('span', { 'aria-hidden':'true', style:{ position:'absolute', right:2, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize: big ? 13 : 9, color:'#A89A7C' } }, '▾')
+    );
+  };
+  const yearRow = () => e('div', { style:{ display:'flex', alignItems:'baseline', gap:10 } },
+    e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71' } }, 'Calendar year'),
+    yearPicker('small')
   );
+  // Add-location button (owner only) — lives at the foot of the month page's nav column.
+  const addLocBtn = () => editMode && e('button', { className:'btn-hover', onClick:addLocation, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), ' Add location');
 
   // Owner-only controls switch. "Unlock editing" asks for the password (once per
   // device); when on, "hide controls" previews the page as a visitor sees it
@@ -2550,7 +2572,7 @@ function App() {
       // (right-aligned buttons floating mid-screen look broken when stacked).
       e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
         navRow(false),
-        yearPicker(),
+        yearRow(),
         regionLegend(),
         editToggle()
       )
@@ -2668,19 +2690,20 @@ function App() {
           ),
           e('div', { style:{ display:'flex', alignItems:'baseline', gap:isMobile?10:14, marginTop:6, flexWrap:'wrap' } },
             e('h1', { style:{ margin:0, fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, month.name),
-            e('span', { className:'year-link', onClick:goToYear, onKeyDown:keyActivate(goToYear), role:'button', tabIndex:0, title:'Back to the home page', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:isMobile?19:26, fontWeight:500, color:'#A89A7C', cursor:'pointer' } }, String(month.year))
+            yearPicker('title')
           ),
           e(Editable, { key:'tagline-'+month.key, tag:'div', value:month.tagline, onCommit:(t)=>editMonthField('tagline', t), title:"Click to edit this month's description", style:{ marginTop:8, marginLeft:-4, marginRight:-4, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'30ch', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px' } })
         ),
         // Same as the year page: left-align + full width once it wraps on a phone.
         e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{}) } },
           navRow(true),
-          yearPicker(),
           regionLegend(),
-          editToggle()
+          addLocBtn()
         )
       ),
-      e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 18px':'22px 0 24px' } }),
+      e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 10px':'22px 0 12px' } }),
+      // The owner switch sits between the rule and the hero, out of the nav column.
+      e('div', { style:{ display:'flex', justifyContent:isMobile?'flex-start':'flex-end', marginBottom:isMobile?10:12 } }, editToggle()),
 
       // Hero
       e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
@@ -3095,7 +3118,7 @@ function App() {
       e('div', { className:'no-print', style:{ display:'flex', flexDirection:'column', gap:12, marginBottom:10 } },
         e('div', { style:{ display:'flex', alignItems:'center', gap:'10px 14px', flexWrap:'wrap' } },
           e('button', { className:'btn-hover', onClick:goToYear, style:GreenBtn }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
-          yearPicker(),
+          yearRow(),
           e('button', { className:'btn-hover', onClick:()=>window.print(), style:{ ...GreenBtn, gap:8 } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1 } }, '⎙'), ' Print / save PDF'),
           e('span', { style:{ fontFamily:mono, fontSize:11, color:'#8A7D63', letterSpacing:'.03em' } }, pageCount + ' pages · A4 landscape · ' + viewYear)
         ),

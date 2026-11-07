@@ -87,8 +87,9 @@ eclipse/season dates per year, annual meteor + nature windows).
     drag controls (a static ✓ shows done), the brief hides its footer, region
     toggle and empty fields, add-location/add-event buttons and the map's
     "Mark as visited" hide, and event chips stop being clickable. The
-    "✎ Unlock editing / Editing on · hide controls" link (`editToggle()`, in
-    every page's nav column) prompts for the password or just hides controls
+    "✎ Unlock editing / Editing on · hide controls" link (`editToggle()`; in
+    the home/map nav column, and on month pages in its own row between the
+    header rule and the hero) prompts for the password or just hides controls
     (keeps the password) so the owner can preview the visitor view.
   - **Photo index.** `Storage.loadPhotoIndex()` calls the Worker's `GET /list`
     (every key under `photos/`) once; `App` keeps it as `photoIndex` (a Set;
@@ -140,8 +141,13 @@ eclipse/season dates per year, annual meteor + nature windows).
   geometry with 21px bars and a per-page type key.
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
-  `navRow(showYearBtn)` renders the top buttons (year page drops the redundant
-  right arrow).
+  `navRow(showYearBtn)` renders the top buttons. Month pages: `‹ › [month
+  picker] | Map | ← Home`, with the owner's "+ Add location" (`addLocBtn`) at
+  the foot of the nav column; home: `Map Print | ‹ January →`. `monthPicker`
+  and `yearPicker(size)` are native `<select>`s styled in place (`appearance:
+  none` + a chevron span) — the year is the quiet dotted-underline picker
+  beside the month name (`'title'`), and `yearRow()` (label + `'small'`
+  picker) on the home page. The year chips are gone.
 
 ## The Map (`MapView`)
 
