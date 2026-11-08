@@ -3845,6 +3845,19 @@ function App() {
 
     const label = (key, text) => e('div', { key, className:'no-print print-label' }, text);
     const chip = (key, on, text, onClick) => e('button', { key, onClick, className:'map-chip', style:{ height:30, padding:'0 11px', background: on ? '#54632F' : '#FBF7EC', color: on ? '#FBF7EC' : '#5A513B', border:'1px solid ' + (on ? '#2A251E' : '#C9BD9F'), fontFamily:mono, fontSize:10.5, letterSpacing:'.08em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.10)' } }, text);
+    // The photo a month prints (the same rule PrintMonthPhoto applies): the
+    // starred location if it has a photo, else the first with one — known up
+    // front from the photo index, so the grid page can carry its caption and
+    // show the light for that very spot. null while the index is loading.
+    const printPick = (m2) => {
+      if (!photoIndex) return null;
+      const ordered = m2.printLoc ? m2.locations.filter(l => l.id === m2.printLoc).concat(m2.locations.filter(l => l.id !== m2.printLoc)) : m2.locations;
+      return ordered.find(x => photoIndex.has(mainBase(m2.key, x) + '-thumb')) || null;
+    };
+    const printLight = (m2, i) => {
+      const pick = printPick(m2); const c = pick && coordsOf(pick);
+      return c ? lightAt(c[0], c[1], viewYear, i, 15) : monthLight(m2, i);
+    };
     // A full-sheet photo slot (cover / back cover): the owner drops a photo on
     // it; visitors just see the photo (LocationPhoto handles both via EditCtx).
     const slot = (base, placeholder) => e(LocationPhoto, { base, placeholder, onChange: bumpImg, photoIndex, epoch: imgEpoch, full: true, style:{ position:'absolute', inset:0, borderRadius:0, border:'none' } });
@@ -3875,7 +3888,8 @@ function App() {
       const legendKinds = kindOrder.filter(k => printable.some(ev => ev.kind === k));
       pages.push(label('l-' + m2.key + '-p', m2.name + ' — photo'));
       pages.push(e('div', { key:m2.key + '-photo', className:'print-sheet', style:{ background:'#F1EBDB' } },
-        e(PrintMonthPhoto, { monthKey:m2.key, monthName:m2.name, locs:m2.locations, preferId:m2.printLoc, epoch:imgEpoch, photoIndex, variant:'page', caption:captions })
+        // clean full-bleed photo — its caption sits top-right of the grid page
+        e(PrintMonthPhoto, { monthKey:m2.key, monthName:m2.name, locs:m2.locations, preferId:m2.printLoc, epoch:imgEpoch, photoIndex, variant:'page', caption:false })
       ));
       pages.push(label('l-' + m2.key + '-g', m2.name + ' — calendar'));
       pages.push(e('div', { key:m2.key + '-grid', className:'print-sheet pad' },
@@ -3886,8 +3900,11 @@ function App() {
             e('div', { style:{ fontFamily:mono, fontSize:'5mm', color:'#A89A7C', letterSpacing:'.08em' } }, String(viewYear))
           ),
           e('img', { src:'assets/photoplan-lockup-light.svg', alt:'Photoplan', style:{ height:'11mm', width:'auto', display:'block', marginBottom:'0.5mm' } }),
+          // right: the month photo's caption (when captions are on), then the
+          // light at that spot (no place name — it's the pictured place), note
           e('div', { style:{ textAlign:'right', fontFamily:mono, fontSize:'3mm', color:'#8A7D63', letterSpacing:'.04em', lineHeight:1.7 } },
-            (() => { const L = monthLight(m2, i); return e('div', { style:{ color:'#54632F' } }, '↑ ' + L.rise + '   ↓ ' + L.set + '  · ' + L.place); })(),
+            (() => { const pick = printPick(m2); return (captions && pick) ? e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:'4.4mm', color:'#2A251E', letterSpacing:0, lineHeight:1.25, marginBottom:'1mm' } }, photoCaption(pick, m2.name, mainYear(pick))) : null; })(),
+            (() => { const L = printLight(m2, i); return e('div', { style:{ color:'#54632F' } }, '↑ ' + L.rise + '   ↓ ' + L.set); })(),
             e('div', null, m2.daylightNote)
           )
         ),
@@ -3967,7 +3984,7 @@ function App() {
         ),
         e('div', { style:{ fontFamily:mono, fontSize:11, color:'#8A7D63', letterSpacing:'.03em', lineHeight:1.6, maxWidth:'110ch' } },
           'In the print dialog choose A4, Landscape, default margins and 100% scale (switch "Background graphics" on if colours print pale); "Save as PDF" keeps a copy. ' +
-          'Each month uses its ★-starred location’s photo, or its first location with a photo. ' +
+          'Each month uses its ★-starred location’s photo, or its first location with a photo; its caption sits top-right of the month’s calendar page (the "Photo captions" switch above). ' +
           'Drop a photo onto the cover and back-cover sheets below. Untick "Shown on the printable calendar" in an event’s editor to keep a single event off. ' +
           'Photos now upload with a print-size copy (' + PRINT_MAX_EDGE + 'px); a sheet flagged "web size only" holds an older photo — drop it on again to replace it at print quality.' +
           (isMobile ? ' Best previewed and printed from a desktop browser.' : '')

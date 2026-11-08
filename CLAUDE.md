@@ -170,10 +170,14 @@ a per-location "Light" row. `daylightNote` stays editorial.
   `@media print`; `.pad` adds the grid page's padding; `.print-label` is the
   on-screen-only page caption). Cover/back photos are `LocationPhoto` slots
   (`full: true` → print-size image) on R2 keys `photos/print-cover` /
-  `photos/print-back`. `PrintMonthPhoto` (variant `page` with caption, or
-  `tile`) shows the month's **starred** location (`month.printLoc`, ★ on the
-  month-page tiles) if it has a photo, else the first with one, using the
-  `-print` copy when it exists. Grid pages carry the light lockup
+  `photos/print-back`. `PrintMonthPhoto` (variant `page`, or `tile`) shows
+  the month's **starred** location (`month.printLoc`, ★ on the month-page
+  tiles) if it has a photo, else the first with one, using the `-print` copy
+  when it exists. The photo page is clean (no overlay): the **caption sits
+  top-right of the grid page** (`printPick(m2)` resolves the same pick from
+  the photo index; shown when `printPrefs.captions`), above sunrise/sunset
+  computed for that pictured spot (`printLight`, no place name) and the
+  `daylightNote`. Grid pages carry the light lockup
   (`assets/photoplan-lockup-light.svg`) centred in the header row and
   `@IG_HANDLE` (with `igGlyph`) bottom-right under the grid. What prints:
   per-event `noPrint` (checkbox in the event editor) **and**
