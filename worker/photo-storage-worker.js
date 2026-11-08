@@ -9,10 +9,13 @@
 //   • UPLOAD_PASSWORD — a secret; the password required to upload or delete
 //
 // Endpoints:
-//   GET    /photo/<name>  → returns the photo / file         (public, no password)
+//   GET    /photo/<name>  → returns the photo / file         (public, no password —
+//                           except print-size copies, names ending "-print", which
+//                           need the password too: only the owner prints)
 //   PUT    /photo/<name>  → saves/replaces it                (password required)
 //   DELETE /photo/<name>  → removes it                       (password required)
 //   GET    /backups       → lists the automatic backups of calendar-data.json
+//   GET    /list          → every photo name under photos/ (the site's index)
 //
 // Safety for the shared calendar (calendar-data.json) — "v2", announced to the
 // site through the `x-photoplan-worker: 2` response header:
@@ -110,7 +113,13 @@ export default {
     const key = decodeURIComponent(match[1]).replace(/[^a-zA-Z0-9._/-]/g, '_').replace(/\.{2,}/g, '_');
 
     // ── Public: view a photo ──────────────────────────────────────────────────
+    // The print-size copies stay private: the site fetches them with the
+    // password header (an <img> can't), so visitors only ever get the web sizes.
     if (request.method === 'GET') {
+      if (/-print$/.test(key)) {
+        const given = request.headers.get('x-upload-key') || '';
+        if (!env.UPLOAD_PASSWORD || given !== env.UPLOAD_PASSWORD) return json({ error: 'Unauthorized' }, 401);
+      }
       const obj = await env.BUCKET.get(key);
       if (!obj) return json({ error: 'Not found' }, 404);
       const headers = new Headers(CORS);

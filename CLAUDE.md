@@ -51,8 +51,16 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   (`worker/photo-storage-worker.js`, deployed at
   `https://photo-calendar-storage.taledd95.workers.dev`, set as
   `PHOTO_STORAGE_BASE` in `index.html`).
-  - `GET /photo/<key>` is public (viewing). `PUT`/`DELETE` require the header
-    `x-upload-key` matching the Worker secret `UPLOAD_PASSWORD`.
+  - `GET /photo/<key>` is public (viewing) **except keys ending `-print`**,
+    which need the password header too (the public never gets more than the
+    1600px web copy). `PUT`/`DELETE` require the header `x-upload-key`
+    matching the Worker secret `UPLOAD_PASSWORD`. Because an `<img>` can't
+    send a header, the site fetches print copies with it and shows `blob:`
+    URLs: `fetchPrivateUrl(key, bust)` (session cache) + the
+    `usePrivateImage(key, bust)` hook, used by `PrintMonthPhoto` and
+    `LocationPhoto full`; the hero shows until the copy arrives ("Loading the
+    print-size copy…" on-screen badge). `copyImage` sends the header so moves
+    carry the print copy.
   - Each photo is stored three times: `<base>` (hero, ~1600px, the slideshows),
     `<base>-thumb` (~500px, tiles) and `<base>-print` (`PRINT_MAX_EDGE` =
     3200px, ~290 dpi across A4 — only the printable calendar loads it), under
@@ -173,8 +181,8 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   effect leaves the view when editing goes off): an **A4-landscape** wall
   calendar for the selected year, page order: cover photo → per month a
   full-bleed photo page then a grid page → two photo-index pages (6 month
-  photos each as **3:2 tiles** with month + caption beneath, block centred)
-  → back-cover photo. `.print-sheet` CSS keeps sheets at
+  photos each as **3:2 tiles**, three across — the widest that fits — with a
+  small month label, no caption, block centred) → back-cover photo. `.print-sheet` CSS keeps sheets at
   281×193mm (aspect-ratio preview on screen; exact one-page height in
   `@media print`; `.pad` adds the grid page's padding; `.print-label` is the
   on-screen-only page caption). Cover/back photos are `LocationPhoto` slots
@@ -218,10 +226,11 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
   `navRow(showYearBtn)` renders the top buttons. Month pages: `[month picker]
   ‹ › | Map Weather | ← Home`, with the owner's "+ Add location" (`addLocBtn`)
-  at the foot of the nav column; home: `Map Weather (⎙ Calendar = print view,
-  ⤓ Export = .ics — owner) | [Month…] ‹ January →`. `monthPicker(blank)`
-  and `yearPicker(size)` are native `<select>`s styled in place (`appearance:
-  none` + a chevron span; `blank` = the home page's "Month…" placeholder) — the year is the quiet dotted-underline picker
+  at the foot of the nav column; home: the tools `Map Weather (⎙ Calendar =
+  print view, ⤓ Export = .ics — owner)` sit **under the intro on the left**
+  (`homeTools()`), the right column holds `‹ January →`, the year, legend
+  and edit switch. `monthPicker()` and `yearPicker(size)` are native
+  `<select>`s styled in place (`appearance: none` + a chevron span) — the year is the quiet dotted-underline picker
   beside the month name (`'title'`), and `yearRow()` (label + `'small'`
   picker) on the home page. The year chips are gone.
 
@@ -301,7 +310,9 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   sends the lock header once it has seen the v2 response header, so it works
   with the old Worker too (client-side check only, no backups, thumbnail
   probing) until the new file is pasted in. **Restore** = download a backup
-  from the R2 dashboard and upload it as `calendar-data.json`.
+  from the R2 dashboard and upload it as `calendar-data.json`. The **print-
+  copy lock** (GET of `-print` keys needs the password) is in the same file;
+  the site works either way, since it always sends the header for them.
 - **Always syntax-check before publishing** — extract the inline script and run
   `node --check`:
   ```

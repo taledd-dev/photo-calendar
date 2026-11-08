@@ -295,7 +295,8 @@ const Storage = {
   // was nothing to copy.
   async copyImage(fromId, toId, key) {
     try {
-      const res = await fetch(this.photoUrl(fromId, Date.now()), { cache: 'no-store' });
+      // the password header lets the private print-size copies be read too
+      const res = await fetch(this.photoUrl(fromId, Date.now()), { cache: 'no-store', headers: { 'x-upload-key': key } });
       if (!res.ok) return false;
       const blob = await res.blob();
       return await this.saveImage(toId, blob, key);
@@ -579,6 +580,38 @@ function LocThumb({ base, epoch = 0, photoIndex }) {
 // ─── Location photo uploader ─────────────────────────────────────────────────
 // The upload control on a location: drop/click a photo and it saves both a
 // thumbnail and a hero version. Shows the thumbnail once set.
+// ─── Private (print-size) images ──────────────────────────────────────────────
+// The Worker only serves "…-print" copies with the password header, so the
+// public never gets more than the 1600px web copy. An <img> can't send a
+// header, so the owner's browser fetches them with it and shows blob: URLs,
+// cached for the session (a failed fetch isn't cached, so it retries later).
+const privateUrlCache = new Map(); // "<key>@<bust>" → Promise<string|null>
+function fetchPrivateUrl(key, bust) {
+  const id = key + '@' + (bust || 0);
+  if (!privateUrlCache.has(id)) {
+    const pw = Storage.peekUploadKey();
+    const p = !pw ? Promise.resolve(null)
+      : fetch(Storage.photoUrl(key, bust || undefined), { headers: { 'x-upload-key': pw } })
+          .then(r => r.ok ? r.blob() : null).then(b => b ? URL.createObjectURL(b) : null).catch(() => null);
+    privateUrlCache.set(id, p);
+    p.then(u => { if (!u) privateUrlCache.delete(id); });
+  }
+  return privateUrlCache.get(id);
+}
+// A blob: URL for a private key (null while loading, or when it can't be had —
+// callers fall back to the public hero copy). Pass null for no key.
+function usePrivateImage(key, bust) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    setUrl(null);
+    if (!key) return;
+    fetchPrivateUrl(key, bust).then(u => { if (!cancelled) setUrl(u); });
+    return () => { cancelled = true; };
+  }, [key, bust]);
+  return url;
+}
+
 // `full` shows the hero-size image instead of the thumbnail (the printable
 // calendar's cover sheets, where the thumbnail would print soft). `compact`
 // is the small-square form used in the brief's "more photos" strip: a bare
@@ -640,7 +673,8 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
   // print-size copy (if this photo has one — anything uploaded here does) or
   // the hero.
   const hasPrint = knownRef.current === true || !!(photoIndex && photoIndex.has(base + '-print'));
-  const imgSrc = src && full ? Storage.photoUrl(hasPrint ? base + '-print' : base, bust || epoch || undefined) : src;
+  const privUrl = usePrivateImage(full && src && hasPrint ? base + '-print' : null, bust || epoch || 0);
+  const imgSrc = src && full ? (privUrl || Storage.photoUrl(base, bust || epoch || undefined)) : src;
   const sizeFlag = full && src && photoIndex && !hasPrint && printSizeBadge();
   // View-only: just the photo (or a quiet placeholder) — no upload or remove.
   if (!canEdit) {
@@ -862,9 +896,9 @@ function MiniMap({ coords, parking, name, height = 190 }) {
 // ─── Print month photo ────────────────────────────────────────────────────────
 // On-screen-only flag on a print-page photo that has no print-size copy (it was
 // uploaded before -print existed): it will print from the 1600px hero.
-function printSizeBadge() {
+function printSizeBadge(text) {
   return e('div', { className:'no-print', style:{ position:'absolute', top:'4mm', right:'4mm', zIndex:3, background:'rgba(42,37,30,0.80)', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', padding:'5px 9px', borderRadius:3, pointerEvents:'none' } },
-    'Web size only · re-upload for print quality');
+    text || 'Web size only · re-upload for print quality');
 }
 
 // Instagram glyph (outline camera) in a single colour, for print.
@@ -912,6 +946,8 @@ function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoInde
     })();
     return () => { cancelled = true; };
   }, [sig, epoch, photoIndex]);
+  // the private print-size copy, fetched with the password; the hero shows meanwhile
+  const privUrl = usePrivateImage(pick && pick.print ? pick.base + '-print' : null, epoch || 0);
   const fill = { position:'absolute', inset:0 };
   if (!pick) {
     if (photoIndex === undefined) return null; // index still loading — blank for a moment
@@ -919,8 +955,9 @@ function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoInde
       variant === 'tile' ? monthName : 'No photo yet for ' + monthName);
   }
   return e('div', { style: fill },
-    e('img', { src: Storage.photoUrl(pick.print ? pick.base + '-print' : pick.base, epoch || undefined), alt:'', style:{ width:'100%', height:'100%', objectFit:'cover', display:'block' } }),
+    e('img', { src: (pick.print && privUrl) ? privUrl : Storage.photoUrl(pick.base, epoch || undefined), alt:'', style:{ width:'100%', height:'100%', objectFit:'cover', display:'block' } }),
     pick.print === false && printSizeBadge(),
+    pick.print && !privUrl && variant === 'page' && printSizeBadge('Loading the print-size copy…'),
     variant === 'page' && caption && e('div', { style:{ position:'absolute', left:0, bottom:0, background:'#000', color:'#fff', fontFamily:"'IBM Plex Mono',monospace", fontSize:'3.2mm', lineHeight:1.4, padding:'1.8mm 3.5mm', letterSpacing:'.02em' } },
       pick.name + ' · ' + (monthName || '').slice(0, 3) + (pick.year ? " '" + pick.year : ''))
   );
@@ -3363,11 +3400,9 @@ function App() {
   const navDivider = () => isMobile ? null : e(Divider);
   // Month picker — a native <select> dressed as one of the nav buttons, so on a
   // phone it opens the platform's own list. Jumps straight to that month.
-  // `blank` (the home page) shows "Month…" instead of the current month.
-  const monthPicker = (blank) => e('span', { style:{ position:'relative', display:'inline-flex' } },
-    e('select', { value: blank ? '' : mi, onChange: (ev) => { const v = parseInt(ev.target.value, 10); if (!isNaN(v)) goToMonth(v, null); }, 'aria-label':'Go to month', title:'Jump to a month',
+  const monthPicker = () => e('span', { style:{ position:'relative', display:'inline-flex' } },
+    e('select', { value: mi, onChange: (ev) => { const v = parseInt(ev.target.value, 10); if (!isNaN(v)) goToMonth(v, null); }, 'aria-label':'Go to month', title:'Jump to a month',
       style:{ ...BtnBase, appearance:'none', WebkitAppearance:'none', MozAppearance:'none', background:'#FBF7EC', color:'#2A251E', padding:'0 32px 0 15px', borderRadius:0 } },
-      blank && e('option', { value:'', disabled:true }, 'Month…'),
       data.map((m2, i) => e('option', { key:m2.key, value:i }, m2.name))),
     e('span', { 'aria-hidden':'true', style:{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:12, color:'#54632F' } }, '▾')
   );
@@ -3379,9 +3414,12 @@ function App() {
         e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home')
       )
     : e('div', { style:navRowStyle },
-        mapBtn, weatherBtn, editMode && printBtn, editMode && icsBtn, navDivider(), monthPicker(true), prevBtn,
+        prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
+  // The home page's tools (Map, Weather, and the owner's Calendar + Export)
+  // sit under the intro on the left, so the header doesn't tower on the right.
+  const homeTools = () => e('div', { style:navRowStyle }, mapBtn, weatherBtn, editMode && printBtn, editMode && icsBtn);
 
   // Year picker — a quiet native <select> on the year itself (dotted underline,
   // small chevron); switches the calendar grid + events, locations unaffected.
@@ -3438,7 +3476,8 @@ function App() {
         // full width of the header block before wrapping.
         // NB per-side margins only — a `margin` shorthand would override
         // marginTop and glue the intro to the title (it did, once).
-        e(Editable, { key:'year-intro-' + yearIntro, tag:'div', value: yearIntro, onCommit:(t)=>editYearIntro(t), title:'Click to edit', style:{ marginTop:isMobile?18:26, marginLeft:-4, marginRight:-4, fontSize:isMobile?15:17, color:'#6E6450', maxWidth:isMobile?'100%':720, lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px' } })
+        e(Editable, { key:'year-intro-' + yearIntro, tag:'div', value: yearIntro, onCommit:(t)=>editYearIntro(t), title:'Click to edit', style:{ marginTop:isMobile?18:26, marginLeft:-4, marginRight:-4, fontSize:isMobile?15:17, color:'#6E6450', maxWidth:isMobile?'100%':720, lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px' } }),
+        e('div', { style:{ marginTop:isMobile?16:22 } }, homeTools())
       ),
       // On phones this column wraps below the title, so pin it to the left edge
       // (right-aligned buttons floating mid-screen look broken when stacked).
@@ -4128,23 +4167,19 @@ function App() {
     // Photo index: the twelve month photos over two pages, six per page.
     [0, 6].forEach((start, pi) => {
       pages.push(label('l-index-' + pi, 'Photo index · ' + (pi + 1) + ' of 2'));
-      // Tiles keep the photos' 3:2 shape (a square cell cropped them), with the
-      // month and, when captions are on, the location beneath; the block sits
-      // centred on the sheet.
-      pages.push(e('div', { key:'index-' + pi, className:'print-sheet', style:{ padding:'6mm 7mm', background:'#FCFAF1', justifyContent:'center' } },
-        e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:'6mm 4mm' } },
-          data.slice(start, start + 6).map(m2 => {
-            const pick = printPick(m2);
-            return e('div', { key:m2.key, style:{ minWidth:0 } },
+      // Tiles keep the photos' 3:2 shape (a square cell cropped them) and sit
+      // as large as three-across allows — tight margins, a small month label
+      // and no caption — centred on the sheet.
+      pages.push(e('div', { key:'index-' + pi, className:'print-sheet', style:{ padding:'4mm', background:'#FCFAF1', justifyContent:'center' } },
+        e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:'5mm 3mm' } },
+          data.slice(start, start + 6).map(m2 =>
+            e('div', { key:m2.key, style:{ minWidth:0 } },
               e('div', { style:{ position:'relative', aspectRatio:'3 / 2', overflow:'hidden', background:'#F1EBDB' } },
                 e(PrintMonthPhoto, { monthKey:m2.key, monthName:m2.name, locs:m2.locations, preferId:m2.printLoc, epoch:imgEpoch, photoIndex, variant:'tile' })
               ),
-              e('div', { style:{ marginTop:'2mm', display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:'3mm', minWidth:0 } },
-                e('span', { style:{ fontFamily:mono, fontSize:'2.8mm', letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', flex:'none' } }, m2.name),
-                captions && pick && e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:'3.4mm', color:'#2A251E', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, pick.name + (mainYear(pick) ? " · '" + mainYear(pick) : ''))
-              )
-            );
-          })
+              e('div', { style:{ marginTop:'1.6mm', fontFamily:mono, fontSize:'2.8mm', letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71' } }, m2.name)
+            )
+          )
         )
       ));
     });
