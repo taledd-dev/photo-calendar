@@ -180,9 +180,10 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   **owner only**: the button and the view are gated on `editMode`, and an
   effect leaves the view when editing goes off): an **A4-landscape** wall
   calendar for the selected year, page order: cover photo → per month a
-  full-bleed photo page then a grid page → two photo-index pages (6 month
-  photos each as **3:2 tiles**, three across — the widest that fits — with a
-  small month label, no caption, block centred) → back-cover photo. `.print-sheet` CSS keeps sheets at
+  full-bleed photo page then a grid page → three photo-index pages (4 month
+  photos each as **3:2 tiles**, two across at 130mm wide — the most two rows
+  plus a small month label fit in the height — no caption, block centred)
+  → back-cover photo. `.print-sheet` CSS keeps sheets at
   281×193mm (aspect-ratio preview on screen; exact one-page height in
   `@media print`; `.pad` adds the grid page's padding; `.print-label` is the
   on-screen-only page caption). Cover/back photos are `LocationPhoto` slots

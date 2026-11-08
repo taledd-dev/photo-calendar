@@ -4164,20 +4164,20 @@ function App() {
       ));
     });
 
-    // Photo index: the twelve month photos over two pages, six per page.
-    [0, 6].forEach((start, pi) => {
-      pages.push(label('l-index-' + pi, 'Photo index · ' + (pi + 1) + ' of 2'));
-      // Tiles keep the photos' 3:2 shape (a square cell cropped them) and sit
-      // as large as three-across allows — tight margins, a small month label
-      // and no caption — centred on the sheet.
-      pages.push(e('div', { key:'index-' + pi, className:'print-sheet', style:{ padding:'4mm', background:'#FCFAF1', justifyContent:'center' } },
-        e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:'5mm 3mm' } },
-          data.slice(start, start + 6).map(m2 =>
+    // Photo index: the twelve month photos over three pages, four per page,
+    // two across. Tiles keep the photos' 3:2 shape, at 130mm wide — the most
+    // that two rows plus a small month label fit in the sheet's height — and
+    // the block sits centred on the sheet.
+    [0, 4, 8].forEach((start, pi) => {
+      pages.push(label('l-index-' + pi, 'Photo index · ' + (pi + 1) + ' of 3'));
+      pages.push(e('div', { key:'index-' + pi, className:'print-sheet', style:{ padding:'4mm', background:'#FCFAF1', justifyContent:'center', alignItems:'center' } },
+        e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:'3mm', width:'263mm', maxWidth:'100%' } },
+          data.slice(start, start + 4).map(m2 =>
             e('div', { key:m2.key, style:{ minWidth:0 } },
               e('div', { style:{ position:'relative', aspectRatio:'3 / 2', overflow:'hidden', background:'#F1EBDB' } },
                 e(PrintMonthPhoto, { monthKey:m2.key, monthName:m2.name, locs:m2.locations, preferId:m2.printLoc, epoch:imgEpoch, photoIndex, variant:'tile' })
               ),
-              e('div', { style:{ marginTop:'1.6mm', fontFamily:mono, fontSize:'2.8mm', letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71' } }, m2.name)
+              e('div', { style:{ marginTop:'1.2mm', fontFamily:mono, fontSize:'2.6mm', lineHeight:1.1, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71' } }, m2.name)
             )
           )
         )
@@ -4190,7 +4190,7 @@ function App() {
       slot('photos/print-back', 'the back-cover photo')
     ));
 
-    const pageCount = 1 + data.length * 2 + 2 + 1;
+    const pageCount = 1 + data.length * 2 + 3 + 1;
     return e('div', null,
       e('div', { className:'no-print', style:{ display:'flex', flexDirection:'column', gap:12, marginBottom:10 } },
         e('div', { style:{ display:'flex', alignItems:'center', gap:'10px 14px', flexWrap:'wrap' } },
