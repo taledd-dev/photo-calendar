@@ -1200,6 +1200,7 @@ function makeData() {
         { id:'e-oct-3', type:'day', day:25, kind:'season', label:'Clocks back' },
         { id:'e-oct-4', type:'day', day:26, kind:'fullmoon', label:'Hunter\'s Moon' },
         { id:'e-oct-5', type:'range', start:14, end:31, kind:'nature', label:'Peak autumn colour' },
+        { id:'e-oct-6', type:'range', start:1, end:31, kind:'nature', label:'Red deer rut' },
       ],
     },
     {
@@ -1344,6 +1345,7 @@ const YEAR_EVENTS = {
       { id:'e27-oct-3', type:'range', start:21, end:22, kind:'meteor', label:'Orionids' },
       { id:'e27-oct-4', type:'day', day:29, kind:'newmoon', label:'New Moon' },
       { id:'e27-oct-5', type:'day', day:31, kind:'season', label:'Clocks back' },
+      { id:'e27-oct-6', type:'range', start:1, end:31, kind:'nature', label:'Red deer rut' },
     ],
     nov: [
       { id:'e27-nov-1', type:'range', start:1, end:30, kind:'nature', label:'Starling murmurations' },
@@ -1420,6 +1422,7 @@ const YEAR_EVENTS = {
       { id:'e28-oct-3', type:'day', day:18, kind:'newmoon', label:'New Moon' },
       { id:'e28-oct-4', type:'range', start:21, end:22, kind:'meteor', label:'Orionids' },
       { id:'e28-oct-5', type:'day', day:29, kind:'season', label:'Clocks back' },
+      { id:'e28-oct-6', type:'range', start:1, end:31, kind:'nature', label:'Red deer rut' },
     ],
     nov: [
       { id:'e28-nov-1', type:'range', start:1, end:30, kind:'nature', label:'Starling murmurations' },
@@ -1663,13 +1666,40 @@ function eventsFor(m, year) {
   }).concat(yearly);
 }
 
+// One-off additions to years that are already stored in the data (annual
+// windows added to the seeds after those years were materialised). Each patch
+// runs once per dataset — its id is recorded in data[0].seedPatches on the
+// next save — so a later deletion by the owner isn't undone. Generated years
+// pick the same windows up from the template.
+const SEED_PATCHES = [
+  { id: 'deer-rut', month: 'oct', event: { type: 'range', start: 1, end: 31, kind: 'nature', label: 'Red deer rut' } },
+];
+function applySeedPatches(arr) {
+  if (!Array.isArray(arr) || !arr.length) return arr;
+  const done = new Set(arr[0].seedPatches || []);
+  const pending = SEED_PATCHES.filter(p => !done.has(p.id));
+  if (!pending.length) return arr;
+  const out = arr.map(m => {
+    const mine = pending.filter(p => p.month === m.key);
+    if (!mine.length) return m;
+    const by = { ...(m.eventsByYear || {}) };
+    Object.keys(by).forEach(y => {
+      mine.forEach(p => { if (!by[y].some(ev => ev.label === p.event.label)) by[y] = by[y].concat([{ id: 'p-' + p.id + '-' + y, ...p.event }]); });
+    });
+    return { ...m, eventsByYear: by };
+  });
+  out[0] = { ...out[0], seedPatches: Array.from(done).concat(pending.map(p => p.id)) };
+  return out;
+}
+
 // Upgrade any loaded dataset to the per-year shape, idempotently: an old-style
 // `events` array becomes the 2026 calendar, and the hand-seeded years in
 // YEAR_EVENTS are filled in if missing. Other years aren't stored until the
-// owner edits them (they show the computed events meanwhile).
+// owner edits them (they show the computed events meanwhile). Then the seed
+// patches above top up the stored years.
 function migrateYearEvents(arr) {
   if (!Array.isArray(arr)) return arr;
-  return arr.map(m => {
+  return applySeedPatches(arr.map(m => {
     const by = {};
     Object.entries(m.eventsByYear || {}).forEach(([y, evs]) => { by[y] = evs; });
     if (!by['2026']) by['2026'] = m.events || [];
@@ -1679,7 +1709,7 @@ function migrateYearEvents(arr) {
     const m2 = { ...m, eventsByYear: by };
     delete m2.events;
     return m2;
-  });
+  }));
 }
 
 // Every event in a month across all years, repeaters included (used to derive
@@ -1750,13 +1780,15 @@ const EVENT_ICONS = {
   tree: { label:'Woodland', svg:'<path d="M12 1.5l5.2 7.2h-3.1l4.3 5.4h-3l4.6 5.4H4l4.6-5.4h-3l4.3-5.4H6.8z"/><rect x="10.8" y="19.3" width="2.4" height="3.2"/>' },
   wave: { label:'Coast / tide', svg:'<path d="M2 9.5c2.5 0 2.5-2.2 5-2.2s2.5 2.2 5 2.2 2.5-2.2 5-2.2 2.5 2.2 5 2.2v2.4c-2.5 0-2.5-2.2-5-2.2s-2.5 2.2-5 2.2-2.5-2.2-5-2.2S4.5 11.9 2 11.9z"/><path d="M2 15.5c2.5 0 2.5-2.2 5-2.2s2.5 2.2 5 2.2 2.5-2.2 5-2.2 2.5 2.2 5 2.2v4.6H2z"/>' },
   mountain: { label:'Mountains', svg:'<path d="M1.5 20.5L9 5.5l4.1 7.3 2.2-3.3 7.2 11z"/>' },
+  deer: { label:'Deer rut', svg:'<path d="M12 10.6c-2.5 0-4 1.7-4 4.2 0 2.7 1.6 5.6 4 7.7 2.4-2.1 4-5 4-7.7 0-2.5-1.5-4.2-4-4.2z"/><ellipse cx="7" cy="12.4" rx="2.3" ry="1.3" transform="rotate(-28 7 12.4)"/><ellipse cx="17" cy="12.4" rx="2.3" ry="1.3" transform="rotate(28 17 12.4)"/><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 10.4C8.6 8.2 7.4 5.9 5.5 3.2M7.4 7.3C6 6.9 4.7 6.1 3.4 5M8.5 9.2c-1.5 0-2.9-.2-4.2-.8M6.4 5c.1-1.2.5-2.3 1.1-3.3"/><path d="M14.4 10.4c1-2.2 2.2-4.5 4.1-7.2M16.6 7.3c1.4-.4 2.7-1.2 4-2.3M15.5 9.2c1.5 0 2.9-.2 4.2-.8M17.6 5c-.1-1.2-.5-2.3-1.1-3.3"/></g>' },
 };
-const ICON_ORDER = ['bluebell','daffodil','snowdrop','blossom','lavender','heather','leaf','mushroom','stars','nlc','bird','frost','mist','sun','clock','tree','wave','mountain'];
+const ICON_ORDER = ['bluebell','daffodil','snowdrop','blossom','lavender','heather','leaf','mushroom','stars','nlc','bird','deer','frost','mist','sun','clock','tree','wave','mountain'];
 // Title keywords → icon, first match wins (so the specific ones come first).
 const ICON_KEYWORDS = [
   ['equinox','sun'], ['solstice','sun'], ['clocks','clock'],
   ['bluebell','bluebell'], ['daffodil','daffodil'], ['snowdrop','snowdrop'], ['blossom','blossom'], ['lavender','lavender'], ['heather','heather'],
   ['autumn','leaf'], ['colour','leaf'], ['fung','mushroom'], ['mushroom','mushroom'],
+  ['deer','deer'], ['stag','deer'], [' rut','deer'],
   ['starling','bird'], ['murmuration','bird'], ['noctilucent','nlc'], ['milky','stars'], ['star','stars'],
   ['frost','frost'], ['snow','frost'], [' ice','frost'], ['mist','mist'], ['fog','mist'], ['inversion','mist'],
   ['wood','tree'], ['forest','tree'], ['tide','wave'], ['coast','wave'], ['beach','wave'], ['fells','mountain'], ['mountain','mountain'], ['summit','mountain'],
@@ -2016,6 +2048,7 @@ const WEATHER_GUIDE = [
   { glyph:'❀', title:'Autumn colour & heather', conditions:'Colour follows cool nights: about a week after the first frosts, mid-October to early November for most of England, earlier in Scotland. Heather peaks mid-August to early September on dry moors. Backlight or bright overcast.', settings:'Polariser, f/8–f/11, ISO 100–400. Underexpose a touch (−0.3 EV) to keep the reds and oranges from clipping.', tips:'Still, misty mornings after rain are the dream: wet leaves, saturated colour, no wind. Calm water doubles the show.' },
   { glyph:'~', title:'Coast & long exposure', conditions:'Check the tide first: an incoming mid-to-high tide for movement around rocks, low tide for pools and reflections. Onshore wind for drama, offshore for clean waves. The hour either side of sunset.', settings:'ND 6–10 stops with f/11 for 1–30 s silky water, or 1/4–1 s for streaks and texture. Polariser cuts glare on wet sand. ISO 100.', tips:'Never turn your back on the sea; know the tide times and your exit. Rinse the tripod legs and wipe salt spray off the front element often.' },
   { glyph:'~', title:'Waterfalls & rivers', conditions:'The day after heavy rain for volume, bright overcast so the white water doesn’t burn out. Autumn adds colour; winter adds ice.', settings:'Polariser (essential — it removes the sheen on wet rock), f/11, 1/2–2 s, ISO 100, ND filter in daylight.', tips:'Shorter shutter speeds (1/8–1/4 s) keep texture in the water; multi-second exposures turn it to milk. Protect the lens from spray between frames.' },
+  { glyph:'◉', title:'Red deer rut', conditions:'October, peaking mid-month: stags roar and clash from first light, best on cold, still, misty dawns. Richmond and Bushy Parks, Bradgate, Exmoor and the Highland glens. Low sun behind or beside the animals lights the breath and the mist.', settings:'300–600 mm, f/4–f/5.6, 1/500 s or faster for a clash (1/60 s for a roaring portrait with steam), ISO 800–3200 at dawn, continuous focus and burst.', tips:'Keep 50 m back, never get between stags, and do not use a flash. Arrive before dawn and let the herd come to you; a long lens and patience beat a close approach every time.' },
   { glyph:'◉', title:'Starlings & wildlife at dusk', conditions:'Murmurations build 30–45 min before sunset on calm, clear or lightly clouded evenings from November to February, biggest in cold snaps. Position with the sky behind the flock.', settings:'70–200 mm or 100–400 mm. 1/500–1/1000 s to freeze the shapes, or 1/15–1/30 s for painterly flow. ISO 800 and up as the light goes.', tips:'Arrive an hour early and watch where the birds gather. A tripod with a loose head lets you follow the swirl.' },
   { glyph:'☁', title:'Noctilucent clouds', conditions:'Late May to early August, 90–120 min after sunset or before sunrise, low in the north-west (evening) or north-east (morning). A clear sky with the Sun 6–16° below the horizon — civil dusk onwards.', settings:'24–50 mm, f/2.8–f/4, 1–5 s, ISO 400–800. They are brighter than you expect; check the histogram.', tips:'Electric-blue ripples high in the twilight that don’t darken as the sky does — ordinary cloud goes black, NLC stays lit.' },
 ];

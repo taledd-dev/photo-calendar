@@ -27,7 +27,11 @@ materialise the generated list into the data the first time a year is
 edited, and move an event between the year list and `annualEvents` when the
 checkbox is toggled (`mutateData`'s deep copy clones `annualEvents` too). `migrateYearEvents` upgrades old data on load
 (bare `events` → 2026) and fills only the hand-seeded `YEAR_EVENTS` years
-(2027/28). The seeded `sunrise`/`sunset` month fields are **unused**: the
+(2027/28), then runs `applySeedPatches` — `SEED_PATCHES` are one-off
+additions to already-stored years (e.g. the October "Red deer rut" window),
+each applied once per dataset and recorded in `data[0].seedPatches` so an
+owner's deletion sticks; add new annual windows to the 2028 seed (the
+template for generated years) **and** as a patch. The seeded `sunrise`/`sunset` month fields are **unused**: the
 home rows, month header and print grid show `monthLight(m2, i)` (15th of the
 month at `HOME_REF`, Hindhead — labelled on screen, unnamed in print), and
 the brief has a per-location "Light" row. `daylightNote` stays editorial.
