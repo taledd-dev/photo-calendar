@@ -1201,6 +1201,7 @@ function makeData() {
         { id:'e-oct-4', type:'day', day:26, kind:'fullmoon', label:'Hunter\'s Moon' },
         { id:'e-oct-5', type:'range', start:14, end:31, kind:'nature', label:'Peak autumn colour' },
         { id:'e-oct-6', type:'range', start:1, end:31, kind:'nature', label:'Red deer rut' },
+        { id:'e-oct-7', type:'range', start:1, end:31, kind:'nature', label:'Peak fungi season' },
       ],
     },
     {
@@ -1346,6 +1347,7 @@ const YEAR_EVENTS = {
       { id:'e27-oct-4', type:'day', day:29, kind:'newmoon', label:'New Moon' },
       { id:'e27-oct-5', type:'day', day:31, kind:'season', label:'Clocks back' },
       { id:'e27-oct-6', type:'range', start:1, end:31, kind:'nature', label:'Red deer rut' },
+      { id:'e27-oct-7', type:'range', start:1, end:31, kind:'nature', label:'Peak fungi season' },
     ],
     nov: [
       { id:'e27-nov-1', type:'range', start:1, end:30, kind:'nature', label:'Starling murmurations' },
@@ -1423,6 +1425,7 @@ const YEAR_EVENTS = {
       { id:'e28-oct-4', type:'range', start:21, end:22, kind:'meteor', label:'Orionids' },
       { id:'e28-oct-5', type:'day', day:29, kind:'season', label:'Clocks back' },
       { id:'e28-oct-6', type:'range', start:1, end:31, kind:'nature', label:'Red deer rut' },
+      { id:'e28-oct-7', type:'range', start:1, end:31, kind:'nature', label:'Peak fungi season' },
     ],
     nov: [
       { id:'e28-nov-1', type:'range', start:1, end:30, kind:'nature', label:'Starling murmurations' },
@@ -1673,6 +1676,7 @@ function eventsFor(m, year) {
 // pick the same windows up from the template.
 const SEED_PATCHES = [
   { id: 'deer-rut', month: 'oct', event: { type: 'range', start: 1, end: 31, kind: 'nature', label: 'Red deer rut' } },
+  { id: 'fungi', month: 'oct', event: { type: 'range', start: 1, end: 31, kind: 'nature', label: 'Peak fungi season' } },
 ];
 function applySeedPatches(arr) {
   if (!Array.isArray(arr) || !arr.length) return arr;
@@ -2048,6 +2052,7 @@ const WEATHER_GUIDE = [
   { glyph:'❀', title:'Autumn colour & heather', conditions:'Colour follows cool nights: about a week after the first frosts, mid-October to early November for most of England, earlier in Scotland. Heather peaks mid-August to early September on dry moors. Backlight or bright overcast.', settings:'Polariser, f/8–f/11, ISO 100–400. Underexpose a touch (−0.3 EV) to keep the reds and oranges from clipping.', tips:'Still, misty mornings after rain are the dream: wet leaves, saturated colour, no wind. Calm water doubles the show.' },
   { glyph:'~', title:'Coast & long exposure', conditions:'Check the tide first: an incoming mid-to-high tide for movement around rocks, low tide for pools and reflections. Onshore wind for drama, offshore for clean waves. The hour either side of sunset.', settings:'ND 6–10 stops with f/11 for 1–30 s silky water, or 1/4–1 s for streaks and texture. Polariser cuts glare on wet sand. ISO 100.', tips:'Never turn your back on the sea; know the tide times and your exit. Rinse the tripod legs and wipe salt spray off the front element often.' },
   { glyph:'~', title:'Waterfalls & rivers', conditions:'The day after heavy rain for volume, bright overcast so the white water doesn’t burn out. Autumn adds colour; winter adds ice.', settings:'Polariser (essential — it removes the sheen on wet rock), f/11, 1/2–2 s, ISO 100, ND filter in daylight.', tips:'Shorter shutter speeds (1/8–1/4 s) keep texture in the water; multi-second exposures turn it to milk. Protect the lens from spray between frames.' },
+  { glyph:'❀', title:'Fungi & the woodland floor', conditions:'October is the peak, two or three days after rain in a mild spell, running from late September into November. Bright overcast or dappled shade; damp, windless mornings keep caps fresh and dew on them. Fly agaric under birch and pine, chanterelles and boletes in old beech and oak woods.', settings:'Macro or a 50–100 mm at f/5.6–f/11 for depth (focus-stack if you have it), ISO 400–1600 under the canopy, tripod at ground level or a beanbag. A small torch or reflector lifts the gills.', tips:'Get the lens down to cap height and shoot across, not down. Clear a stray leaf, never the moss. Leave them standing — many are protected on nature reserves, and some are deadly to handle and eat.' },
   { glyph:'◉', title:'Red deer rut', conditions:'October, peaking mid-month: stags roar and clash from first light, best on cold, still, misty dawns. Richmond and Bushy Parks, Bradgate, Exmoor and the Highland glens. Low sun behind or beside the animals lights the breath and the mist.', settings:'300–600 mm, f/4–f/5.6, 1/500 s or faster for a clash (1/60 s for a roaring portrait with steam), ISO 800–3200 at dawn, continuous focus and burst.', tips:'Keep 50 m back, never get between stags, and do not use a flash. Arrive before dawn and let the herd come to you; a long lens and patience beat a close approach every time.' },
   { glyph:'◉', title:'Starlings & wildlife at dusk', conditions:'Murmurations build 30–45 min before sunset on calm, clear or lightly clouded evenings from November to February, biggest in cold snaps. Position with the sky behind the flock.', settings:'70–200 mm or 100–400 mm. 1/500–1/1000 s to freeze the shapes, or 1/15–1/30 s for painterly flow. ISO 800 and up as the light goes.', tips:'Arrive an hour early and watch where the birds gather. A tripod with a loose head lets you follow the swirl.' },
   { glyph:'☁', title:'Noctilucent clouds', conditions:'Late May to early August, 90–120 min after sunset or before sunrise, low in the north-west (evening) or north-east (morning). A clear sky with the Sun 6–16° below the horizon — civil dusk onwards.', settings:'24–50 mm, f/2.8–f/4, 1–5 s, ISO 400–800. They are brighter than you expect; check the histogram.', tips:'Electric-blue ripples high in the twilight that don’t darken as the sky does — ordinary cloud goes black, NLC stays lit.' },
@@ -3846,9 +3851,9 @@ function App() {
               e('div', { key:di, style:{ padding: isMobile ? '4px 6px' : '7px 9px', minWidth:0 } },
                 d.inMonth && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:4, minWidth:0 } },
                   e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 11 : 12, fontWeight:500, color:'#7A6F58', flex:'none' } }, d.day),
-                  d.icons.length > 0 && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap: isMobile ? 2 : 5, minWidth:0, overflow:'hidden' } },
+                  d.icons.length > 0 && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap: isMobile ? 1 : 5, minWidth:0, overflow:'hidden' } },
                     d.icons.map(ic => e('span', { key:ic.ev.id, title:ic.ev.label, onClick: editMode ? () => openEventEditor(ic.ev.id) : undefined, style:{ display:'inline-flex', alignItems:'center', gap:4, minWidth:0, color:ic.accent, cursor: editMode ? 'pointer' : 'default' } },
-                      e(EventIcon, { name:ic.icon, size: isMobile ? 12 : 15 }),
+                      e(EventIcon, { name:ic.icon, size: isMobile ? 11 : 15 }),
                       ic.first && !isMobile && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, color:'#5A513B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, ic.ev.label)))
                   )
                 )
