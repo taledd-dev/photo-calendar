@@ -1519,6 +1519,8 @@ function fmtMinutes(min, offsetH) {
   return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
 }
 const LONDON = [51.5074, -0.1278];
+// The calendar's home reference for sunrise/sunset: Hindhead, Surrey.
+const HOME_REF = { name: 'Hindhead', coords: [51.1140, -0.7290] };
 // The light at a place on a date: times in UK civil time for UK coordinates
 // and in UTC elsewhere (there's no time-zone table for far-flung spots), plus
 // the day length in hours. `polar` names the case when the Sun never rises
@@ -2722,13 +2724,9 @@ function App() {
     days: new Date(viewYear, i + 1, 0).getDate(),
     events: eventsFor(m2, viewYear),
   });
-  // Sunrise/sunset shown for a month: on the 15th of the selected year, at the
-  // month's first UK location with coordinates (else London).
-  const monthLight = (m2, i) => {
-    const ref = m2.locations.map(l => ({ l, c: coordsOf(l) })).find(x => x.c && coordsInUK(x.c[0], x.c[1]));
-    const c = ref ? ref.c : LONDON;
-    return { ...lightAt(c[0], c[1], viewYear, i, 15), place: ref ? ref.l.name : 'London' };
-  };
+  // Sunrise/sunset shown for a month (home rows, month header, print): on the
+  // 15th of the selected year at the home reference, Hindhead.
+  const monthLight = (m2, i) => ({ ...lightAt(HOME_REF.coords[0], HOME_REF.coords[1], viewYear, i, 15), place: HOME_REF.name });
   const lightTitle = (m2, L) => 'Sunrise and sunset on 15 ' + m2.name + ' ' + viewYear + ' at ' + L.place + ' (' + L.zone + ')';
 
   // ─── Coming up ────────────────────────────────────────────────────────────
@@ -3847,16 +3845,12 @@ function App() {
     const chip = (key, on, text, onClick) => e('button', { key, onClick, className:'map-chip', style:{ height:30, padding:'0 11px', background: on ? '#54632F' : '#FBF7EC', color: on ? '#FBF7EC' : '#5A513B', border:'1px solid ' + (on ? '#2A251E' : '#C9BD9F'), fontFamily:mono, fontSize:10.5, letterSpacing:'.08em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.10)' } }, text);
     // The photo a month prints (the same rule PrintMonthPhoto applies): the
     // starred location if it has a photo, else the first with one — known up
-    // front from the photo index, so the grid page can carry its caption and
-    // show the light for that very spot. null while the index is loading.
+    // front from the photo index, so the grid page can carry its caption.
+    // null while the index is loading.
     const printPick = (m2) => {
       if (!photoIndex) return null;
       const ordered = m2.printLoc ? m2.locations.filter(l => l.id === m2.printLoc).concat(m2.locations.filter(l => l.id !== m2.printLoc)) : m2.locations;
       return ordered.find(x => photoIndex.has(mainBase(m2.key, x) + '-thumb')) || null;
-    };
-    const printLight = (m2, i) => {
-      const pick = printPick(m2); const c = pick && coordsOf(pick);
-      return c ? lightAt(c[0], c[1], viewYear, i, 15) : monthLight(m2, i);
     };
     // A full-sheet photo slot (cover / back cover): the owner drops a photo on
     // it; visitors just see the photo (LocationPhoto handles both via EditCtx).
@@ -3901,10 +3895,10 @@ function App() {
           ),
           e('img', { src:'assets/photoplan-lockup-light.svg', alt:'Photoplan', style:{ height:'11mm', width:'auto', display:'block', marginBottom:'0.5mm' } }),
           // right: the month photo's caption (when captions are on), then the
-          // light at that spot (no place name — it's the pictured place), note
+          // light at the home reference (Hindhead, unnamed), then the note
           e('div', { style:{ textAlign:'right', fontFamily:mono, fontSize:'3mm', color:'#8A7D63', letterSpacing:'.04em', lineHeight:1.7 } },
             (() => { const pick = printPick(m2); return (captions && pick) ? e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:'4.4mm', color:'#2A251E', letterSpacing:0, lineHeight:1.25, marginBottom:'1mm' } }, photoCaption(pick, m2.name, mainYear(pick))) : null; })(),
-            (() => { const L = printLight(m2, i); return e('div', { style:{ color:'#54632F' } }, '↑ ' + L.rise + '   ↓ ' + L.set); })(),
+            (() => { const L = monthLight(m2, i); return e('div', { style:{ color:'#54632F' } }, '↑ ' + L.rise + '   ↓ ' + L.set); })(),
             e('div', null, m2.daylightNote)
           )
         ),

@@ -14,7 +14,8 @@ months are legacy, unused). **Astronomy is computed** (the "Astronomy" block
 before `migrateYearEvents`): Meeus moon phases, equinoxes/solstices by
 iterating the Sun's longitude, UK clock changes, NOAA sunrise/sunset/golden/
 civil-twilight times at any coordinates (`lightAt`; UK coords in GMT/BST,
-elsewhere UTC). `generatedEvents(year)` builds a year's events from these
+elsewhere UTC; `HOME_REF` = Hindhead is the fixed reference for the month-
+level sunrise/sunset). `generatedEvents(year)` builds a year's events from these
 (named full moons incl. Harvest/Blue, the `ECLIPSES` table for 2029–30 —
 extend it, and the annual meteor/nature windows taken from the 2028 seed);
 `storedOrGenerated(m, year)` returns the stored list **or** the generated
@@ -28,8 +29,8 @@ checkbox is toggled (`mutateData`'s deep copy clones `annualEvents` too). `migra
 (bare `events` → 2026) and fills only the hand-seeded `YEAR_EVENTS` years
 (2027/28). The seeded `sunrise`/`sunset` month fields are **unused**: the
 home rows, month header and print grid show `monthLight(m2, i)` (15th of the
-month at the first UK location with coords, else London), and the brief has
-a per-location "Light" row. `daylightNote` stays editorial.
+month at `HOME_REF`, Hindhead — labelled on screen, unnamed in print), and
+the brief has a per-location "Light" row. `daylightNote` stays editorial.
 
 ## Architecture at a glance
 
@@ -176,8 +177,7 @@ a per-location "Light" row. `daylightNote` stays editorial.
   when it exists. The photo page is clean (no overlay): the **caption sits
   top-right of the grid page** (`printPick(m2)` resolves the same pick from
   the photo index; shown when `printPrefs.captions`), above sunrise/sunset
-  computed for that pictured spot (`printLight`, no place name) and the
-  `daylightNote`. Grid pages carry the light lockup
+  at Hindhead (`monthLight`, no place name) and the `daylightNote`. Grid pages carry the light lockup
   (`assets/photoplan-lockup-light.svg`) centred in the header row and
   `@IG_HANDLE` (with `igGlyph`) bottom-right under the grid. What prints:
   per-event `noPrint` (checkbox in the event editor) **and**
