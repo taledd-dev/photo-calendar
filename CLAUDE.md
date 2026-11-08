@@ -159,9 +159,12 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   dialogs. Renders nothing without coordinates or if the CDN fails.
 - **`LinksField` / `parseLinks`** — per-location links (`loc.links`, text, one
   per line, `Label | url` or a bare address) shown as chips in a "Links" row
-  under Parking; owner edits via an "edit" button → textarea.
+  under Parking; owner edits via an "edit" button → textarea. **`NotesField`**
+  (`loc.notes`, free text, pre-wrap; click → textarea) is the "Notes" row
+  under Links.
 - **Components:** `HeroCaption` (read-only caption overlay), `PhotoSlideshow`
-  (hero slideshows — random order, 15s, pause button, cache-busts via `epoch`),
+  (hero slideshows — random order, 15s, skip (») + pause buttons, cache-busts
+  via `epoch`),
   `LocThumb` (tile thumbnail), `LocationPhoto` (the upload control),
   `KitField` (pill chips that flip to an editable line), `Editable` (inline
   click-to-edit text), `MapView`, and `App`.
@@ -170,7 +173,8 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   effect leaves the view when editing goes off): an **A4-landscape** wall
   calendar for the selected year, page order: cover photo → per month a
   full-bleed photo page then a grid page → two photo-index pages (6 month
-  photos each) → back-cover photo. `.print-sheet` CSS keeps sheets at
+  photos each as **3:2 tiles** with month + caption beneath, block centred)
+  → back-cover photo. `.print-sheet` CSS keeps sheets at
   281×193mm (aspect-ratio preview on screen; exact one-page height in
   `@media print`; `.pad` adds the grid page's padding; `.print-label` is the
   on-screen-only page caption). Cover/back photos are `LocationPhoto` slots
@@ -214,10 +218,10 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
   `navRow(showYearBtn)` renders the top buttons. Month pages: `[month picker]
   ‹ › | Map Weather | ← Home`, with the owner's "+ Add location" (`addLocBtn`)
-  at the foot of the nav column; home: `Map Weather (Print, Calendar file —
-  owner) | ‹ January →`. `monthPicker`
+  at the foot of the nav column; home: `Map Weather (⎙ Calendar = print view,
+  ⤓ Export = .ics — owner) | [Month…] ‹ January →`. `monthPicker(blank)`
   and `yearPicker(size)` are native `<select>`s styled in place (`appearance:
-  none` + a chevron span) — the year is the quiet dotted-underline picker
+  none` + a chevron span; `blank` = the home page's "Month…" placeholder) — the year is the quiet dotted-underline picker
   beside the month name (`'title'`), and `yearRow()` (label + `'small'`
   picker) on the home page. The year chips are gone.
 

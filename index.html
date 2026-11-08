@@ -502,15 +502,19 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0, photoI
 
   // Advance on a timer unless paused (or there's only one photo). Pausing freezes
   // the photo on screen — it does not reshuffle or jump to a different image.
+  // "Skip" advances by hand (even while paused) and restarts the timer.
+  const advance = useCallback(() => {
+    posRef.current++;
+    if (posRef.current >= orderRef.current.length) { orderRef.current = shuffle(keys.map((_, i) => i)); posRef.current = 0; }
+    setPos(orderRef.current[posRef.current]);
+  }, [keys]);
+  const [cycle, setCycle] = useState(0); // bumped by a skip so the interval restarts
   useEffect(() => {
     if (paused || keys.length <= 1) return;
-    const t = setInterval(() => {
-      posRef.current++;
-      if (posRef.current >= orderRef.current.length) { orderRef.current = shuffle(keys.map((_, i) => i)); posRef.current = 0; }
-      setPos(orderRef.current[posRef.current]);
-    }, intervalMs);
+    const t = setInterval(advance, intervalMs);
     return () => clearInterval(t);
-  }, [keys, intervalMs, paused]);
+  }, [keys, intervalMs, paused, advance, cycle]);
+  const skip = () => { advance(); setCycle(c => c + 1); };
 
   // Warm the cache with the next slide's hero image so the change-over is
   // instant instead of fading in from blank while it downloads.
@@ -540,8 +544,14 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0, photoI
     cur.caption && e(HeroCaption, { key: 'show-' + cur.key, value: cur.caption, onCommit: null }),
     keys.length > 1 && e('button', {
       className: 'pause-btn',
+      onClick: skip,
+      title: 'Next photo', 'aria-label': 'Next photo',
+      style: { position: 'absolute', right: 50, bottom: 10, zIndex: 6, width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(42,37,30,0.55)', color: '#FBF7EC', fontSize: 15, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingBottom: 2 }
+    }, '»'),
+    keys.length > 1 && e('button', {
+      className: 'pause-btn',
       onClick: () => setPaused(p => !p),
-      title: paused ? 'Resume slideshow' : 'Pause slideshow',
+      title: paused ? 'Resume slideshow' : 'Pause slideshow', 'aria-label': paused ? 'Resume slideshow' : 'Pause slideshow',
       style: { position: 'absolute', right: 10, bottom: 10, zIndex: 6, width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(42,37,30,0.55)', color: '#FBF7EC', fontSize: 13, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }
     }, paused ? '▶︎' : '❚❚')
   );
@@ -771,6 +781,29 @@ function LinksField({ value, onCommit }) {
     onKeyDown: (ev) => { if (ev.key === 'Escape') setEditing(false); },
     placeholder: 'One per line, e.g.\nTide times | https://www.tidetimes.org.uk/…\nwww.nationaltrust.org.uk/…',
     style: { width: '100%', minHeight: 84, fontFamily: mono, fontSize: 12, lineHeight: 1.6, color: '#2A251E', background: '#FFFDF5', border: '1px solid #C9BD9F', borderRadius: 3, padding: '8px 10px', outline: 'none', resize: 'vertical' },
+  });
+}
+
+// ─── Notes field ──────────────────────────────────────────────────────────────
+// Free-text notes on a location (access, permits, where the gate is, what
+// worked last time). Shown as paragraphs; the owner clicks to edit in a
+// textarea, which saves on blur (Escape cancels).
+function NotesField({ value, onCommit }) {
+  const canEdit = React.useContext(EditCtx);
+  const [editing, setEditing] = useState(false);
+  const text = (value || '').trim();
+  const shown = { fontSize: 14.5, color: '#3B3528', lineHeight: 1.55, whiteSpace: 'pre-wrap' };
+  if (!canEdit) return text ? e('div', { style: shown }, text) : null;
+  if (!editing) {
+    return e('div', { onClick: () => setEditing(true), title: 'Click to edit', style: { ...shown, color: text ? shown.color : '#B7AD90', cursor: 'text', borderRadius: 3, padding: '1px 4px', margin: '-1px -4px' } }, text || 'Click to add notes');
+  }
+  return e('textarea', {
+    autoFocus: true,
+    defaultValue: value || '',
+    onBlur: (ev) => { const t = ev.target.value.replace(/\s+$/, ''); if (t !== (value || '')) onCommit(t); setEditing(false); },
+    onKeyDown: (ev) => { if (ev.key === 'Escape') setEditing(false); },
+    placeholder: 'Access, permits, where the gate is, what worked last time…',
+    style: { width: '100%', minHeight: 96, fontFamily: "'Spectral',serif", fontSize: 14.5, lineHeight: 1.55, color: '#2A251E', background: '#FFFDF5', border: '1px solid #C9BD9F', borderRadius: 3, padding: '8px 10px', outline: 'none', resize: 'vertical' },
   });
 }
 
@@ -1079,6 +1112,7 @@ function makeData() {
         { id:'e-jun-2', type:'day', day:21, kind:'season', label:'Summer solstice' },
         { id:'e-jun-3', type:'range', start:1, end:30, kind:'nature', label:'Noctilucent cloud season' },
         { id:'e-jun-4', type:'day', day:30, kind:'fullmoon', label:'Strawberry Moon' },
+        { id:'e-jun-5', type:'range', start:1, end:30, kind:'nature', label:'Peak puffin season' },
       ],
     },
     {
@@ -1320,6 +1354,7 @@ const YEAR_EVENTS = {
       { id:'e27-jun-2', type:'day', day:4, kind:'newmoon', label:'New Moon' },
       { id:'e27-jun-3', type:'day', day:18, kind:'fullmoon', label:'Strawberry Moon' },
       { id:'e27-jun-4', type:'day', day:21, kind:'season', label:'Summer solstice' },
+      { id:'e27-jun-5', type:'range', start:1, end:30, kind:'nature', label:'Peak puffin season' },
     ],
     jul: [
       { id:'e27-jul-1', type:'range', start:1, end:20, kind:'nature', label:'Lavender in bloom' },
@@ -1399,6 +1434,7 @@ const YEAR_EVENTS = {
       { id:'e28-jun-2', type:'day', day:7, kind:'fullmoon', label:'Strawberry Moon' },
       { id:'e28-jun-3', type:'day', day:20, kind:'season', label:'Summer solstice' },
       { id:'e28-jun-4', type:'day', day:22, kind:'newmoon', label:'New Moon' },
+      { id:'e28-jun-5', type:'range', start:1, end:30, kind:'nature', label:'Peak puffin season' },
     ],
     jul: [
       { id:'e28-jul-1', type:'range', start:1, end:20, kind:'nature', label:'Lavender in bloom' },
@@ -1677,6 +1713,7 @@ function eventsFor(m, year) {
 const SEED_PATCHES = [
   { id: 'deer-rut', month: 'oct', event: { type: 'range', start: 1, end: 31, kind: 'nature', label: 'Red deer rut' } },
   { id: 'fungi', month: 'oct', event: { type: 'range', start: 1, end: 31, kind: 'nature', label: 'Peak fungi season' } },
+  { id: 'puffins', month: 'jun', event: { type: 'range', start: 1, end: 30, kind: 'nature', label: 'Peak puffin season' } },
 ];
 function applySeedPatches(arr) {
   if (!Array.isArray(arr) || !arr.length) return arr;
@@ -1784,15 +1821,16 @@ const EVENT_ICONS = {
   tree: { label:'Woodland', svg:'<path d="M12 1.5l5.2 7.2h-3.1l4.3 5.4h-3l4.6 5.4H4l4.6-5.4h-3l4.3-5.4H6.8z"/><rect x="10.8" y="19.3" width="2.4" height="3.2"/>' },
   wave: { label:'Coast / tide', svg:'<path d="M2 9.5c2.5 0 2.5-2.2 5-2.2s2.5 2.2 5 2.2 2.5-2.2 5-2.2 2.5 2.2 5 2.2v2.4c-2.5 0-2.5-2.2-5-2.2s-2.5 2.2-5 2.2-2.5-2.2-5-2.2S4.5 11.9 2 11.9z"/><path d="M2 15.5c2.5 0 2.5-2.2 5-2.2s2.5 2.2 5 2.2 2.5-2.2 5-2.2 2.5 2.2 5 2.2v4.6H2z"/>' },
   mountain: { label:'Mountains', svg:'<path d="M1.5 20.5L9 5.5l4.1 7.3 2.2-3.3 7.2 11z"/>' },
+  puffin: { label:'Puffins', svg:'<path d="M13.2 2.5c-2.9 0-5 2.1-5 4.9 0 .9.2 1.7.6 2.4-1.9 1.7-3.1 4.2-3.1 6.9 0 3.3 2.4 5.3 5.6 5.3h2.2c3 0 4.9-1.9 4.9-4.8 0-3.3-1.5-6.2-3.8-7.8.9-.8 1.4-1.9 1.4-3.1 0-2.2-1.2-3.8-2.8-3.8z"/><path d="M8.9 5.9L2.2 7.6l6.5 2.4z"/><circle cx="12.4" cy="6.4" r="1.1" fill="#FBF7EC"/><path d="M9 22h3l-1.6 1.7zM13.5 22h3l-1.6 1.7z"/>' },
   deer: { label:'Deer rut', svg:'<path d="M12 10.6c-2.5 0-4 1.7-4 4.2 0 2.7 1.6 5.6 4 7.7 2.4-2.1 4-5 4-7.7 0-2.5-1.5-4.2-4-4.2z"/><ellipse cx="7" cy="12.4" rx="2.3" ry="1.3" transform="rotate(-28 7 12.4)"/><ellipse cx="17" cy="12.4" rx="2.3" ry="1.3" transform="rotate(28 17 12.4)"/><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 10.4C8.6 8.2 7.4 5.9 5.5 3.2M7.4 7.3C6 6.9 4.7 6.1 3.4 5M8.5 9.2c-1.5 0-2.9-.2-4.2-.8M6.4 5c.1-1.2.5-2.3 1.1-3.3"/><path d="M14.4 10.4c1-2.2 2.2-4.5 4.1-7.2M16.6 7.3c1.4-.4 2.7-1.2 4-2.3M15.5 9.2c1.5 0 2.9-.2 4.2-.8M17.6 5c-.1-1.2-.5-2.3-1.1-3.3"/></g>' },
 };
-const ICON_ORDER = ['bluebell','daffodil','snowdrop','blossom','lavender','heather','leaf','mushroom','stars','nlc','bird','deer','frost','mist','sun','clock','tree','wave','mountain'];
+const ICON_ORDER = ['bluebell','daffodil','snowdrop','blossom','lavender','heather','leaf','mushroom','stars','nlc','bird','puffin','deer','frost','mist','sun','clock','tree','wave','mountain'];
 // Title keywords → icon, first match wins (so the specific ones come first).
 const ICON_KEYWORDS = [
   ['equinox','sun'], ['solstice','sun'], ['clocks','clock'],
   ['bluebell','bluebell'], ['daffodil','daffodil'], ['snowdrop','snowdrop'], ['blossom','blossom'], ['lavender','lavender'], ['heather','heather'],
   ['autumn','leaf'], ['colour','leaf'], ['fung','mushroom'], ['mushroom','mushroom'],
-  ['deer','deer'], ['stag','deer'], [' rut','deer'],
+  ['deer','deer'], ['stag','deer'], [' rut','deer'], ['puffin','puffin'],
   ['starling','bird'], ['murmuration','bird'], ['noctilucent','nlc'], ['milky','stars'], ['star','stars'],
   ['frost','frost'], ['snow','frost'], [' ice','frost'], ['mist','mist'], ['fog','mist'], ['inversion','mist'],
   ['wood','tree'], ['forest','tree'], ['tide','wave'], ['coast','wave'], ['beach','wave'], ['fells','mountain'], ['mountain','mountain'], ['summit','mountain'],
@@ -2054,6 +2092,7 @@ const WEATHER_GUIDE = [
   { glyph:'~', title:'Waterfalls & rivers', conditions:'The day after heavy rain for volume, bright overcast so the white water doesn’t burn out. Autumn adds colour; winter adds ice.', settings:'Polariser (essential — it removes the sheen on wet rock), f/11, 1/2–2 s, ISO 100, ND filter in daylight.', tips:'Shorter shutter speeds (1/8–1/4 s) keep texture in the water; multi-second exposures turn it to milk. Protect the lens from spray between frames.' },
   { glyph:'❀', title:'Fungi & the woodland floor', conditions:'October is the peak, two or three days after rain in a mild spell, running from late September into November. Bright overcast or dappled shade; damp, windless mornings keep caps fresh and dew on them. Fly agaric under birch and pine, chanterelles and boletes in old beech and oak woods.', settings:'Macro or a 50–100 mm at f/5.6–f/11 for depth (focus-stack if you have it), ISO 400–1600 under the canopy, tripod at ground level or a beanbag. A small torch or reflector lifts the gills.', tips:'Get the lens down to cap height and shoot across, not down. Clear a stray leaf, never the moss. Leave them standing — many are protected on nature reserves, and some are deadly to handle and eat.' },
   { glyph:'◉', title:'Red deer rut', conditions:'October, peaking mid-month: stags roar and clash from first light, best on cold, still, misty dawns. Richmond and Bushy Parks, Bradgate, Exmoor and the Highland glens. Low sun behind or beside the animals lights the breath and the mist.', settings:'300–600 mm, f/4–f/5.6, 1/500 s or faster for a clash (1/60 s for a roaring portrait with steam), ISO 800–3200 at dawn, continuous focus and burst.', tips:'Keep 50 m back, never get between stags, and do not use a flash. Arrive before dawn and let the herd come to you; a long lens and patience beat a close approach every time.' },
+  { glyph:'◉', title:'Puffins & seabird cliffs', conditions:'Ashore from April to early August; the best weeks are June and early July, when the adults fly in with beakfuls of sand eels for the chicks. Bright overcast keeps the white breasts from burning out, and a stiff onshore breeze slows them for flight shots. Skomer and Skokholm, the Farnes, Bempton, Lunga, Sumburgh Head.', settings:'100–400 mm, f/5.6–f/8. 1/2000 s for birds in flight, 1/500 s for portraits, ISO 400–1600. Expose for the whites: −0.3 to −0.7 EV.', tips:'Book the boats and landing permits early — most islands cap numbers. Sit still at the colony edge and they walk up to you. Never block a burrow or stand between a bird and its nest.' },
   { glyph:'◉', title:'Starlings & wildlife at dusk', conditions:'Murmurations build 30–45 min before sunset on calm, clear or lightly clouded evenings from November to February, biggest in cold snaps. Position with the sky behind the flock.', settings:'70–200 mm or 100–400 mm. 1/500–1/1000 s to freeze the shapes, or 1/15–1/30 s for painterly flow. ISO 800 and up as the light goes.', tips:'Arrive an hour early and watch where the birds gather. A tripod with a loose head lets you follow the swirl.' },
   { glyph:'☁', title:'Noctilucent clouds', conditions:'Late May to early August, 90–120 min after sunset or before sunrise, low in the north-west (evening) or north-east (morning). A clear sky with the Sun 6–16° below the horizon — civil dusk onwards.', settings:'24–50 mm, f/2.8–f/4, 1–5 s, ISO 400–800. They are brighter than you expect; check the histogram.', tips:'Electric-blue ripples high in the twilight that don’t darken as the sky does — ordinary cloud goes black, NLC stays lit.' },
 ];
@@ -3313,9 +3352,9 @@ function App() {
   const prevBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(-1), title:'Previous month', 'aria-label':'Previous month', style:WhiteBtn }, '‹');
   const nextBtn = e('button', { className:'btn-hover', onClick:()=>changeMonth(1), title:'Next month', 'aria-label':'Next month', style:WhiteBtn }, '›');
   const mapBtn = e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map');
-  const printBtn = e('button', { className:'btn-hover', onClick:goToPrint, title:'A printable wall calendar for the selected year', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⎙'), ' Print');
+  const printBtn = e('button', { className:'btn-hover', onClick:goToPrint, title:'The printable wall calendar for the selected year', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⎙'), ' Calendar');
   const weatherBtn = e('button', { className:'btn-hover', onClick:()=>goToWeather(null), title:'Forecasts for each location, and the conditions each kind of shoot wants', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '☁'), ' Weather');
-  const icsBtn = e('button', { className:'btn-hover', onClick:downloadIcs, title:'Download the ' + viewYear + ' events as a calendar file (.ics) to add to your phone or desktop calendar', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⤓'), ' Calendar file');
+  const icsBtn = e('button', { className:'btn-hover', onClick:downloadIcs, title:'Export the ' + viewYear + ' events as a calendar file (.ics) for your phone or desktop calendar', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⤓'), ' Export');
   // Month view keeps both arrows; the year view drops the right arrow (it's the
   // same as the January button) and sits the left arrow just before January.
   // On phones the row is allowed to wrap and the thin dividers are dropped —
@@ -3324,9 +3363,11 @@ function App() {
   const navDivider = () => isMobile ? null : e(Divider);
   // Month picker — a native <select> dressed as one of the nav buttons, so on a
   // phone it opens the platform's own list. Jumps straight to that month.
-  const monthPicker = () => e('span', { style:{ position:'relative', display:'inline-flex' } },
-    e('select', { value: mi, onChange: (ev) => goToMonth(parseInt(ev.target.value, 10), null), 'aria-label':'Go to month', title:'Jump to a month',
+  // `blank` (the home page) shows "Month…" instead of the current month.
+  const monthPicker = (blank) => e('span', { style:{ position:'relative', display:'inline-flex' } },
+    e('select', { value: blank ? '' : mi, onChange: (ev) => { const v = parseInt(ev.target.value, 10); if (!isNaN(v)) goToMonth(v, null); }, 'aria-label':'Go to month', title:'Jump to a month',
       style:{ ...BtnBase, appearance:'none', WebkitAppearance:'none', MozAppearance:'none', background:'#FBF7EC', color:'#2A251E', padding:'0 32px 0 15px', borderRadius:0 } },
+      blank && e('option', { value:'', disabled:true }, 'Month…'),
       data.map((m2, i) => e('option', { key:m2.key, value:i }, m2.name))),
     e('span', { 'aria-hidden':'true', style:{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:12, color:'#54632F' } }, '▾')
   );
@@ -3338,7 +3379,7 @@ function App() {
         e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home')
       )
     : e('div', { style:navRowStyle },
-        mapBtn, weatherBtn, editMode && printBtn, editMode && icsBtn, navDivider(), prevBtn,
+        mapBtn, weatherBtn, editMode && printBtn, editMode && icsBtn, navDivider(), monthPicker(true), prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
 
@@ -3778,6 +3819,11 @@ function App() {
                   (editMode || parseLinks(sel.links).length > 0) && e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
                     e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Links'),
                     e(LinksField, { key:'links-'+sel.id, value:sel.links, onCommit:(t)=>editField(sel.id,'links',t) })
+                  ),
+                  // Notes — free text. view-only: only when written.
+                  (editMode || (sel.notes || '').trim()) && e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                    e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Notes'),
+                    e(NotesField, { key:'notes-'+sel.id, value:sel.notes, onCommit:(t)=>editField(sel.id,'notes',t) })
                   )
                 )
               ),
@@ -4082,13 +4128,23 @@ function App() {
     // Photo index: the twelve month photos over two pages, six per page.
     [0, 6].forEach((start, pi) => {
       pages.push(label('l-index-' + pi, 'Photo index · ' + (pi + 1) + ' of 2'));
-      pages.push(e('div', { key:'index-' + pi, className:'print-sheet', style:{ padding:'6mm', background:'#FCFAF1' } },
-        e('div', { style:{ flex:1, minHeight:0, display:'grid', gridTemplateColumns:'repeat(3,1fr)', gridTemplateRows:'repeat(2,1fr)', gap:'4mm' } },
-          data.slice(start, start + 6).map(m2 =>
-            e('div', { key:m2.key, style:{ position:'relative', overflow:'hidden', background:'#F1EBDB' } },
-              e(PrintMonthPhoto, { monthKey:m2.key, monthName:m2.name, locs:m2.locations, preferId:m2.printLoc, epoch:imgEpoch, photoIndex, variant:'tile' })
-            )
-          )
+      // Tiles keep the photos' 3:2 shape (a square cell cropped them), with the
+      // month and, when captions are on, the location beneath; the block sits
+      // centred on the sheet.
+      pages.push(e('div', { key:'index-' + pi, className:'print-sheet', style:{ padding:'6mm 7mm', background:'#FCFAF1', justifyContent:'center' } },
+        e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:'6mm 4mm' } },
+          data.slice(start, start + 6).map(m2 => {
+            const pick = printPick(m2);
+            return e('div', { key:m2.key, style:{ minWidth:0 } },
+              e('div', { style:{ position:'relative', aspectRatio:'3 / 2', overflow:'hidden', background:'#F1EBDB' } },
+                e(PrintMonthPhoto, { monthKey:m2.key, monthName:m2.name, locs:m2.locations, preferId:m2.printLoc, epoch:imgEpoch, photoIndex, variant:'tile' })
+              ),
+              e('div', { style:{ marginTop:'2mm', display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:'3mm', minWidth:0 } },
+                e('span', { style:{ fontFamily:mono, fontSize:'2.8mm', letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', flex:'none' } }, m2.name),
+                captions && pick && e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:'3.4mm', color:'#2A251E', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, pick.name + (mainYear(pick) ? " · '" + mainYear(pick) : ''))
+              )
+            );
+          })
         )
       ));
     });
