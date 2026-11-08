@@ -129,6 +129,9 @@ const PRINT_MAX_EDGE = 3200;
 // is view-only (family). Editable, KitField and LocationPhoto read it through
 // this context, so call sites don't need to know.
 const EditCtx = React.createContext(true);
+// App's site-styled confirm dialog, for components outside App (LocationPhoto's
+// ×): askConfirm({ title, label, confirm, danger }) → Promise<boolean>.
+const ConfirmCtx = React.createContext(null);
 
 // ─── Storage ────────────────────────────────────────────────────────────────
 // The single "switch" for where saved data lives. Calendar text (locations,
@@ -658,16 +661,19 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
     uploadFile(ev.dataTransfer.files[0]);
   }, [uploadFile]);
 
+  const askConfirm = React.useContext(ConfirmCtx);
   const handleClear = useCallback(async (ev) => {
     ev.stopPropagation();
-    if (!window.confirm('Remove this photo? It will be deleted from the cloud — this cannot be undone.')) return;
+    const msg = 'It will be deleted from the cloud — this cannot be undone.';
+    const sure = askConfirm ? await askConfirm({ title:'Remove this photo?', label: msg, confirm:'Remove photo', danger:true }) : window.confirm('Remove this photo? ' + msg);
+    if (!sure) return;
     const key = Storage.peekUploadKey();
     if (!key) { alert('Unlock editing first (the ✎ link at the top of the page) to change photos.'); return; }
     setBusy(true);
     const ok = await Storage.removePhotoVariants(base, key);
     setBusy(false);
     if (ok) { knownRef.current = false; setSrc(null); if (onChange) onChange('removed'); }
-  }, [base, onChange]);
+  }, [base, onChange, askConfirm]);
 
   // `src` (the thumbnail) doubles as "a photo exists"; what's shown may be the
   // print-size copy (if this photo has one — anything uploaded here does) or
@@ -2701,6 +2707,10 @@ function App() {
     setDialog(null);
     if (r) r(result);
   };
+  // The same dialog as a yes/no question (no input): resolves true on the
+  // confirm button, false on Cancel/Escape/backdrop. `danger` colours the
+  // button for irreversible actions.
+  const askConfirm = (opts) => askText({ kind:'confirm', ...opts }).then(r => r !== null);
   const uidRef = useRef(100);
   const unlockedRef = useRef(false);   // true once the edit password has been entered on this device
 
@@ -2774,10 +2784,10 @@ function App() {
       }
       if (unsavedFromLastTime.current) {
         unsavedFromLastTime.current = false;
-        const keep = Storage.peekUploadKey() && window.confirm(
-          'This device has changes that never reached the shared calendar (the last save did not complete).\n\n' +
-          'OK = keep them and save them now (this replaces the cloud copy).\n' +
-          'Cancel = discard them and load the cloud copy.');
+        const keep = Storage.peekUploadKey() && await askConfirm({
+          title:'Unsaved changes on this device',
+          label:'This device has changes that never reached the shared calendar (the last save did not complete).\n"Keep & save" keeps them and saves them now, replacing the cloud copy. "Cancel" discards them and loads the cloud copy.',
+          confirm:'Keep & save' });
         if (keep) { cloudStamp.current = cur.savedAt; settle(); okStatus(); setDirty(true); return; }
         writeUnsavedFlag(false);
       }
@@ -3065,12 +3075,13 @@ function App() {
     setSelectedLoc(id);
   };
 
-  const deleteLocation = (id) => {
+  const deleteLocation = async (id) => {
     if (!ensureUnlocked(() => deleteLocation(id))) return;
     const target = month.locations.find(l => l.id === id);
     const name = target ? target.name : 'this location';
-    // Irreversible (the photo goes too), so confirm.
-    if (!window.confirm('Delete "' + name + '" from ' + month.name + '?\n\nIts photos will be removed from the cloud as well. This cannot be undone.')) return;
+    // Irreversible (the photos go too), so confirm.
+    const sure = await askConfirm({ title:'Delete location', label:'Delete "' + name + '" from ' + month.name + '?\nIts photos will be removed from the cloud as well. This cannot be undone.', confirm:'Delete location', danger:true });
+    if (!sure) return;
     // Also remove every photo of this location (all sizes) from R2, so deleting
     // a spot doesn't leave orphaned images in the bucket.
     const key = Storage.peekUploadKey();
@@ -4360,6 +4371,7 @@ function App() {
     if (!dialog) return null;
     const mono = "'IBM Plex Mono',monospace";
     const isPw = dialog.kind === 'password';
+    const isConfirm = dialog.kind === 'confirm';
     const eye = (slashed) => e('svg', { width:18, height:18, viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true' },
       e('path', { d:'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z' }),
       e('circle', { cx:12, cy:12, r:3 }),
@@ -4367,11 +4379,11 @@ function App() {
     );
     return e('div', { onClick:()=>closeDialog(null), style:{ position:'fixed', inset:0, background:'rgba(42,37,30,0.34)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:70 } },
       e('div', { role:'dialog', 'aria-modal':'true', 'aria-labelledby':'pp-dialog-title', onClick:(ev)=>ev.stopPropagation(), style:{ width:380, maxWidth:'100%', background:'#FBF7EC', border:'1px solid #2A251E', boxShadow:'9px 9px 0 rgba(42,37,30,0.20)' } },
-        e('div', { style:{ height:5, background:'#54632F' } }),
-        e('form', { onSubmit:(ev)=>{ ev.preventDefault(); closeDialog(dialog.value); }, style:{ padding:'17px 20px 20px' } },
+        e('div', { style:{ height:5, background: (isConfirm && dialog.danger) ? '#9C3B22' : '#54632F' } }),
+        e('form', { onSubmit:(ev)=>{ ev.preventDefault(); closeDialog(dialog.value); }, onKeyDown:(ev)=>{ if (ev.key === 'Escape') { ev.preventDefault(); closeDialog(null); } }, style:{ padding:'17px 20px 20px' } },
           e('div', { id:'pp-dialog-title', style:{ fontFamily:mono, fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, dialog.title),
-          e('div', { style:{ marginTop:10, fontSize:15, color:'#3B3528', lineHeight:1.5 } }, dialog.label),
-          e('div', { style:{ marginTop:14, display:'flex', gap:8 } },
+          e('div', { style:{ marginTop:10, fontSize:15, color:'#3B3528', lineHeight:1.5, whiteSpace:'pre-line' } }, dialog.label),
+          !isConfirm && e('div', { style:{ marginTop:14, display:'flex', gap:8 } },
             e('input', {
               type: isPw && !dialog.reveal ? 'password' : 'text',
               value: dialog.value,
@@ -4391,14 +4403,14 @@ function App() {
           dialog.hint && e('div', { style:{ marginTop:8, fontFamily:mono, fontSize:10, color:'#A89A7C', letterSpacing:'.04em', lineHeight:1.5 } }, dialog.hint),
           e('div', { style:{ display:'flex', justifyContent:'flex-end', alignItems:'center', gap:10, marginTop:20, paddingTop:15, borderTop:'1px solid #E6DECA' } },
             e('button', { type:'button', className:'close-btn', onClick:()=>closeDialog(null), style:{ background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 13px', cursor:'pointer' } }, 'Cancel'),
-            e('button', { type:'submit', className:'save-btn', style:{ background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'9px 17px', cursor:'pointer', boxShadow:'3px 3px 0 rgba(42,37,30,0.14)' } }, dialog.confirm || 'OK')
+            e('button', { type:'submit', className:'save-btn', autoFocus: isConfirm, style:{ background: (isConfirm && dialog.danger) ? '#9C3B22' : '#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'9px 17px', cursor:'pointer', boxShadow:'3px 3px 0 rgba(42,37,30,0.14)' } }, dialog.confirm || 'OK')
           )
         )
       )
     );
   };
 
-  return e(EditCtx.Provider, { value: editMode }, e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
+  return e(EditCtx.Provider, { value: editMode }, e(ConfirmCtx.Provider, { value: askConfirm }, e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       renderCloudBanner(),
       weatherView
@@ -4412,7 +4424,7 @@ function App() {
       renderEventModal(),
       renderDialog()
     )
-  ));
+  )));
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(e(App));

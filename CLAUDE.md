@@ -119,7 +119,11 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
     (and `addLocation`/`deleteLocation`/`moveLocation` early): with no password
     stored it opens the **in-app dialog** (`askText`, `renderDialog` — masked
     input with an eye toggle; also used for the new-location and new-event-type
-    names; never a browser `prompt()`), returns `false`, and runs `retry` once
+    names; never a browser `prompt()`; `askConfirm(opts)` is the same dialog
+    as a yes/no with no input — `danger` colours it red — used for photo
+    removal (via the `ConfirmCtx` context in `LocationPhoto`), location
+    deletion and the keep-or-discard question; never `window.confirm()`),
+    returns `false`, and runs `retry` once
     the password is entered (so the attempted action completes by itself).
     Enter it once (stored in `calendar:uploadKey`) and you're unlocked on that
     device forever. A 401 on save re-locks. NB `localStorage` is **per-origin**,
