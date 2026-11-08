@@ -255,6 +255,17 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
 - The **home page** has an Instagram link (`@llandscapist` = `IG_HANDLE`,
   `.ig-link`) beside the header label; it's home-page only on screen, and the
   handle also prints on every grid page of the printable calendar.
+- **Window icons.** Nature/season events show as a small inline-SVG picture
+  in the corner of each day they cover (`EVENT_ICONS` catalogue, `EventIcon`
+  component, accent-coloured; label beside the icon on the first day on
+  desktop and in print; phones icon-only with the agenda list) instead of a
+  bar; the legend under the grid and the print key list each window with its
+  icon and dates. `eventIconKey(ev)`: explicit `ev.icon` (`'none'` = bar),
+  else a title keyword match (`ICON_KEYWORDS`/`defaultIconKey`) for
+  nature/season kinds, else a bar. The editor's "Shown as" row (nature,
+  season, custom kinds) offers Auto / Bar / each icon; only an explicit
+  choice is stored. `buildWeeks` keeps icon events out of the bar lanes and
+  puts them on `days[i].icons` as `{ ev, icon, first, accent }`.
 - **Custom event types** live on the events themselves (`kind:'x-<slug>'` plus
   `kindLabel` and a `kindColor` palette key from `CUSTOM_PALETTES`), so they sync
   through the shared data with no schema change; the editor's type list derives

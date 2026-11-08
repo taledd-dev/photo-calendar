@@ -1724,6 +1724,60 @@ function styleOf(ev) {
   return EVENT_STYLE.season;
 }
 
+// ─── Event icons ──────────────────────────────────────────────────────────────
+// Nature and season windows show as a small picture in the corner of each day
+// they cover (with the label on the first day) instead of a long bar. The
+// icons are inline SVG silhouettes in the event's accent colour. Which icon:
+// an explicit choice on the event (`ev.icon`; 'none' = draw a bar), else a
+// keyword match on the title for nature/season kinds (`defaultIconKey`), else
+// a bar. Custom kinds get an icon only when chosen.
+const EVENT_ICONS = {
+  bluebell: { label:'Bluebell', svg:'<path d="M12 2c-.4 2.4-.2 4.4.6 6.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.5 9.5a3 3 0 0 1 6 0v1.2l1.2 4.3H3.3l1.2-4.3z"/><path d="M13.5 9.5a3 3 0 0 1 6 0v1.2l1.2 4.3h-8.4l1.2-4.3z"/><path d="M9 15.5a3 3 0 0 1 6 0v1.2l1.2 4.3H7.8L9 16.7z"/>' },
+  daffodil: { label:'Daffodil', svg:'<ellipse cx="12" cy="5.2" rx="2.3" ry="4.2"/><ellipse cx="12" cy="5.2" rx="2.3" ry="4.2" transform="rotate(60 12 12)"/><ellipse cx="12" cy="5.2" rx="2.3" ry="4.2" transform="rotate(120 12 12)"/><ellipse cx="12" cy="5.2" rx="2.3" ry="4.2" transform="rotate(180 12 12)"/><ellipse cx="12" cy="5.2" rx="2.3" ry="4.2" transform="rotate(240 12 12)"/><ellipse cx="12" cy="5.2" rx="2.3" ry="4.2" transform="rotate(300 12 12)"/><circle cx="12" cy="12" r="3.4" fill="#FBF7EC"/><circle cx="12" cy="12" r="2"/>' },
+  snowdrop: { label:'Snowdrop', svg:'<path d="M11 3c.2 3.6-2.6 5.2-2.6 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8.4 12c-2.6 0-4.4 2.4-4.4 5.1 0 2.3 1.8 3.9 4.4 3.9s4.4-1.6 4.4-3.9c0-2.7-1.8-5.1-4.4-5.1z"/><path d="M13.5 21.5c1.4-3.2 4-5.4 7.5-6.2-.9 3.5-3.7 5.8-7.5 6.2z"/>' },
+  blossom: { label:'Blossom', svg:'<ellipse cx="12" cy="6" rx="2.6" ry="3.8"/><ellipse cx="12" cy="6" rx="2.6" ry="3.8" transform="rotate(72 12 12)"/><ellipse cx="12" cy="6" rx="2.6" ry="3.8" transform="rotate(144 12 12)"/><ellipse cx="12" cy="6" rx="2.6" ry="3.8" transform="rotate(216 12 12)"/><ellipse cx="12" cy="6" rx="2.6" ry="3.8" transform="rotate(288 12 12)"/><circle cx="12" cy="12" r="2.4"/>' },
+  lavender: { label:'Lavender', svg:'<path d="M12 22V12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><ellipse cx="12" cy="4" rx="1.7" ry="2.4"/><ellipse cx="9.6" cy="7.2" rx="1.7" ry="2.2"/><ellipse cx="14.4" cy="7.2" rx="1.7" ry="2.2"/><ellipse cx="9.6" cy="11" rx="1.7" ry="2.2"/><ellipse cx="14.4" cy="11" rx="1.7" ry="2.2"/><ellipse cx="12" cy="9" rx="1.5" ry="2"/>' },
+  heather: { label:'Heather', svg:'<path d="M12 22V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="3.5" r="1.6"/><circle cx="8.8" cy="7" r="1.6"/><circle cx="15.2" cy="7" r="1.6"/><circle cx="8.8" cy="11" r="1.6"/><circle cx="15.2" cy="11" r="1.6"/><circle cx="8.8" cy="15" r="1.6"/><circle cx="15.2" cy="15" r="1.6"/>' },
+  leaf: { label:'Autumn leaf', svg:'<path d="M20.5 3.5C12 3.5 5.5 8 4.5 16.5c-.2 1.8.3 3.4.8 4.3.4-4.6 2.9-8.4 7.2-11-3.6 3.6-5.3 7.3-5.6 10.6 8.6.3 14.4-6.3 13.6-16.9z"/>' },
+  mushroom: { label:'Fungi', svg:'<path d="M3 11.5c0-4.4 4-8 9-8s9 3.6 9 8c0 .8-.6 1.2-1.4 1.2H4.4C3.6 12.7 3 12.3 3 11.5z"/><path d="M8.5 13.5h7l-.6 5.1A3 3 0 0 1 12 21.2a3 3 0 0 1-2.9-2.6z"/>' },
+  stars: { label:'Milky Way / stars', svg:'<path d="M12 1.5l1.3 4 4 1.3-4 1.3-1.3 4-1.3-4-4-1.3 4-1.3z"/><path d="M5 12.5l.9 2.6 2.6.9-2.6.9L5 19.5l-.9-2.6-2.6-.9 2.6-.9z"/><path d="M18 13.5l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/>' },
+  nlc: { label:'Noctilucent cloud', svg:'<path d="M7 20a4.2 4.2 0 0 1-.6-8.4A5.8 5.8 0 0 1 17.6 10 3.8 3.8 0 0 1 17.5 20H7z"/><path d="M19.5 2.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"/><path d="M4.5 4l.5 1.4 1.4.5-1.4.5L4.5 7.8 4 6.4 2.6 5.9 4 5.4z"/>' },
+  bird: { label:'Starlings / birds', svg:'<path d="M2.5 9.5c2.2-2.3 4.5-2.3 6.7 0 2.2-2.3 4.5-2.3 6.7 0-2.4.2-3.8 1.5-6.7 4.8-2.9-3.3-4.3-4.6-6.7-4.8z"/><path d="M10 16.5c1.7-1.7 3.4-1.7 5 0 1.7-1.7 3.4-1.7 5 0-1.8.2-2.8 1.1-5 3.6-2.2-2.5-3.2-3.4-5-3.6z"/>' },
+  frost: { label:'Frost / snow', svg:'<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 2.5v19M2.5 12h19M5.3 5.3l13.4 13.4M18.7 5.3L5.3 18.7"/></g><circle cx="12" cy="12" r="2.2"/>' },
+  mist: { label:'Mist / inversion', svg:'<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7.5h13M7 12h14M3 16.5h11M9 21h8"/></g>' },
+  sun: { label:'Sun / solstice', svg:'<circle cx="12" cy="12" r="4.6"/><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></g>' },
+  clock: { label:'Clock change', svg:'<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 6.5V12l3.6 2.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' },
+  tree: { label:'Woodland', svg:'<path d="M12 1.5l5.2 7.2h-3.1l4.3 5.4h-3l4.6 5.4H4l4.6-5.4h-3l4.3-5.4H6.8z"/><rect x="10.8" y="19.3" width="2.4" height="3.2"/>' },
+  wave: { label:'Coast / tide', svg:'<path d="M2 9.5c2.5 0 2.5-2.2 5-2.2s2.5 2.2 5 2.2 2.5-2.2 5-2.2 2.5 2.2 5 2.2v2.4c-2.5 0-2.5-2.2-5-2.2s-2.5 2.2-5 2.2-2.5-2.2-5-2.2S4.5 11.9 2 11.9z"/><path d="M2 15.5c2.5 0 2.5-2.2 5-2.2s2.5 2.2 5 2.2 2.5-2.2 5-2.2 2.5 2.2 5 2.2v4.6H2z"/>' },
+  mountain: { label:'Mountains', svg:'<path d="M1.5 20.5L9 5.5l4.1 7.3 2.2-3.3 7.2 11z"/>' },
+};
+const ICON_ORDER = ['bluebell','daffodil','snowdrop','blossom','lavender','heather','leaf','mushroom','stars','nlc','bird','frost','mist','sun','clock','tree','wave','mountain'];
+// Title keywords → icon, first match wins (so the specific ones come first).
+const ICON_KEYWORDS = [
+  ['equinox','sun'], ['solstice','sun'], ['clocks','clock'],
+  ['bluebell','bluebell'], ['daffodil','daffodil'], ['snowdrop','snowdrop'], ['blossom','blossom'], ['lavender','lavender'], ['heather','heather'],
+  ['autumn','leaf'], ['colour','leaf'], ['fung','mushroom'], ['mushroom','mushroom'],
+  ['starling','bird'], ['murmuration','bird'], ['noctilucent','nlc'], ['milky','stars'], ['star','stars'],
+  ['frost','frost'], ['snow','frost'], [' ice','frost'], ['mist','mist'], ['fog','mist'], ['inversion','mist'],
+  ['wood','tree'], ['forest','tree'], ['tide','wave'], ['coast','wave'], ['beach','wave'], ['fells','mountain'], ['mountain','mountain'], ['summit','mountain'],
+];
+function defaultIconKey(label) {
+  const t = ' ' + (label || '').toLowerCase() + ' ';
+  for (const [kw, icon] of ICON_KEYWORDS) if (t.indexOf(kw) !== -1) return icon;
+  return null;
+}
+function eventIconKey(ev) {
+  if (ev.icon === 'none') return null;
+  if (ev.icon && EVENT_ICONS[ev.icon]) return ev.icon;
+  if (ev.kind === 'nature' || ev.kind === 'season') return defaultIconKey(ev.label);
+  return null;
+}
+function EventIcon({ name, size = 14, color, style }) {
+  const ic = EVENT_ICONS[name];
+  if (!ic) return null;
+  return e('svg', { viewBox:'0 0 24 24', width:size, height:size, fill:'currentColor', 'aria-hidden':'true', style:{ display:'inline-block', flex:'none', verticalAlign:'middle', ...(color ? { color } : {}), ...(style || {}) }, dangerouslySetInnerHTML:{ __html: ic.svg } });
+}
+
 // The home page's intro paragraph. Editable — the edited text is stored as
 // `yearIntro` on the first month's object (the shared data is an array of
 // months with no global slot, and an extra property there syncs cleanly).
@@ -1746,13 +1800,22 @@ function buildWeeks(month, weekStart = 'Monday', compact = false) {
   for (let i = 0; i < cells.length; i += 7) {
     const slice = cells.slice(i, i + 7);
     const present = slice.filter(x => x != null);
-    if (!present.length) { weeks.push({ days: slice.map(d => ({ day: '', inMonth: false })), items: [] }); continue; }
+    if (!present.length) { weeks.push({ days: slice.map(d => ({ day: '', inMonth: false, icons: [] })), items: [], lanes: 0 }); continue; }
     const wkStart = present[0], wkEnd = present[present.length - 1];
     const raw = [];
+    // Icon events (nature/season windows, see eventIconKey) don't take a bar
+    // lane: they're listed per day instead — { ev, icon, first, accent }.
+    const dayIcons = slice.map(() => []);
     for (const ev of month.events) {
       const s = ev.start != null ? ev.start : ev.day;
       const e2 = ev.end != null ? ev.end : ev.day;
       if (e2 < wkStart || s > wkEnd) continue;
+      const iconKey = eventIconKey(ev);
+      if (iconKey) {
+        const accent = styleOf(ev).accent;
+        slice.forEach((d, c) => { if (d != null && d >= s && d <= e2) dayIcons[c].push({ ev, icon: iconKey, first: d === s, accent }); });
+        continue;
+      }
       const segS = Math.max(s, wkStart), segE = Math.min(e2, wkEnd);
       const colStart = slice.indexOf(segS), colEnd = slice.indexOf(segE);
       if (colStart === -1 || colEnd === -1) continue;
@@ -1786,7 +1849,7 @@ function buildWeeks(month, weekStart = 'Monday', compact = false) {
         contRight: it.contRight,
       };
     });
-    weeks.push({ days: slice.map(d => ({ day: d == null ? '' : String(d), inMonth: d != null })), items, lanes: lanes.length });
+    weeks.push({ days: slice.map((d, c) => ({ day: d == null ? '' : String(d), inMonth: d != null, icons: dayIcons[c] })), items, lanes: lanes.length });
   }
   return weeks;
 }
@@ -3073,7 +3136,7 @@ function App() {
     if (!ev) return;
     const s = ev.start != null ? ev.start : ev.day;
     const e2 = ev.end != null ? ev.end : ev.day;
-    setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, kindLabel: ev.kindLabel, kindColor: ev.kindColor, locId: ev.locId || null, noPrint: !!ev.noPrint, annual: !!ev.annual, isNew: false });
+    setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, kindLabel: ev.kindLabel, kindColor: ev.kindColor, locId: ev.locId || null, noPrint: !!ev.noPrint, annual: !!ev.annual, icon: ev.icon || 'auto', isNew: false });
   };
 
   const saveEvent = () => {
@@ -3114,6 +3177,8 @@ function App() {
       else { delete ev.kindLabel; delete ev.kindColor; }
       // Events print by default; only an explicit hide is stored.
       if (d2.noPrint) ev.noPrint = true; else delete ev.noPrint;
+      // Icon: only an explicit choice is stored ('auto' = keyword match).
+      if (d2.icon && d2.icon !== 'auto') ev.icon = d2.icon; else delete ev.icon;
     });
     setEditingEvent(null);
   };
@@ -3372,7 +3437,9 @@ function App() {
           return e('div', { key: it.y + '-' + it.m2.key + '-' + it.ev.id, role:'button', tabIndex:0, onClick:open, onKeyDown:keyActivate(open), className:'map-chip', title:'Open ' + it.m2.name + ' ' + it.y,
               style:{ flex:'0 0 auto', width: isMobile ? 168 : 196, padding:'10px 12px 11px', background:'#FBF7EC', border:'1px solid #C9BD9F', borderLeft:'4px solid ' + st.accent, cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.08)' } },
             e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color: it.ongoing ? '#54632F' : '#9C8F71', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, when),
-            e('div', { style:{ marginTop:6, fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'#2A251E', lineHeight:1.25, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' } }, (st.glyph ? st.glyph + ' ' : '') + it.ev.label),
+            e('div', { style:{ marginTop:6, fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'#2A251E', lineHeight:1.25, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' } },
+              eventIconKey(it.ev) ? e(EventIcon, { name:eventIconKey(it.ev), size:15, color:st.accent, style:{ marginRight:6, verticalAlign:'-2px' } }) : (st.glyph ? st.glyph + ' ' : ''),
+              it.ev.label),
             e('div', { style:{ marginTop:5, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#A89A7C', letterSpacing:'.06em' } }, it.m2.name + (it.thisYear ? '' : ' ' + it.y))
           );
         })
@@ -3739,9 +3806,19 @@ function App() {
         // under the grid carries the labels instead).
         weeks.map((wk, wi) =>
           e('div', { key:wi, style:{ position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)', gridAutoRows: isMobile ? ('minmax(' + Math.max(54, 28 + wk.lanes * 22) + 'px,auto)') : 'minmax(120px,auto)', borderBottom:'1px solid #E2D9C2', backgroundImage:'repeating-linear-gradient(to right,#ECE3CD 0,#ECE3CD 1px,transparent 1px,transparent 14.2857%)' } },
+            // Day cells: the number on the left; any window icons for that day
+            // on the right (the label beside the icon on the window's first
+            // day, desktop only — phones have the agenda list for labels).
             wk.days.map((d, di) =>
-              e('div', { key:di, style:{ padding: isMobile ? '4px 6px' : '7px 9px' } },
-                d.inMonth && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 11 : 12, fontWeight:500, color:'#7A6F58' } }, d.day)
+              e('div', { key:di, style:{ padding: isMobile ? '4px 6px' : '7px 9px', minWidth:0 } },
+                d.inMonth && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:4, minWidth:0 } },
+                  e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 11 : 12, fontWeight:500, color:'#7A6F58', flex:'none' } }, d.day),
+                  d.icons.length > 0 && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap: isMobile ? 2 : 5, minWidth:0, overflow:'hidden' } },
+                    d.icons.map(ic => e('span', { key:ic.ev.id, title:ic.ev.label, onClick: editMode ? () => openEventEditor(ic.ev.id) : undefined, style:{ display:'inline-flex', alignItems:'center', gap:4, minWidth:0, color:ic.accent, cursor: editMode ? 'pointer' : 'default' } },
+                      e(EventIcon, { name:ic.icon, size: isMobile ? 12 : 15 }),
+                      ic.first && !isMobile && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, color:'#5A513B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, ic.ev.label)))
+                  )
+                )
               )
             ),
             wk.items.map(it => {
@@ -3776,7 +3853,7 @@ function App() {
                 return e('div', { key:ev.id, className:'ev-chip', ...(editMode ? { onClick:()=>openEventEditor(ev.id), onKeyDown:keyActivate(()=>openEventEditor(ev.id)), role:'button', tabIndex:0 } : {}), style:{ display:'grid', gridTemplateColumns:'44px 1fr', gap:9, alignItems:'center', padding:'6px 8px', background:st.bg, color:st.fg, borderLeft:'3px solid '+st.accent, borderRadius:2, cursor: editMode ? 'pointer' : 'default' } },
                   e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, fontWeight:600, letterSpacing:'.02em' } }, s === e2 ? String(s) : (s + '–' + e2)),
                   e('span', { style:{ display:'flex', alignItems:'center', gap:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:500, minWidth:0 } },
-                    st.glyph && e('span', { style:{ flex:'none' } }, st.glyph),
+                    eventIconKey(ev) ? e(EventIcon, { name:eventIconKey(ev), size:13, color:st.accent }) : (st.glyph && e('span', { style:{ flex:'none' } }, st.glyph)),
                     e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.4 } }, ev.label)
                   )
                 );
@@ -3791,7 +3868,15 @@ function App() {
             e('span', null, '○ New moon'),
             e('span', { style:{ color:'#8A5A1B' } }, '✦ Meteor shower'),
             e('span', { style:{ color:'#9C3B22' } }, '◐ Eclipse'),
-            e('span', { style:{ color:'#54632F' } }, '▬ Season window'),
+            // season/nature windows still drawn as bars (no icon matched)
+            month.events.some(ev => (ev.kind === 'season' || ev.kind === 'nature') && !eventIconKey(ev)) && e('span', { style:{ color:'#54632F' } }, '▬ Season window'),
+            // this month's window icons, with their dates — the key to the day corners
+            month.events.filter(ev => eventIconKey(ev)).slice().sort((a, b) => (a.start != null ? a.start : a.day) - (b.start != null ? b.start : b.day)).map(ev => {
+              const s = ev.start != null ? ev.start : ev.day, en = ev.end != null ? ev.end : ev.day;
+              return e('span', { key:ev.id, onClick: editMode ? () => openEventEditor(ev.id) : undefined, title: editMode ? 'Edit this window' : undefined, style:{ display:'inline-flex', alignItems:'center', gap:5, color:'#5A513B', cursor: editMode ? 'pointer' : 'default' } },
+                e(EventIcon, { name:eventIconKey(ev), size:13, color:styleOf(ev).accent }),
+                ev.label + ' · ' + (s === en ? s : s + '–' + en));
+            }),
             // any custom types used this month, in their own colours
             (() => {
               const seen = new Set();
@@ -3879,7 +3964,9 @@ function App() {
       const pm = monthForYear(m2, i);
       const printable = pm.events.filter(ev => !ev.noPrint && !hiddenKinds.has(ev.kind));
       const wks = buildWeeks({ ...pm, events: printable }, weekStart, { top: 30, step: 24 });
-      const legendKinds = kindOrder.filter(k => printable.some(ev => ev.kind === k));
+      // the key: bar kinds in use, then each window icon with its dates
+      const legendKinds = kindOrder.filter(k => printable.some(ev => ev.kind === k && !eventIconKey(ev)));
+      const iconEvents = printable.filter(ev => eventIconKey(ev)).slice().sort((a, b) => (a.start != null ? a.start : a.day) - (b.start != null ? b.start : b.day));
       pages.push(label('l-' + m2.key + '-p', m2.name + ' — photo'));
       pages.push(e('div', { key:m2.key + '-photo', className:'print-sheet', style:{ background:'#F1EBDB' } },
         // clean full-bleed photo — its caption sits top-right of the grid page
@@ -3910,8 +3997,15 @@ function App() {
           wks.map((wk, wi) =>
             e('div', { key:wi, style:{ flex:1, minHeight:0, position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)', borderBottom: wi < wks.length - 1 ? '1px solid #E2D9C2' : 'none', backgroundImage:'repeating-linear-gradient(to right,#ECE3CD 0,#ECE3CD 1px,transparent 1px,transparent 14.2857%)', overflow:'hidden' } },
               wk.days.map((d, di) =>
-                e('div', { key:di, style:{ padding:'1.6mm 2mm' } },
-                  d.inMonth && e('span', { style:{ fontFamily:mono, fontSize:'3.6mm', fontWeight:500, color:'#7A6F58' } }, d.day)
+                e('div', { key:di, style:{ padding:'1.6mm 2mm', minWidth:0 } },
+                  d.inMonth && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1mm', minWidth:0 } },
+                    e('span', { style:{ fontFamily:mono, fontSize:'3.6mm', fontWeight:500, color:'#7A6F58', flex:'none' } }, d.day),
+                    d.icons.length > 0 && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'1.2mm', minWidth:0, overflow:'hidden' } },
+                      d.icons.map(ic => e('span', { key:ic.ev.id, style:{ display:'inline-flex', alignItems:'center', gap:'1mm', minWidth:0, color:ic.accent } },
+                        e(EventIcon, { name:ic.icon, size:'4mm' }),
+                        ic.first && e('span', { style:{ fontFamily:mono, fontSize:'2.6mm', color:'#5A513B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, ic.ev.label)))
+                    )
+                  )
                 )
               ),
               wk.items.map(it =>
@@ -3933,6 +4027,12 @@ function App() {
               return e('span', { key:k, style:{ display:'inline-flex', alignItems:'center', gap:'1.6mm' } },
                 e('span', { style:{ display:'inline-block', width:'3.2mm', height:'3.2mm', background:st.bg, borderLeft:'1mm solid ' + st.accent } }),
                 (st.glyph ? st.glyph + ' ' : '') + kindLabel(k));
+            }),
+            iconEvents.map(ev => {
+              const s = ev.start != null ? ev.start : ev.day, en = ev.end != null ? ev.end : ev.day;
+              return e('span', { key:ev.id, style:{ display:'inline-flex', alignItems:'center', gap:'1.4mm', color:'#5A513B' } },
+                e(EventIcon, { name:eventIconKey(ev), size:'3.6mm', color:styleOf(ev).accent }),
+                ev.label + ' ' + (s === en ? s : s + '–' + en));
             })
           ),
           e('div', { style:{ flex:'none', display:'inline-flex', alignItems:'center', gap:'1.8mm', fontFamily:mono, fontSize:'3mm', letterSpacing:'.06em', color:'#8A7D63', whiteSpace:'nowrap' } },
@@ -4017,7 +4117,7 @@ function App() {
           ),
           // Preview chip
           e('div', { style:{ marginTop:15, display:'flex', alignItems:'center', gap:8, padding:'9px 11px', background:draftView.bg, color:draftView.fg, borderLeft:'3px solid '+draftView.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:500 } },
-            draftView.glyph && e('span', null, draftView.glyph),
+            eventIconKey(draft) ? e(EventIcon, { name:eventIconKey(draft), size:15, color:draftView.accent }) : (draftView.glyph && e('span', null, draftView.glyph)),
             e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, draftView.previewLabel)
           ),
           // Title or location picker
@@ -4064,6 +4164,22 @@ function App() {
               e('button', { className:'kind-btn', onClick:addCustomKind, title:'Create a new event type', style:{ display:'flex', alignItems:'center', gap:6, padding:'6px 11px', background:'#FFFDF5', color:'#5A513B', border:'1px dashed #A89A7C', borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.03em' } }, '+ New type')
             )
           ),
+          // Shown as — a picture in the corner of each day (nature/season windows
+          // and custom types), or the usual bar. "Auto" picks from the title.
+          (draft.kind === 'nature' || draft.kind === 'season' || isCustomKind(draft.kind)) && (() => {
+            const autoKey = defaultIconKey(draft.label);
+            const cur = draft.icon || 'auto';
+            const opts = [{ k:'auto', label:'Auto' + (autoKey ? ' — ' + EVENT_ICONS[autoKey].label + ', from the title' : ' — a bar (no icon matches the title)') }, { k:'none', label:'A bar across the days' }]
+              .concat(ICON_ORDER.map(k => ({ k, label: EVENT_ICONS[k].label })));
+            const btn = (o, child) => { const sel = cur === o.k; return e('button', { key:o.k, className:'kind-btn', title:o.label, 'aria-label':o.label, onClick:()=>setEditingEvent(p=>p&&({ ...p, icon:o.k })), style:{ display:'inline-flex', alignItems:'center', justifyContent:'center', gap:5, minWidth:32, height:30, padding:'0 8px', background: sel ? '#54632F' : '#FFFDF5', color: sel ? '#FBF7EC' : '#5A513B', border:'1px solid ' + (sel ? '#2A251E' : '#C9BD9F'), borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.04em' } }, child); };
+            return e('div', { style:{ marginTop:16 } },
+              e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', marginBottom:8 } }, 'Shown as'),
+              e('div', { style:{ display:'flex', flexWrap:'wrap', gap:6 } },
+                opts.map(o => btn(o, o.k === 'auto' ? [autoKey && e(EventIcon, { key:'i', name:autoKey, size:15 }), 'Auto'] : o.k === 'none' ? '▬ Bar' : e(EventIcon, { name:o.k, size:16 })))
+              ),
+              e('div', { style:{ marginTop:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#A89A7C', letterSpacing:'.04em' } }, cur === 'none' ? 'Drawn as a bar across its days.' : 'An icon in the corner of each day, the title beside it on the first day, and a key under the grid.')
+            );
+          })(),
           // Printable calendar — on by default, untick to keep this event off it
           e('label', { style:{ marginTop:16, display:'flex', alignItems:'center', gap:9, cursor:'pointer', userSelect:'none' } },
             e('input', { type:'checkbox', checked:!draft.noPrint, onChange:(ev)=>{ const on = ev.target.checked; setEditingEvent(p=>p&&({ ...p, noPrint:!on })); }, style:{ width:15, height:15, margin:0, accentColor:'#54632F', cursor:'pointer' } }),
