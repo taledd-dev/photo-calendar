@@ -4203,7 +4203,8 @@ function App() {
 
     const pageCount = 1 + data.length * 2 + 3 + 1;
     return e('div', null,
-      e('div', { className:'no-print', style:{ display:'flex', flexDirection:'column', gap:12, marginBottom:10 } },
+      // the controls share the sheets' width and centring, so their left edge lines up with the pages
+      e('div', { className:'no-print', style:{ display:'flex', flexDirection:'column', gap:12, width:'281mm', maxWidth:'100%', margin:'0 auto 10px' } },
         e('div', { style:{ display:'flex', alignItems:'center', gap:'10px 14px', flexWrap:'wrap' } },
           e('button', { className:'btn-hover', onClick:goToYear, style:GreenBtn }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
           yearRow(),
