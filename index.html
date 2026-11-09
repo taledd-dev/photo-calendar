@@ -4075,21 +4075,29 @@ function App() {
     // it; visitors just see the photo (LocationPhoto handles both via EditCtx).
     const slot = (base, placeholder) => e(LocationPhoto, { base, placeholder, onChange: bumpImg, photoIndex, epoch: imgEpoch, full: true, style:{ position:'absolute', inset:0, borderRadius:0, border:'none' } });
 
+    // The darkened band along the foot of the cover and back cover: the lockup
+    // on the left; the year with the Instagram handle beneath on the right.
+    const coverBand = () => e('div', { style:{ position:'absolute', left:0, right:0, bottom:0, padding:'28mm 10mm 9mm', background:'linear-gradient(to bottom, rgba(20,22,14,0) 0%, rgba(20,22,14,0.80) 100%)', pointerEvents:'none', display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:'8mm' } },
+      e('div', { style:{ display:'flex', alignItems:'center', gap:'5mm' } },
+        e('img', { src:'assets/photoplan-mark-on-dark.svg', alt:'', style:{ height:'16mm', width:'auto' } }),
+        e('div', null,
+          e('div', { style:{ fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, letterSpacing:'0.24em', fontSize:'7mm', color:'#FBF7EC', lineHeight:1 } }, 'PHOTOPLAN'),
+          e('div', { style:{ marginTop:'2.5mm', fontFamily:mono, fontSize:'3mm', letterSpacing:'.2em', textTransform:'uppercase', color:'#F6A06B' } }, 'Photo Location Calendar')
+        )
+      ),
+      e('div', { style:{ display:'flex', flexDirection:'column', alignItems:'flex-end' } },
+        e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'24mm', lineHeight:0.9, color:'#FBF7EC' } }, String(viewYear)),
+        e('div', { style:{ marginTop:'3mm', display:'inline-flex', alignItems:'center', gap:'2mm', fontFamily:mono, fontSize:'3.4mm', letterSpacing:'.12em', color:'#FBF7EC' } },
+          igGlyph('4.2mm', '#F6A06B'), '@' + IG_HANDLE)
+      )
+    );
+
     const pages = [];
-    // Cover: the cover photo with the lockup and year on a darkened band.
+    // Cover: the cover photo with the band.
     pages.push(label('l-cover', 'Cover'));
     pages.push(e('div', { key:'cover', className:'print-sheet', style:{ background:'#FCFAF1' } },
       slot('photos/print-cover', 'the cover photo — landscape works best'),
-      e('div', { style:{ position:'absolute', left:0, right:0, bottom:0, padding:'28mm 10mm 9mm', background:'linear-gradient(to bottom, rgba(20,22,14,0) 0%, rgba(20,22,14,0.80) 100%)', pointerEvents:'none', display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:'8mm' } },
-        e('div', { style:{ display:'flex', alignItems:'center', gap:'5mm' } },
-          e('img', { src:'assets/photoplan-mark-on-dark.svg', alt:'', style:{ height:'16mm', width:'auto' } }),
-          e('div', null,
-            e('div', { style:{ fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, letterSpacing:'0.24em', fontSize:'7mm', color:'#FBF7EC', lineHeight:1 } }, 'PHOTOPLAN'),
-            e('div', { style:{ marginTop:'2.5mm', fontFamily:mono, fontSize:'3mm', letterSpacing:'.2em', textTransform:'uppercase', color:'#F6A06B' } }, 'Photo Location Calendar')
-          )
-        ),
-        e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:'24mm', lineHeight:0.9, color:'#FBF7EC' } }, String(viewYear))
-      )
+      coverBand()
     ));
 
     // Months: a full-bleed photo page, then the grid page.
@@ -4195,10 +4203,11 @@ function App() {
       ));
     });
 
-    // Back cover: a photo of its own.
+    // Back cover: a photo of its own, with the same band as the front.
     pages.push(label('l-back', 'Back cover'));
     pages.push(e('div', { key:'back', className:'print-sheet', style:{ background:'#FCFAF1' } },
-      slot('photos/print-back', 'the back-cover photo')
+      slot('photos/print-back', 'the back-cover photo'),
+      coverBand()
     ));
 
     const pageCount = 1 + data.length * 2 + 3 + 1;

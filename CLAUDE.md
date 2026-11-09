@@ -192,7 +192,9 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `@media print`; `.pad` adds the grid page's padding; `.print-label` is the
   on-screen-only page caption). Cover/back photos are `LocationPhoto` slots
   (`full: true` → print-size image) on R2 keys `photos/print-cover` /
-  `photos/print-back`. `PrintMonthPhoto` (variant `page`, or `tile`) shows
+  `photos/print-back`; both carry `coverBand()` — the darkened foot band with
+  the lockup left and the year + `@IG_HANDLE` right. `PrintMonthPhoto`
+  (variant `page`, or `tile`) shows
   the month's **starred** location (`month.printLoc`, ★ on the month-page
   tiles) if it has a photo, else the first with one, using the `-print` copy
   when it exists. The photo page is clean (no overlay): the **caption sits
