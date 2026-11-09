@@ -87,6 +87,14 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
     for the next number; hero slideshows cycle every photo, extras included.
     Delete/move a location handles every slot. `LocationPhoto.onChange` is
     called with `'uploaded'` or `'removed'`.
+  - **Focus points.** `data[0].photoFocus = { '<storage base>': [fx, fy] }`
+    (fractions of the image; unset = centre) says what a cropped photo keeps.
+    `FocusCtx` carries `{ map, set }` (set = `setPhotoFocus` for the owner,
+    null for visitors) and `focusStyle(map, base)` gives the `object-position`
+    — applied by `LocationPhoto`, `LocThumb`, `PhotoSlideshow` and
+    `PrintMonthPhoto`. `LocationPhoto` has a ⌖ button (owner, next to ×):
+    focus mode shows the whole photo (`object-fit: contain`), a click sets
+    the point, "Centre" clears it. Moving a location renames the keys.
   - The **whole calendar dataset** (locations, events, edits, coordinates, years,
     done/visited ticks) is shared via `calendar-data.json` in R2, shaped
     `{ version, savedAt, data }`. Everyone reads it; only the owner (password)

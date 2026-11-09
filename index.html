@@ -132,6 +132,16 @@ const EditCtx = React.createContext(true);
 // App's site-styled confirm dialog, for components outside App (LocationPhoto's
 // ×): askConfirm({ title, label, confirm, danger }) → Promise<boolean>.
 const ConfirmCtx = React.createContext(null);
+// Per-photo focus point: the part of a photo to keep when a slot crops it, as
+// [fx, fy] fractions of the image (unset = centre), stored in
+// data[0].photoFocus keyed by the photo's storage base. The context carries
+// { map, set(base, fx, fy) } — `set` is null for visitors. focusStyle() turns
+// a point into the object-position for an object-fit: cover image.
+const FocusCtx = React.createContext({ map: {}, set: null });
+function focusStyle(map, base) {
+  const f = map && map[base];
+  return f ? { objectPosition: (f[0] * 100).toFixed(1) + '% ' + (f[1] * 100).toFixed(1) + '%' } : {};
+}
 
 // ─── Storage ────────────────────────────────────────────────────────────────
 // The single "switch" for where saved data lives. Calendar text (locations,
@@ -464,6 +474,7 @@ function HeroCaption({ value, onCommit }) {
 // photos exist using the small thumbnails (fast), then shows the hero version of
 // whichever slide is current. Used for both the 2026 cover and each month's hero.
 function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0, photoIndex }) {
+  const focus = React.useContext(FocusCtx);
   const [keys, setKeys] = useState([]); // item keys that have a photo, in order
   const [pos, setPos] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -544,7 +555,7 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0, photoI
   const cur = items.find(it => it.key === curKey);
   if (!cur) return e('div', { className: 'image-slot', style: { ...boxStyle } });
   return e('div', { className: 'image-slot', style: { ...boxStyle } },
-    e('img', { key: cur.base, className: 'slide-fade', src: Storage.photoUrl(cur.base, epoch || undefined), alt: '' }),
+    e('img', { key: cur.base, className: 'slide-fade', src: Storage.photoUrl(cur.base, epoch || undefined), alt: '', style: focusStyle(focus.map, cur.base) }),
     cur.caption && e(HeroCaption, { key: 'show-' + cur.key, value: cur.caption, onCommit: null }),
     keys.length > 1 && e('button', {
       className: 'pause-btn',
@@ -564,6 +575,7 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0, photoI
 // ─── Location thumbnail ──────────────────────────────────────────────────────
 // Shows the small thumbnail of a location's photo on its card (nothing if none).
 function LocThumb({ base, epoch = 0, photoIndex }) {
+  const focus = React.useContext(FocusCtx);
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let cancelled = false;
@@ -577,7 +589,7 @@ function LocThumb({ base, epoch = 0, photoIndex }) {
     return () => { cancelled = true; };
   }, [base, epoch, photoIndex]);
   if (!src) return null;
-  return e('img', { src, alt: '', style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 } });
+  return e('img', { src, alt: '', style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1, ...focusStyle(focus.map, base) } });
 }
 
 // ─── Location photo uploader ─────────────────────────────────────────────────
@@ -662,6 +674,27 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
   }, [uploadFile]);
 
   const askConfirm = React.useContext(ConfirmCtx);
+  // Focus point (owner): a ⌖ button opens a mode that shows the whole photo
+  // (object-fit: contain) so a click maps straight to image fractions.
+  const focus = React.useContext(FocusCtx);
+  const [focusMode, setFocusMode] = useState(false);
+  const [nat, setNat] = useState(null); // natural size of the shown image
+  const boxRef = useRef(null);
+  useEffect(() => { setFocusMode(false); }, [base]);
+  const containGeom = () => {
+    const box = boxRef.current; if (!box || !nat) return null;
+    const w = box.clientWidth, h = box.clientHeight;
+    const s = Math.min(w / nat.w, h / nat.h);
+    const dw = nat.w * s, dh = nat.h * s;
+    return { ox: (w - dw) / 2, oy: (h - dh) / 2, dw, dh };
+  };
+  const handleFocusClick = (ev) => {
+    const g = containGeom(); if (!g || !focus.set) return;
+    const r = boxRef.current.getBoundingClientRect();
+    const fx = Math.max(0, Math.min(1, (ev.clientX - r.left - g.ox) / g.dw));
+    const fy = Math.max(0, Math.min(1, (ev.clientY - r.top - g.oy) / g.dh));
+    focus.set(base, fx, fy);
+  };
   const handleClear = useCallback(async (ev) => {
     ev.stopPropagation();
     const msg = 'It will be deleted from the cloud — this cannot be undone.';
@@ -685,10 +718,15 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
   // View-only: just the photo (or a quiet placeholder) — no upload or remove.
   if (!canEdit) {
     return e('div', { className: 'image-slot', style },
-      src ? e('img', { src: imgSrc, alt: '' }) : e('div', { className: 'placeholder-text' }, 'No photo yet'), sizeFlag);
+      src ? e('img', { src: imgSrc, alt: '', style: focusStyle(focus.map, base) }) : e('div', { className: 'placeholder-text' }, 'No photo yet'), sizeFlag);
   }
   const btn = compact ? { top: 3, right: 3, width: 20, height: 20, fontSize: 11 } : { top: 6, right: 6, width: 24, height: 24, fontSize: 13 };
+  const mono = "'IBM Plex Mono',monospace";
+  const miniBtn = { background: 'rgba(251,247,236,0.14)', border: '1px solid rgba(251,247,236,0.5)', color: '#FBF7EC', fontFamily: mono, fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', padding: '3px 8px', cursor: 'pointer' };
+  const focusGeom = focusMode ? containGeom() : null;
+  const focusPt = focus.map[base] || [0.5, 0.5];
   return e('div', {
+    ref: boxRef,
     className: 'image-slot' + (dragOver ? ' drag-over' : ''),
     style: { cursor: (src || busy) ? 'default' : 'pointer', ...style },
     title: compact && !src ? placeholder : undefined,
@@ -699,13 +737,28 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
   },
     e('input', { ref: fileRef, type: 'file', accept: 'image/*', style: { display: 'none' },
       onChange: (ev) => { const f = ev.target.files[0]; ev.target.value = ''; uploadFile(f); } }),
-    src && e('img', { src: imgSrc, alt: '' }),
+    src && e('img', { src: imgSrc, alt: '', onLoad: (ev) => setNat({ w: ev.target.naturalWidth, h: ev.target.naturalHeight }), style: { ...focusStyle(focus.map, base), ...(focusMode ? { objectFit: 'contain', background: '#2A251E' } : {}) } }),
     sizeFlag,
     src && !busy && e('button', {
       onClick: handleClear,
       title: 'Remove photo', 'aria-label': 'Remove photo',
       style: { position: 'absolute', zIndex: 10, background: 'rgba(42,37,30,0.6)', border: 'none', color: '#FBF7EC', borderRadius: '50%', cursor: 'pointer', lineHeight: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', ...btn }
     }, '×'),
+    src && !busy && focus.set && e('button', {
+      onClick: (ev) => { ev.stopPropagation(); setFocusMode(m => !m); },
+      title: focusMode ? 'Finish setting the focus point' : 'Set the focus point — the part to keep when the photo is cropped', 'aria-label': 'Set the focus point', 'aria-pressed': focusMode ? 'true' : 'false',
+      style: { position: 'absolute', zIndex: 10, background: focusMode ? '#54632F' : 'rgba(42,37,30,0.6)', border: 'none', color: '#FBF7EC', borderRadius: '50%', cursor: 'pointer', lineHeight: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', ...btn, right: btn.right + btn.width + 5, fontSize: compact ? 13 : 16 }
+    }, '⌖'),
+    // focus mode: the whole photo is shown; click to place the point
+    focusMode && src && e('div', { onClick: (ev) => { ev.stopPropagation(); handleFocusClick(ev); }, style: { position: 'absolute', inset: 0, zIndex: 8, cursor: 'crosshair' } },
+      focusGeom && e('div', { style: { position: 'absolute', left: focusGeom.ox + focusPt[0] * focusGeom.dw, top: focusGeom.oy + focusPt[1] * focusGeom.dh, width: 26, height: 26, marginLeft: -13, marginTop: -13, borderRadius: '50%', border: '2px solid #FBF7EC', boxShadow: '0 0 0 1px rgba(0,0,0,.55), inset 0 0 0 1px rgba(0,0,0,.55)', pointerEvents: 'none' } },
+        e('div', { style: { position: 'absolute', left: '50%', top: '50%', width: 4, height: 4, marginLeft: -2, marginTop: -2, borderRadius: '50%', background: '#FBF7EC' } })),
+      e('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: compact ? '4px 6px' : '6px 9px', background: 'rgba(42,37,30,0.8)', color: '#FBF7EC', fontFamily: mono, fontSize: 10, letterSpacing: '.06em', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 } },
+        !compact && e('span', null, 'Click the part of the photo to keep when it’s cropped'),
+        e('span', { style: { display: 'inline-flex', gap: 6, marginLeft: 'auto' } },
+          e('button', { type: 'button', onClick: (ev) => { ev.stopPropagation(); focus.set(base, null); }, title: 'Back to the centre', style: miniBtn }, 'Centre'),
+          e('button', { type: 'button', onClick: (ev) => { ev.stopPropagation(); setFocusMode(false); }, style: { ...miniBtn, background: '#54632F', borderColor: '#54632F' } }, 'Done')))
+    ),
     busy && e('div', { className: 'placeholder-text', style: { zIndex: 2 } }, compact ? '…' : 'Uploading…'),
     !src && !busy && (compact
       ? e('div', { className: 'placeholder-text', style: { fontSize: 22, lineHeight: 1, padding: 0, color: '#B7AD90' } }, '+')
@@ -954,6 +1007,7 @@ function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoInde
   }, [sig, epoch, photoIndex]);
   // the private print-size copy, fetched with the password; the hero shows meanwhile
   const privUrl = usePrivateImage(pick && pick.print ? pick.base + '-print' : null, epoch || 0);
+  const focus = React.useContext(FocusCtx);
   const fill = { position:'absolute', inset:0 };
   if (!pick) {
     if (photoIndex === undefined) return null; // index still loading — blank for a moment
@@ -961,7 +1015,7 @@ function PrintMonthPhoto({ monthKey, monthName, locs, preferId, epoch, photoInde
       variant === 'tile' ? monthName : 'No photo yet for ' + monthName);
   }
   return e('div', { style: fill },
-    e('img', { src: (pick.print && privUrl) ? privUrl : Storage.photoUrl(pick.base, epoch || undefined), alt:'', style:{ width:'100%', height:'100%', objectFit:'cover', display:'block' } }),
+    e('img', { src: (pick.print && privUrl) ? privUrl : Storage.photoUrl(pick.base, epoch || undefined), alt:'', style:{ width:'100%', height:'100%', objectFit:'cover', display:'block', ...focusStyle(focus.map, pick.base) } }),
     pick.print === false && printSizeBadge(),
     pick.print && !privUrl && variant === 'page' && printSizeBadge('Loading the print-size copy…'),
     variant === 'page' && caption && e('div', { style:{ position:'absolute', left:0, bottom:0, background:'#000', color:'#fff', fontFamily:"'IBM Plex Mono',monospace", fontSize:'3.2mm', lineHeight:1.4, padding:'1.8mm 3.5mm', letterSpacing:'.02em' } },
@@ -3116,6 +3170,12 @@ function App() {
       if (i === -1) return;
       const [moved] = fromArr.splice(i, 1);
       d[toIdx].locations.push(moved);
+      // focus points follow the photos to their new storage names
+      if (d[0].photoFocus) {
+        const next = { ...d[0].photoFocus };
+        locPhotos(moved).forEach(p => { const from = slotBase(d[monthIdx].key, locId, p.slot), to = slotBase(d[toIdx].key, locId, p.slot); if (next[from]) { next[to] = next[from]; delete next[from]; } });
+        d[0].photoFocus = next;
+      }
     });
     bumpImg();
     goToMonth(toIdx, locId);
@@ -3202,6 +3262,13 @@ function App() {
     const loc = d[monthIdx].locations.find(l => l.id === locId); if (!loc) return;
     const list = locPhotos(loc).filter(p => p.slot !== slot).map(p => ({ ...p }));
     if (list.length) { loc.photos = list; loc.photoYear = list[0].year || ''; } else { delete loc.photos; }
+  });
+  // A photo's focus point (see FocusCtx): fx/fy as fractions, or null to reset
+  // to the centre. Keyed by the photo's storage base in data[0].photoFocus.
+  const setPhotoFocus = (base, fx, fy) => mutateData(d => {
+    const m = { ...(d[0].photoFocus || {}) };
+    if (fx == null) delete m[base]; else m[base] = [Math.round(fx * 1000) / 1000, Math.round(fy * 1000) / 1000];
+    d[0].photoFocus = m;
   });
   // Make an extra the main photo (tiles, print, the brief) — a reorder only.
   const makeMainPhoto = (locId, slot) => mutateData(d => {
@@ -4420,7 +4487,7 @@ function App() {
     );
   };
 
-  return e(EditCtx.Provider, { value: editMode }, e(ConfirmCtx.Provider, { value: askConfirm }, e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
+  return e(EditCtx.Provider, { value: editMode }, e(ConfirmCtx.Provider, { value: askConfirm }, e(FocusCtx.Provider, { value: { map: (data[0] && data[0].photoFocus) || {}, set: editMode ? setPhotoFocus : null } }, e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       renderCloudBanner(),
       weatherView
@@ -4434,7 +4501,7 @@ function App() {
       renderEventModal(),
       renderDialog()
     )
-  )));
+  ))));
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(e(App));
