@@ -2194,11 +2194,15 @@ const WEATHER_GUIDE = [
   { glyph:'☁', title:'Noctilucent clouds', conditions:'Late May to early August, 90–120 min after sunset or before sunrise, low in the north-west (evening) or north-east (morning). A clear sky with the Sun 6–16° below the horizon — civil dusk onwards.', settings:'24–50 mm, f/2.8–f/4, 1–5 s, ISO 400–800. They are brighter than you expect; check the histogram.', tips:'Electric-blue ripples high in the twilight that don’t darken as the sky does — ordinary cloud goes black, NLC stays lit.' },
 ];
 
-function WeatherView({ data, initialLocId, onBack, onOpenMonth, isMobile, navControl }) {
+// `defaultLocId` is the owner's saved default (data[0].weatherDefault) — the
+// page opens on it unless arriving from a location's own "Forecast" link —
+// and `onSetDefault` (owner only) changes it; everyone can view another spot.
+function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, onOpenMonth, isMobile, navControl }) {
   const mono = "'IBM Plex Mono',monospace";
   const places = useMemo(() => data.flatMap((m, i) => m.locations.map(l => ({ loc: l, m, i, coords: coordsOf(l) })).filter(p => p.coords)), [data]);
   const todayMonth = new Date().getMonth();
-  const defaultId = initialLocId || (places.find(p => p.i === todayMonth) || places[0] || { loc: {} }).loc.id;
+  const savedDefault = defaultLocId && places.some(p => p.loc.id === defaultLocId) ? defaultLocId : null;
+  const defaultId = initialLocId || savedDefault || (places.find(p => p.i === todayMonth) || places[0] || { loc: {} }).loc.id;
   const [selId, setSelId] = useState(defaultId);
   const sel = places.find(p => p.loc.id === selId) || places[0] || null;
   const [fc, setFc] = useState({ status: 'idle' });
@@ -2342,13 +2346,26 @@ function WeatherView({ data, initialLocId, onBack, onOpenMonth, isMobile, navCon
     places.length === 0
       ? e('div', { style:{ ...card, padding:18, fontSize:14, color:'#6E6450' } }, 'Add map coordinates to a location to see its forecast here.')
       : e('div', null,
-          e('div', { style:{ display:'flex', alignItems:'center', gap:'10px 16px', flexWrap:'wrap' } },
-            label('Location'),
-            e('select', { value: sel ? sel.loc.id : '', onChange:(ev)=>setSelId(ev.target.value), 'aria-label':'Location for the forecast',
-                style:{ height:38, padding:'0 12px', background:'#FFFDF5', border:'1px solid #B3A988', color:'#2A251E', fontFamily:mono, fontSize:12, letterSpacing:'.04em', cursor:'pointer', borderRadius:0, maxWidth:'100%' } },
-              data.map((m, i) => { const ps = places.filter(p => p.i === i); return ps.length ? e('optgroup', { key:m.key, label:m.name }, ps.map(p => e('option', { key:p.loc.id, value:p.loc.id }, p.loc.name))) : null; })),
-            sel && e('button', { className:'btn-hover', onClick:()=>onOpenMonth(sel.i, sel.loc.id), style:{ height:38, padding:'0 14px', background:'#FBF7EC', border:'1px solid #2A251E', color:'#2A251E', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'3px 3px 0 rgba(42,37,30,0.12)' } }, 'Open ' + sel.m.name + ' →')
-          ),
+          // Default spot (owner sets it; it's what the page opens on) — or view any other.
+          (() => {
+            const selStyle = { height:38, padding:'0 12px', background:'#FFFDF5', border:'1px solid #B3A988', color:'#2A251E', fontFamily:mono, fontSize:12, letterSpacing:'.04em', cursor:'pointer', borderRadius:0, maxWidth:'100%' };
+            const groups = (placeholder) => [
+              placeholder ? e('option', { key:'_', value:'' }, placeholder) : null,
+              ...data.map((m, i) => { const ps = places.filter(p => p.i === i); return ps.length ? e('optgroup', { key:m.key, label:m.name }, ps.map(p => e('option', { key:p.loc.id, value:p.loc.id }, p.loc.name))) : null; })
+            ];
+            const defPlace = savedDefault ? places.find(p => p.loc.id === savedDefault) : null;
+            return e('div', { style:{ display:'flex', alignItems:'center', gap:'10px 14px', flexWrap:'wrap' } },
+              label('Default'),
+              onSetDefault
+                ? e('select', { value: savedDefault || '', onChange:(ev)=>{ const id = ev.target.value || null; onSetDefault(id); if (id) setSelId(id); }, 'aria-label':'Default location for the Weather page', title:'The location this page opens on', style:{ ...selStyle, borderColor: savedDefault ? '#54632F' : '#B3A988' } },
+                    groups('Not set — first spot of the current month'))
+                : e('span', { style:{ fontFamily:mono, fontSize:12, color:'#2A251E', letterSpacing:'.04em' } }, defPlace ? defPlace.loc.name : 'the current month’s first spot'),
+              e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#B7AD90' } }, 'or'),
+              label('View'),
+              e('select', { value: sel ? sel.loc.id : '', onChange:(ev)=>setSelId(ev.target.value), 'aria-label':'Location for the forecast', style:selStyle }, groups(null)),
+              sel && e('button', { className:'btn-hover', onClick:()=>onOpenMonth(sel.i, sel.loc.id), style:{ height:38, padding:'0 14px', background:'#FBF7EC', border:'1px solid #2A251E', color:'#2A251E', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'3px 3px 0 rgba(42,37,30,0.12)' } }, 'Open ' + sel.m.name + ' →')
+            );
+          })(),
           sel && e('div', { style:{ marginTop:14, display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:'6px 18px', flexWrap:'wrap' } },
             e('div', null,
               e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:24, color:'#2A251E' } }, sel.loc.name),
@@ -3263,6 +3280,8 @@ function App() {
     const list = locPhotos(loc).filter(p => p.slot !== slot).map(p => ({ ...p }));
     if (list.length) { loc.photos = list; loc.photoYear = list[0].year || ''; } else { delete loc.photos; }
   });
+  // The Weather page's default location (owner-set, cloud-synced).
+  const setWeatherDefault = (locId) => mutateData(d => { if (locId) d[0].weatherDefault = locId; else delete d[0].weatherDefault; });
   // A photo's focus point (see FocusCtx): fx/fy as fractions, or null to reset
   // to the centre. Keyed by the photo's storage base in data[0].photoFocus.
   const setPhotoFocus = (base, fx, fy) => mutateData(d => {
@@ -4491,7 +4510,7 @@ function App() {
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       renderCloudBanner(),
       weatherView
-        ? e(WeatherView, { data, initialLocId: weatherLoc, onBack: goToYear, onOpenMonth: goToMonth, isMobile,
+        ? e(WeatherView, { data, initialLocId: weatherLoc, defaultLocId: data[0] && data[0].weatherDefault, onSetDefault: editMode ? setWeatherDefault : null, onBack: goToYear, onOpenMonth: goToMonth, isMobile,
             navControl: e('div', { style:navRowStyle }, e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'), navDivider(), mapBtn) })
         : mapView
         ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro, editMode, editControl: editToggle() })

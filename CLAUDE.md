@@ -225,9 +225,12 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   LOCATION on photo ops) to `photoplan-<year>.ics` via a Blob download.
 - **Weather page** (`WeatherView`, "☁ Weather" button on the home and month
   nav rows for everyone; `goToWeather(locId)` also from the brief's Light row
-  "Forecast & conditions →"): a location `<select>` (grouped by month, only
-  locations with coordinates; opens on the given location, else one from the
-  current month), a seven-day outlook from **Open-Meteo** (`api.open-meteo.com`,
+  "Forecast & conditions →"): a **Default** location (owner-set via a
+  `<select>`, saved as `data[0].weatherDefault`, cloud-synced; the page opens
+  on it unless arriving from a brief; visitors see it as text) "or" a
+  **View** `<select>` (grouped by month, only locations with coordinates;
+  falls back to the current month's first spot), a seven-day outlook from
+  **Open-Meteo** (`api.open-meteo.com`,
   `timezone=auto`; `models=ukmo_seamless` tried first for UK coords, then the
   default model; cached per coordinates for the session) summarised per day
   as cloud at the sunrise/sunset hours and 01:00, min visibility, rain chance,
