@@ -81,6 +81,9 @@
     .kit-view:hover span { border-color: #54632F; }
     .tag-input:empty::before { content: 'Label'; color: #B7AD90; }
     .ig-link:hover { color: #9E4B26 !important; }
+    input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
+    .quiet-link:hover { color: #54632F !important; }
+    .backup-row:hover { background: #F4EEDE !important; }
     .pause-btn:hover { background: rgba(42,37,30,0.78) !important; }
     .pause-btn:active { transform: scale(0.94); }
     .map-chip:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.14) !important; }
@@ -338,6 +341,27 @@ const Storage = {
       if (!res.ok) return null;
       const parsed = await res.json();
       return Array.isArray(parsed.keys) ? new Set(parsed.keys) : null;
+    } catch (_) { return null; }
+  },
+  // The Worker's automatic backups of calendar-data.json (v2), newest first,
+  // as { key, uploaded, size }. null when the Worker predates them or can't
+  // be reached.
+  async loadBackups() {
+    try {
+      const res = await fetch(PHOTO_STORAGE_BASE + '/backups?t=' + Date.now(), { cache: 'no-store' });
+      if (!res.ok) return null;
+      const parsed = await res.json();
+      return Array.isArray(parsed.backups) ? parsed.backups : null;
+    } catch (_) { return null; }
+  },
+  // One backup as the { version, savedAt, data } it was written as, or null.
+  async loadBackup(key) {
+    try {
+      const res = await fetch(this.photoUrl(key, Date.now()), { cache: 'no-store' });
+      if (!res.ok) return null;
+      const parsed = await res.json();
+      if (!parsed || parsed.version !== STORAGE_VERSION || !Array.isArray(parsed.data)) return null;
+      return parsed;
     } catch (_) { return null; }
   },
 };
@@ -627,11 +651,86 @@ function usePrivateImage(key, bust) {
   return url;
 }
 
+// ── Reading a photo's own data (EXIF) ──────────────────────────────────────
+// A JPEG's EXIF block says when it was taken and — phones, GPS-tagged cameras,
+// Lightroom exports with location kept — where. readPhotoInfo(file) resolves
+// to { year:'YY', date:'YYYY-MM-DD', lat, lng } (any part may be missing) or
+// null when there is nothing usable. Only the first 256 KB is read: the APP1
+// segment sits near the start of the file, after any JFIF/ICC blocks.
+async function readPhotoInfo(file) {
+  try {
+    const buf = await file.slice(0, 256 * 1024).arrayBuffer();
+    const dv = new DataView(buf);
+    if (dv.byteLength < 4 || dv.getUint16(0) !== 0xFFD8) return null; // not a JPEG
+    let off = 2;
+    while (off + 4 <= dv.byteLength) {
+      if (dv.getUint8(off) !== 0xFF) return null;
+      const marker = dv.getUint8(off + 1);
+      if (marker === 0xFF) { off += 1; continue; } // fill byte
+      if (marker === 0xD8 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) { off += 2; continue; }
+      if (marker === 0xDA || marker === 0xD9) return null; // image data starts — no EXIF seen
+      const len = dv.getUint16(off + 2);
+      if (marker === 0xE1 && off + 10 <= dv.byteLength && dv.getUint32(off + 4) === 0x45786966) { // "Exif"
+        return parseExifTiff(dv, off + 10, Math.min(off + 2 + len, dv.byteLength));
+      }
+      off += 2 + len;
+    }
+    return null;
+  } catch (_) { return null; }
+}
+// The TIFF structure inside the EXIF segment: IFD0 → the Exif sub-IFD (dates)
+// and the GPS sub-IFD (degrees/minutes/seconds + hemisphere letters).
+function parseExifTiff(dv, start, end) {
+  const le = dv.getUint16(start) === 0x4949;
+  const u16 = (p) => dv.getUint16(p, le), u32 = (p) => dv.getUint32(p, le);
+  if (u16(start + 2) !== 42) return null;
+  const TYPE_SIZE = [0, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8, 4];
+  const readIfd = (ifdOff) => {
+    const tags = {};
+    const p = start + ifdOff;
+    if (ifdOff <= 0 || p + 2 > end) return tags;
+    const n = u16(p);
+    for (let i = 0; i < n; i++) {
+      const q = p + 2 + i * 12;
+      if (q + 12 > end) break;
+      const tag = u16(q), type = u16(q + 2), count = u32(q + 4);
+      const total = (TYPE_SIZE[type] || 1) * count;
+      const vp = total <= 4 ? q + 8 : start + u32(q + 8);
+      if (vp + total > end) continue;
+      tags[tag] = { type, count, vp };
+    }
+    return tags;
+  };
+  const ascii = (t) => { if (!t) return null; let s = ''; for (let i = 0; i < t.count; i++) { const c = dv.getUint8(t.vp + i); if (!c) break; s += String.fromCharCode(c); } return s; };
+  const rationals = (t) => { if (!t || (t.type !== 5 && t.type !== 10)) return null; const out = []; for (let i = 0; i < t.count; i++) { const num = u32(t.vp + i * 8), den = u32(t.vp + i * 8 + 4); out.push(den ? num / den : 0); } return out; };
+  const offsetOf = (t) => t ? (t.type === 3 ? u16(t.vp) : u32(t.vp)) : null;
+  const ifd0 = readIfd(u32(start + 4));
+  const out = {};
+  const exifOff = offsetOf(ifd0[0x8769]);
+  const exif = exifOff != null ? readIfd(exifOff) : {};
+  const dt = ascii(exif[0x9003]) || ascii(exif[0x9004]) || ascii(ifd0[0x0132]); // DateTimeOriginal, DateTimeDigitized, DateTime
+  const m = dt && dt.match(/^(\d{4}):(\d{2}):(\d{2})/);
+  if (m && m[1] !== '0000') { out.date = m[1] + '-' + m[2] + '-' + m[3]; out.year = m[1].slice(2); }
+  const gpsOff = offsetOf(ifd0[0x8825]);
+  if (gpsOff != null) {
+    const gps = readIfd(gpsOff);
+    const dms = (a) => a && a.length ? a[0] + (a[1] || 0) / 60 + (a[2] || 0) / 3600 : null;
+    const la = dms(rationals(gps[2])), lo = dms(rationals(gps[4]));
+    if (la != null && lo != null && isFinite(la) && isFinite(lo) && (la !== 0 || lo !== 0) && la <= 90 && lo <= 180) {
+      const latRef = ascii(gps[1]) || 'N', lngRef = ascii(gps[3]) || 'E';
+      out.lat = Math.round((latRef === 'S' ? -la : la) * 1e6) / 1e6;
+      out.lng = Math.round((lngRef === 'W' ? -lo : lo) * 1e6) / 1e6;
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 // `full` shows the hero-size image instead of the thumbnail (the printable
 // calendar's cover sheets, where the thumbnail would print soft). `compact`
 // is the small-square form used in the brief's "more photos" strip: a bare
 // "+" placeholder and a smaller remove button. `onChange` is called with
-// 'uploaded' or 'removed' after the cloud write succeeds.
+// 'uploaded' or 'removed' after the cloud write succeeds — for an upload with
+// a second argument, the photo's own EXIF data (readPhotoInfo) or null.
 function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, epoch = 0, full = false, compact = false }) {
   const canEdit = React.useContext(EditCtx);
   const [src, setSrc] = useState(null);
@@ -663,9 +762,10 @@ function LocationPhoto({ base, placeholder, style = {}, onChange, photoIndex, ep
     const key = Storage.peekUploadKey();
     if (!key) { alert('Unlock editing first (the ✎ link at the top of the page) to change photos.'); return; }
     setBusy(true);
-    const ok = await Storage.savePhotoVariants(base, file, key);
+    // Read the capture date / GPS from the original file while it uploads.
+    const [ok, info] = await Promise.all([Storage.savePhotoVariants(base, file, key), readPhotoInfo(file)]);
     setBusy(false);
-    if (ok) { knownRef.current = true; const now = Date.now(); setBust(now); setSrc(thumb(now)); if (onChange) onChange('uploaded'); }
+    if (ok) { knownRef.current = true; const now = Date.now(); setBust(now); setSrc(thumb(now)); if (onChange) onChange('uploaded', info); }
   }, [base, onChange]);
 
   const handleDrop = useCallback((ev) => {
@@ -2867,6 +2967,15 @@ function App() {
   // confirm button, false on Cancel/Escape/backdrop. `danger` colours the
   // button for irreversible actions.
   const askConfirm = (opts) => askText({ kind:'confirm', ...opts }).then(r => r !== null);
+  // A quiet confirmation at the foot of the page ("From the photo: the year
+  // '24 filled in."), gone after a few seconds.
+  const [notice, setNotice] = useState(null);
+  const noticeTimer = useRef(null);
+  const showNotice = (text) => {
+    clearTimeout(noticeTimer.current);
+    setNotice(text);
+    noticeTimer.current = setTimeout(() => setNotice(null), 5000);
+  };
   const uidRef = useRef(100);
   const unlockedRef = useRef(false);   // true once the edit password has been entered on this device
 
@@ -3176,6 +3285,102 @@ function App() {
     setSelectedLoc(null);
   };
 
+  // ── Deep links ─────────────────────────────────────────────────────────────
+  // The address mirrors the view — #/2026 (home), #/2026/nov, #/2026/nov/<loc>
+  // (brief open), #/2026/map, #/2026/weather[/<loc>], #/2026/print — so a
+  // month or a location can be shared or bookmarked, and the browser's back
+  // button retraces the steps. routeHash() is the address for the current
+  // state; applyHash() does the reverse. A location id that isn't in the data
+  // yet (a link to a spot added on another device, opened before the cloud
+  // copy lands) is kept in the state so the brief opens once the data arrives.
+  const routeHash = () => {
+    const y = '#/' + viewYear;
+    if (weatherView) return y + '/weather' + (weatherLoc ? '/' + encodeURIComponent(weatherLoc) : '');
+    if (mapView) return y + '/map';
+    if (printView && editMode) return y + '/print';
+    if (yearView) return y;
+    return y + '/' + data[mi].key + (selectedLoc ? '/' + encodeURIComponent(selectedLoc) : '');
+  };
+  const routeTitle = () => {
+    if (weatherView) return 'Photoplan — Weather';
+    if (mapView) return 'Photoplan — Map';
+    if (printView && editMode) return 'Photoplan — ' + viewYear + ' calendar';
+    if (yearView) return 'Photoplan — Photo Location Calendar';
+    const m2 = data[mi];
+    const loc = selectedLoc && m2.locations.find(l => l.id === selectedLoc);
+    return 'Photoplan — ' + (loc ? loc.name + ' · ' : '') + m2.name + ' ' + viewYear;
+  };
+  const applyHash = (hash) => {
+    const parts = (hash || '').replace(/^#\/?/, '').split('/').filter(Boolean).map(s => { try { return decodeURIComponent(s); } catch (_) { return s; } });
+    let i = 0;
+    const y = parseInt(parts[0], 10);
+    if (!isNaN(y) && YEARS.indexOf(y) !== -1) { setViewYear(y); i = 1; }
+    const seg = parts[i];
+    if (!seg) { goToYear(); return; }
+    if (seg === 'map') { goToMap(); return; }
+    if (seg === 'weather') { goToWeather(parts[i + 1] || null); return; }
+    if (seg === 'print') { if (Storage.peekUploadKey()) { setEditMode(true); goToPrint(); } else goToYear(); return; } // owner only
+    const idx = data.findIndex(m2 => m2.key === seg);
+    if (idx !== -1) { goToMonth(idx, parts[i + 1] || null); return; }
+    goToYear();
+  };
+  const applyHashRef = useRef(applyHash);
+  applyHashRef.current = applyHash;
+  // On arrival, open whatever the address says; afterwards follow the back/
+  // forward buttons (our own pushState calls don't fire hashchange).
+  useEffect(() => {
+    if (location.hash) applyHashRef.current(location.hash);
+    const onHash = () => applyHashRef.current(location.hash);
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  // State → address (+ tab title). The first run only fills in a missing
+  // hash, without a history entry; an arrival hash is left for applyHash
+  // (its state lands on the next commit and then already matches).
+  const routeStarted = useRef(false);
+  useEffect(() => {
+    const h = routeHash();
+    document.title = routeTitle();
+    if (!routeStarted.current) {
+      routeStarted.current = true;
+      if (!location.hash) history.replaceState(null, '', h);
+      return;
+    }
+    if (location.hash !== h) history.pushState(null, '', h);
+  }, [viewYear, yearView, mapView, printView, weatherView, weatherLoc, mi, selectedLoc, editMode]);
+
+  // ── Search ─────────────────────────────────────────────────────────────────
+  // A quick find across every location (name first, then tag, where, idea,
+  // when, kit, notes, links); picking a hit opens that month with the brief.
+  const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [hitIdx, setHitIdx] = useState(0);
+  const searchRef = useRef(null);
+  const searchHits = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const hits = [];
+    data.forEach((m2, i) => m2.locations.forEach(loc => {
+      const name = (loc.name || '').toLowerCase();
+      const rest = [loc.tag, loc.where, loc.idea, loc.when, loc.kit, loc.notes, loc.links].map(s => (s || '').toLowerCase()).join(' ');
+      const score = name.startsWith(q) ? 3 : name.includes(q) ? 2 : rest.includes(q) ? 1 : 0;
+      if (score) hits.push({ loc, month: m2, monthIdx: i, score });
+    }));
+    hits.sort((a, b) => b.score - a.score || a.monthIdx - b.monthIdx);
+    return hits.slice(0, 8);
+  }, [data, query]);
+  // "/" anywhere (outside a field) jumps to the search box.
+  useEffect(() => {
+    const onKey = (ev) => {
+      if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      const t = ev.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (searchRef.current) { ev.preventDefault(); searchRef.current.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // Editing is gated behind the upload password. The first time someone tries to
   // change anything, they're asked for it; enter it once and everything's
   // editable (and syncs). Leave it blank and it's view-only — the change is
@@ -3374,6 +3579,34 @@ function App() {
     if (fx == null) delete m[base]; else m[base] = [Math.round(fx * 1000) / 1000, Math.round(fy * 1000) / 1000];
     d[0].photoFocus = m;
   });
+  // After an upload: fill in what the photo itself knows (readPhotoInfo) —
+  // its capture year as the caption year if that slot has none, and its GPS
+  // position as the location's coordinates if the location has none (built-in
+  // spots always have some, so this is for the owner's added locations). The
+  // owner is told what was filled in; nothing already set is touched.
+  const applyPhotoInfo = (locId, slot, info) => {
+    if (!info) return;
+    const cur = data[mi].locations.find(l => l.id === locId); if (!cur) return;
+    const p = locPhotos(cur).find(x => x.slot === slot);
+    const fillYear = !!info.year && (!p || !(p.year || '').trim());
+    const fillCoords = typeof info.lat === 'number' && typeof info.lng === 'number' && !coordsOf(cur);
+    if (!fillYear && !fillCoords) return;
+    mutateData(d => {
+      const loc = d[monthIdx].locations.find(l => l.id === locId); if (!loc) return;
+      if (fillYear) {
+        if (Array.isArray(loc.photos) && loc.photos.length) { const q = loc.photos.find(x => x.slot === slot); if (q && !(q.year || '').trim()) q.year = info.year; }
+        if (slot === 1 && !(loc.photoYear || '').trim()) loc.photoYear = info.year;
+      }
+      if (fillCoords && !coordsOf(loc)) {
+        loc.lat = info.lat; loc.lng = info.lng;
+        loc.region = coordsInUK(info.lat, info.lng) ? 'UK' : 'INT';
+      }
+    });
+    const filled = [];
+    if (fillYear) filled.push("the year '" + info.year);
+    if (fillCoords) filled.push('the map coordinates');
+    showNotice('From the photo: ' + filled.join(' and ') + ' filled in.');
+  };
   // Make an extra the main photo (tiles, print, the brief) — a reorder only.
   const makeMainPhoto = (locId, slot) => mutateData(d => {
     const loc = d[monthIdx].locations.find(l => l.id === locId); if (!loc) return;
@@ -3599,9 +3832,40 @@ function App() {
         prevBtn,
         e('button', { className:'btn-hover', onClick:goToJan, style:GreenBtn }, 'January ', e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '→'))
       );
-  // The home page's tools (Map, Weather, and the owner's Calendar + Export)
-  // sit under the intro on the left, so the header doesn't tower on the right.
-  const homeTools = () => e('div', { style:navRowStyle }, mapBtn, weatherBtn, editMode && printBtn, editMode && icsBtn);
+  // The search box, dressed as one of the nav buttons, with its hits in a
+  // dropdown (mouse, or ↑ ↓ Enter; Escape clears). Hits open the location.
+  const searchBox = () => {
+    const mono = "'IBM Plex Mono',monospace";
+    const showHits = searchOpen && query.trim().length >= 2;
+    const pick = (h) => { setQuery(''); setSearchOpen(false); if (searchRef.current) searchRef.current.blur(); goToMonth(h.monthIdx, h.loc.id); };
+    const cur = Math.min(hitIdx, Math.max(0, searchHits.length - 1));
+    return e('div', { style:{ position:'relative', display:'inline-flex', ...(isMobile ? { width:'100%' } : {}) } },
+      e('span', { 'aria-hidden':'true', style:{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:15, color:'#54632F', lineHeight:1 } }, '⌕'),
+      e('input', { ref: searchRef, type:'search', value: query, placeholder:'Find a location', 'aria-label':'Find a location', autoComplete:'off', spellCheck:false,
+        onChange: (ev) => { setQuery(ev.target.value); setHitIdx(0); setSearchOpen(true); },
+        onFocus: () => setSearchOpen(true),
+        onBlur: () => setTimeout(() => setSearchOpen(false), 150),
+        onKeyDown: (ev) => {
+          if (ev.key === 'Escape') { setQuery(''); ev.target.blur(); }
+          else if (ev.key === 'ArrowDown' && searchHits.length) { ev.preventDefault(); setHitIdx((cur + 1) % searchHits.length); }
+          else if (ev.key === 'ArrowUp' && searchHits.length) { ev.preventDefault(); setHitIdx((cur - 1 + searchHits.length) % searchHits.length); }
+          else if (ev.key === 'Enter' && searchHits.length) { ev.preventDefault(); pick(searchHits[cur]); }
+        },
+        style:{ ...BtnBase, appearance:'none', WebkitAppearance:'none', borderRadius:0, cursor:'text', textTransform:'none', letterSpacing:'.02em', fontSize:12.5, background:'#FBF7EC', color:'#2A251E', padding:'0 12px 0 32px', width: isMobile ? '100%' : 210, outline:'none' } }),
+      showHits && e('div', { role:'listbox', 'aria-label':'Matching locations', style:{ position:'absolute', top:'calc(100% + 6px)', left:0, width: isMobile ? '100%' : 300, background:'#FBF7EC', border:'1px solid #2A251E', boxShadow:'5px 5px 0 rgba(42,37,30,0.14)', zIndex:40, maxHeight:340, overflowY:'auto' } },
+        searchHits.length
+          ? searchHits.map((h, i) => e('div', { key: h.month.key + '-' + h.loc.id, role:'option', 'aria-selected': i === cur ? 'true' : 'false', onMouseDown:(ev)=>ev.preventDefault(), onClick:()=>pick(h), onMouseEnter:()=>setHitIdx(i), style:{ padding:'8px 12px', cursor:'pointer', background: i === cur ? '#F1EAD6' : 'transparent', borderTop: i ? '1px solid #EDE5D1' : 'none' } },
+              e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'#2A251E', lineHeight:1.25 } }, h.loc.name),
+              e('div', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color: h.loc.region === 'UK' ? '#54632F' : '#9E4B26', marginTop:3 } }, h.month.name + ' · ' + (h.loc.region === 'UK' ? 'UK' : 'International') + (h.loc.tag ? ' · ' + h.loc.tag : ''))
+            ))
+          : e('div', { style:{ padding:'10px 12px', fontFamily:mono, fontSize:11, color:'#A89A7C', letterSpacing:'.04em' } }, 'No location matches')
+      )
+    );
+  };
+  // The home page's tools (Map, Weather, the owner's Calendar + Export, and
+  // the search) sit under the intro on the left, so the header doesn't tower
+  // on the right.
+  const homeTools = () => e('div', { style:navRowStyle }, mapBtn, weatherBtn, editMode && printBtn, editMode && icsBtn, searchBox());
 
   // Year picker — a quiet native <select> on the year itself (dotted underline,
   // small chevron); switches the calendar grid + events, locations unaffected.
@@ -3631,6 +3895,95 @@ function App() {
     title: editMode ? 'Hide the editing controls and view the page as a visitor sees it' : 'Enter the edit password to make changes',
     style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', color: editMode ? '#54632F' : '#8A7D63', textDecoration:'underline', textUnderlineOffset:3 }
   }, editMode ? '✎ Editing on · hide controls' : '✎ Unlock editing');
+
+  // ── Backups (owner) ────────────────────────────────────────────────────────
+  // The Worker keeps a copy of calendar-data.json before each overwrite (one
+  // per 15-minute window, newest 60). This lists them and can put one back —
+  // a normal save with the stamp check, so another device's edit in between
+  // is caught — or download one (or the current copy) as a file.
+  const [backupsOpen, setBackupsOpen] = useState(false);
+  const [backups, setBackups] = useState(undefined); // undefined loading · null unavailable · array
+  const [restoring, setRestoring] = useState(null);  // key of the backup being restored
+  const openBackups = () => { setBackupsOpen(true); setBackups(undefined); Storage.loadBackups().then(setBackups); };
+  useEffect(() => { // Escape closes the list wherever focus is
+    if (!backupsOpen) return;
+    const onKey = (ev) => { if (ev.key === 'Escape') setBackupsOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [backupsOpen]);
+  const backupDate = (b) => { const d = new Date(b.uploaded); return isNaN(d) ? b.key.replace(/^backups\/calendar-data-/, '').replace(/\.json$/, '') : d.toLocaleString('en-GB', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); };
+  const fmtSize = (n) => n >= 1024 * 1024 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const downloadJson = (obj, name) => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(obj)], { type:'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+  const downloadBackup = async (b) => {
+    const snap = await Storage.loadBackup(b.key);
+    if (!snap) { alert('That backup could not be read — try again in a moment.'); return; }
+    downloadJson(snap, 'photoplan-' + b.key.replace(/^backups\//, ''));
+  };
+  const downloadCurrent = () => downloadJson({ version: STORAGE_VERSION, savedAt: cloudStamp.current || Date.now(), data }, 'photoplan-calendar-data-' + new Date().toISOString().slice(0, 16).replace(/:/g, '-') + '.json');
+  const restoreBackup = async (b) => {
+    const key = Storage.peekUploadKey();
+    if (!key) { ensureUnlocked(); return; }
+    if (!cloudReadyRef.current) { alert('Still loading the shared calendar — try again in a moment.'); return; }
+    if (dirtyRef.current) { alert('Changes on this device are still being saved — wait for them to finish, then try again.'); return; }
+    const when = backupDate(b);
+    const yes = await askConfirm({ title:'Restore this backup?', danger:true, confirm:'Restore',
+      label:'The shared calendar goes back to the copy saved at ' + when + '. Everything changed since then — locations, events, ticks, captions, notes — is lost on every device. Photos are not affected.\nIf in doubt, download the current calendar first.' });
+    if (!yes) return;
+    setRestoring(b.key);
+    const snap = await Storage.loadBackup(b.key);
+    if (!snap) { setRestoring(null); alert('That backup could not be read — try again in a moment.'); return; }
+    const res = await Storage.saveCloudData(snap.data, key, cloudStamp.current);
+    setRestoring(null);
+    if (res.ok) { adoptCloud({ data: snap.data, savedAt: res.savedAt }); setBackupsOpen(false); showNotice('Calendar restored from the backup of ' + when + '.'); }
+    else if (res.reason === 'conflict') { if (res.cloud) adoptCloud(res.cloud); alert('Another device saved in the meantime, so the backup was not restored. The newest copy has been loaded — try again if you still want it.'); }
+    else if (res.reason === 'unauthorized') { unlockedRef.current = false; setEditMode(false); setBackupsOpen(false); alert('The edit password was rejected — unlock editing again and retry.'); }
+    else alert('The shared calendar could not be reached — try again in a moment.');
+  };
+  const backupsLink = () => e('button', { className:'quiet-link', onClick:openBackups, title:'List the automatic backups of the shared calendar — restore or download one',
+    style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', color:'#8A7D63', textDecoration:'underline', textUnderlineOffset:3 } }, '⟲ Backups');
+  const renderBackups = () => {
+    if (!backupsOpen) return null;
+    const mono = "'IBM Plex Mono',monospace";
+    const small = { background:'none', border:'1px solid #D2C7AC', color:'#5A513B', fontFamily:mono, fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', padding:'6px 10px', cursor:'pointer', whiteSpace:'nowrap' };
+    return e('div', { onClick:()=>setBackupsOpen(false), style:{ position:'fixed', inset:0, background:'rgba(42,37,30,0.34)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:60 } },
+      e('div', { role:'dialog', 'aria-modal':'true', 'aria-labelledby':'pp-backups-title', onClick:(ev)=>ev.stopPropagation(), onKeyDown:(ev)=>{ if (ev.key === 'Escape') setBackupsOpen(false); }, style:{ width:560, maxWidth:'100%', maxHeight:'88vh', display:'flex', flexDirection:'column', background:'#FBF7EC', border:'1px solid #2A251E', boxShadow:'9px 9px 0 rgba(42,37,30,0.20)' } },
+        e('div', { style:{ height:5, background:'#54632F', flex:'none' } }),
+        e('div', { style:{ padding:'17px 20px 14px', flex:'none' } },
+          e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 } },
+            e('div', { id:'pp-backups-title', style:{ fontFamily:mono, fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Calendar backups'),
+            e('button', { className:'close-btn', onClick:()=>setBackupsOpen(false), title:'Close', 'aria-label':'Close', autoFocus:true, style:{ width:30, height:30, background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontSize:17, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
+          ),
+          e('div', { style:{ marginTop:10, fontSize:14.5, color:'#3B3528', lineHeight:1.5 } }, 'A copy of the shared calendar is kept before each save — one per quarter-hour, the newest sixty. Each entry is the calendar as it was just before that save. Restoring replaces the calendar on every device; photos are not affected.'),
+          e('div', { style:{ marginTop:12, display:'flex', gap:10, flexWrap:'wrap' } },
+            e('button', { className:'btn-hover', onClick:downloadCurrent, title:'Save the calendar as it is now to a file on this device', style:{ ...small, background:'#FBF7EC', border:'1px solid #2A251E', color:'#2A251E', padding:'8px 13px', boxShadow:'3px 3px 0 rgba(42,37,30,0.12)' } }, '⤓ Download the current calendar')
+          )
+        ),
+        e('div', { style:{ overflowY:'auto', borderTop:'1px solid #E6DECA', flex:'1 1 auto' } },
+          backups === undefined
+            ? e('div', { style:{ padding:'18px 20px', fontFamily:mono, fontSize:11, color:'#A89A7C', letterSpacing:'.06em' } }, 'Loading the list…')
+            : backups === null
+            ? e('div', { style:{ padding:'18px 20px', fontSize:14, color:'#6E6450', lineHeight:1.5 } }, 'The backups could not be listed — the storage Worker may be unreachable, or it predates automatic backups.')
+            : !backups.length
+            ? e('div', { style:{ padding:'18px 20px', fontSize:14, color:'#6E6450', lineHeight:1.5 } }, 'No backups yet — the first is made the next time the calendar is saved.')
+            : backups.map((b, i) => e('div', { key:b.key, className:'backup-row', style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, padding:'10px 20px', borderTop: i ? '1px solid #EDE5D1' : 'none', flexWrap:'wrap' } },
+                e('div', null,
+                  e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'#2A251E' } }, backupDate(b)),
+                  e('div', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.08em', color:'#A89A7C', marginTop:2 } }, (i === 0 ? 'Newest · ' : '') + fmtSize(b.size || 0))
+                ),
+                e('div', { style:{ display:'flex', gap:8 } },
+                  e('button', { className:'close-btn', onClick:()=>downloadBackup(b), title:'Save this backup to a file on this device', style:small }, '⤓ Download'),
+                  e('button', { className:'del-btn', disabled: !!restoring, onClick:()=>restoreBackup(b), title:'Make this the shared calendar again', style:{ ...small, color:'#9C3B22', borderColor:'#9C3B22', opacity: restoring && restoring !== b.key ? .5 : 1 } }, restoring === b.key ? 'Restoring…' : '⟲ Restore')
+                )
+              ))
+        )
+      )
+    );
+  };
 
   const regionLegend = () => e('div', { style:{ display:'flex', gap:16, alignItems:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', color:'#6E6450' } },
     e('span', { style:{ display:'flex', alignItems:'center', gap:7 } }, dot('#54632F'), 'UK'),
@@ -3667,7 +4020,7 @@ function App() {
         navRow(false),
         yearRow(),
         regionLegend(),
-        editToggle()
+        e('div', { style:{ display:'flex', alignItems:'center', gap:18, flexWrap:'wrap' } }, editToggle(), editMode && backupsLink())
       )
     ),
     // Bottom header row, just above the divider: the calendar label + IG link
@@ -3822,8 +4175,9 @@ function App() {
         )
       ),
       e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 10px':'22px 0 12px' } }),
-      // The owner switch sits between the rule and the hero, out of the nav column.
-      e('div', { style:{ display:'flex', justifyContent:isMobile?'flex-start':'flex-end', marginBottom:isMobile?10:12 } }, editToggle()),
+      // Between the rule and the hero: the search on the left, the owner
+      // switch on the right (out of the nav column).
+      e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px 18px', flexWrap:'wrap', marginBottom:isMobile?10:12 } }, searchBox(), editToggle()),
 
       // Hero
       e('div', { style: matted ? { background:'#FCFAF1', border:'1px solid #2A251E', padding:9, boxShadow:'7px 7px 0 rgba(42,37,30,0.10)' } : { border:'1px solid #D2C7AC' } },
@@ -3921,7 +4275,7 @@ function App() {
                 e('div', { style:{ flex:isMobile?'1 1 100%':'0 0 300px', maxWidth:'100%' } },
                   // The main photo (tiles, print). Removing it promotes the next extra.
                   e(LocationPhoto, { key: mainBase(month.key, sel), base: mainBase(month.key, sel), placeholder:'Add a photo of ' + sel.name, photoIndex, epoch: imgEpoch, style:{ height:206, borderRadius:4, border:'1px solid #D2C7AC' },
-                    onChange: (what) => { bumpImg(); if (what === 'removed') removePhotoSlot(sel.id, locPhotos(sel)[0].slot); } }),
+                    onChange: (what, info) => { bumpImg(); if (what === 'removed') removePhotoSlot(sel.id, locPhotos(sel)[0].slot); else if (what === 'uploaded') applyPhotoInfo(sel.id, locPhotos(sel)[0].slot, info); } }),
                   // view-only: only shown when a year is set
                   (editMode || mainYear(sel)) && e('div', { style:{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 } },
                     e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color:'#9C8F71' } }, 'Year taken'),
@@ -3945,7 +4299,7 @@ function App() {
                           const base = slotBase(month.key, sel.id, p.slot);
                           return e('div', { key: base, style:{ width:88 } },
                             e(LocationPhoto, { base, compact:true, photoIndex, epoch: imgEpoch, style: thumbStyle,
-                              onChange: (what) => { bumpImg(); if (what === 'removed') removePhotoSlot(sel.id, p.slot); } }),
+                              onChange: (what, info) => { bumpImg(); if (what === 'removed') removePhotoSlot(sel.id, p.slot); else if (what === 'uploaded') applyPhotoInfo(sel.id, p.slot, info); } }),
                             editMode
                               ? e('div', { style:{ marginTop:4, display:'flex', alignItems:'center', justifyContent:'space-between', gap:4 } },
                                   e(Editable, { key:'year-'+sel.id+'-'+p.slot, tag:'span', value: p.year || '', onCommit:(t)=>setPhotoYear(sel.id, p.slot, t), title:'Set the year this photo was taken', className:'year-input', style:{ fontFamily:mono, fontSize:10, padding:'2px 6px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:38, textAlign:'center', letterSpacing:'.1em', cursor:'text', outline:'none' } }),
@@ -3957,7 +4311,7 @@ function App() {
                         editMode && (() => {
                           const base = slotBase(month.key, sel.id, nextSlot);
                           return e(LocationPhoto, { key: base, base, compact:true, placeholder:'Add another photo of ' + sel.name, photoIndex, epoch: imgEpoch, style:{ ...thumbStyle, borderStyle:'dashed' },
-                            onChange: (what) => { bumpImg(); if (what === 'uploaded') addPhotoSlot(sel.id, nextSlot); } });
+                            onChange: (what, info) => { bumpImg(); if (what === 'uploaded') { addPhotoSlot(sel.id, nextSlot); applyPhotoInfo(sel.id, nextSlot, info); } } });
                         })()
                       )
                     );
@@ -4608,7 +4962,9 @@ function App() {
           ? renderPrintPage()
           : (yearView ? renderYearPage() : renderMonthPage()),
       renderEventModal(),
-      renderDialog()
+      renderBackups(),
+      renderDialog(),
+      notice && e('div', { role:'status', style:{ position:'fixed', left:'50%', bottom:22, transform:'translateX(-50%)', maxWidth:'calc(100% - 32px)', background:'#2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:12, letterSpacing:'.04em', lineHeight:1.45, padding:'10px 16px', boxShadow:'4px 4px 0 rgba(42,37,30,0.18)', zIndex:65, animation:'heroFade .3s ease' } }, notice)
     )
   ))));
 }

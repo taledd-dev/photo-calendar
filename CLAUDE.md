@@ -161,9 +161,50 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `setUploadKey` / `clearUploadKey` (never prompts), `saveImage`/`removeImage`,
   `savePhotoVariants`/`removePhotoVariants` (resize + upload/delete both sizes),
   `loadCloudData`/`saveCloudData` (the shared `calendar-data.json`),
-  `loadData`/`saveData` (localStorage cache).
+  `loadData`/`saveData` (localStorage cache), `loadPhotoIndex` (`GET /list`),
+  `loadBackups` (`GET /backups` → `[{key, uploaded, size}]` newest first, or
+  null) / `loadBackup(key)` (one backup's `{version, savedAt, data}`).
 - **`resizeImage(file, maxEdge, quality)`** — canvas downscale to a JPEG blob
   (respects EXIF orientation).
+- **`readPhotoInfo(file)`** (+ `parseExifTiff`) — reads a JPEG's EXIF
+  (first 256 KB): `DateTimeOriginal` → `{ year:'YY', date }` and the GPS IFD →
+  `{ lat, lng }`; null when there's nothing. `LocationPhoto.uploadFile` runs it
+  alongside the upload and calls `onChange('uploaded', info)`; `App`'s
+  `applyPhotoInfo(locId, slot, info)` fills the slot's caption year **only if
+  empty** and the location's coordinates (+ region) **only if it has none**
+  (`coordsOf` null — i.e. owner-added spots), then shows a `showNotice` toast
+  ("From the photo: the year '24 and the map coordinates filled in."). HEIC
+  and PNG give nothing (not JPEG). Test harness: scratchpad `exif_test.js`
+  against Pillow-made JPEGs (`make_exif_jpegs.py`).
+- **Deep links.** The hash mirrors the view: `#/<year>` home,
+  `#/<year>/<monKey>[/<locId>]` (brief open), `#/<year>/map`,
+  `#/<year>/weather[/<locId>]`, `#/<year>/print` (owner; turns edit mode on
+  if the password is held, else falls back to home). In `App`: `routeHash()`
+  (state → hash), `routeTitle()` (→ `document.title`), `applyHash(hash)`
+  (hash → `setViewYear` + the `goTo*` calls; an unknown location id is kept in
+  `selectedLoc` so the brief opens once the cloud copy brings the location).
+  A mount effect applies the arrival hash and listens to `hashchange` (back/
+  forward); a state effect `pushState`s when the hash differs (first run only
+  `replaceState`s a missing hash — no extra history entry on arrival).
+- **Search.** `query`/`searchHits` (memo: name prefix > name > tag/where/idea/
+  when/kit/notes/links; max 8) and `searchBox()` — a nav-button-styled
+  `<input type=search>` ("Find a location") with a dropdown listbox (↑ ↓
+  Enter, Escape clears, blur closes after 150 ms); a hit calls
+  `goToMonth(i, loc.id)`. It sits at the end of `homeTools()` and, on month
+  pages, left of the edit switch in the row under the header rule. `/`
+  anywhere outside a field focuses it.
+- **Backups in the app (owner).** `⟲ Backups` (`backupsLink()`, beside the
+  edit switch on the home page) opens `renderBackups()` (zIndex 60, under the
+  dialog): the Worker's list with en-GB dates (`backupDate` from `uploaded`)
+  and sizes, "Download the current calendar" (`downloadCurrent`), and per
+  backup Download (`downloadBackup`) / Restore (`restoreBackup`: refuses
+  while the cloud is unsettled or local edits are pending, `askConfirm`
+  danger, then `Storage.saveCloudData(snap.data, key, cloudStamp.current)` —
+  the normal stamp check, so a 409/conflict adopts the newer copy and says so
+  — then `adoptCloud({data, savedAt})` + toast). The Worker backs up the
+  overwritten copy as usual, so a restore is itself undoable.
+- **`showNotice(text)`** — the bottom toast (`notice` state, 5 s), used by
+  the EXIF fill and restore.
 - **`keyActivate(handler)`** — Enter/Space keydown handler for the `role=button`
   divs/spans (month rows, tiles, lockups, agenda rows…); icon-only buttons carry
   `title` + `aria-label`; a `:focus-visible` ring is in the CSS.
@@ -253,13 +294,15 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   AuroraWatch); and the `WEATHER_GUIDE` cards (conditions / settings / tips
   per kind of shoot — editorial, edit the array). All fetches fail quietly.
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView` / `weatherView`. Navigation:
-  `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth`; the shared
+  `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth` (all mirrored
+  in the URL hash — see Deep links); the shared
   `navRow(showYearBtn)` renders the top buttons. Month pages: `[month picker]
   ‹ › | Map Weather | ← Home`, with the owner's "+ Add location" (`addLocBtn`)
-  at the foot of the nav column; home: the tools `Map Weather (⎙ Calendar =
-  print view, ⤓ Export = .ics — owner)` sit **under the intro on the left**
-  (`homeTools()`), the right column holds `‹ January →`, the year, legend
-  and edit switch. `monthPicker()` and `yearPicker(size)` are native
+  at the foot of the nav column and `[search] … [edit switch]` in the row
+  under the rule; home: the tools `Map Weather (⎙ Calendar =
+  print view, ⤓ Export = .ics — owner) [search]` sit **under the intro on the
+  left** (`homeTools()`), the right column holds `‹ January →`, the year,
+  legend and the edit switch (+ `⟲ Backups` for the owner). `monthPicker()` and `yearPicker(size)` are native
   `<select>`s styled in place (`appearance: none` + a chevron span) — the year is the quiet dotted-underline picker
   beside the month name (`'title'`), and `yearRow()` (label + `'small'`
   picker) on the home page. The year chips are gone.
@@ -339,8 +382,9 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `GET /list` returns every photo key (the site's photo index). The site only
   sends the lock header once it has seen the v2 response header, so it works
   with the old Worker too (client-side check only, no backups, thumbnail
-  probing) until the new file is pasted in. **Restore** = download a backup
-  from the R2 dashboard and upload it as `calendar-data.json`. The **print-
+  probing) until the new file is pasted in. **Restore** = the in-app Backups
+  list (home page, owner) — or by hand: download a backup from the R2
+  dashboard and upload it as `calendar-data.json`. The **print-
   copy lock** (GET of `-print` keys needs the password) is in the same file;
   the site works either way, since it always sends the header for them.
 - **Always syntax-check before publishing** — extract the inline script and run
@@ -352,8 +396,18 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   PY
   node --check /tmp/app.js
   ```
-- The environment can't reach the CDNs (React/d3) or R2, so the app can't be run
-  headless here — rely on the syntax check and ask the owner to test live.
+- **The app can be run headless here** now that React is self-hosted: serve
+  the folder (`python3 -m http.server 8123 --bind 127.0.0.1`) and drive it
+  with the pre-installed Playwright, aborting every outside host with
+  `context.route(/^https?:\/\/(?!127\.0\.0\.1)/, r => r.abort())` (the cloud
+  load then settles as "offline" and the UI still renders) — or answer the
+  Worker's URLs from the route handler to fake the cloud (the scratchpad
+  `smoke.js` / `restore.js` scripts do both: routes, search, backups modal,
+  restore + conflict, an EXIF upload). d3/Leaflet/Google Fonts stay
+  unreachable, so the map body and the mini map don't render. Setting
+  `localStorage['calendar:uploadKey']` makes the page the owner's. NB a
+  `page.goto` that only changes the hash is a same-document navigation —
+  go via `about:blank` for a real reload. Still have the owner test live.
 
 ## Next up: mobile / phone layout pass (not started)
 
