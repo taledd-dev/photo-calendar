@@ -4728,8 +4728,11 @@ function App() {
           packing.length > 0 && e('div', { style:rowStyle }, rowLabel('Packing', packed + ' of ' + packing.length),
             e('div', null,
               e('div', { style:{ height:5, background:'#EFE7D2', border:'1px solid #E6DECA', marginTop:6, marginBottom:8 } }, e('div', { style:{ height:'100%', width: Math.round(100 * packed / packing.length) + '%', background:'#54632F' } })),
+              // keep the pop-up short: the first few unpacked items, the rest on the page
               packed < packing.length
-                ? e(Checklist, { items: packing.filter(p => !p.done), onToggle:(id)=>togglePacking(t.id, id), compact:true })
+                ? e('div', null,
+                    e(Checklist, { items: packing.filter(p => !p.done).slice(0, 8), onToggle:(id)=>togglePacking(t.id, id), compact:true }),
+                    packing.length - packed > 8 && e('div', { style:{ marginTop:4, fontFamily:mono, fontSize:10, letterSpacing:'.06em', color:'#A89A7C' } }, '+ ' + (packing.length - packed - 8) + ' more still to pack — see the Trips page'))
                 : e('div', { style:{ fontSize:13.5, color:'#54632F' } }, 'All packed.'))),
           (t.notes || '').trim() && e('div', { style:rowStyle }, rowLabel('Notes'), e('div', { style:{ fontSize:14, color:'#3B3528', lineHeight:1.55, whiteSpace:'pre-wrap' } }, t.notes))
         ),
