@@ -1777,8 +1777,9 @@ function holidayEvents(year, monthIdx) {
 // Shrove Tuesday, Mothering Sunday and Easter Sunday (from Easter), Father's
 // Day and Remembrance Sunday (from the weekday), Burns Night, Valentine's,
 // Halloween, Bonfire Night, Remembrance Day, Christmas Eve/Day, Boxing Day
-// and New Year's Eve. Listed with the computed days first so that, when two
-// land on one date, the first keeps the day.
+// and New Year's Eve. Two names on one date both show (the corner text wraps
+// to a second line) — except Remembrance Day, which gives way to Remembrance
+// Sunday when the 11th is a Sunday.
 function namedDays(y) {
   const dow = (m, d) => new Date(Date.UTC(y, m, d)).getUTCDay();
   const nthSunday = (m, n) => 1 + ((7 - dow(m, 1)) % 7) + 7 * (n - 1);
@@ -1787,7 +1788,7 @@ function namedDays(y) {
   const all = [
     fromEaster(0, 'Easter Sunday'), fromEaster(-21, 'Mothering Sunday'), fromEaster(-47, 'Shrove Tuesday'),
     { month: 10, day: nthSunday(10, 2), label: 'Remembrance Sunday' }, { month: 5, day: nthSunday(5, 3), label: "Father's Day" },
-    { month: 0, day: 1, label: "New Year's Day" }, { month: 0, day: 25, label: 'Burns Night' },
+    { month: 0, day: 1, label: "New Year's Day" }, { month: 0, day: 25, label: 'Burns Night' }, { month: 0, day: 25, label: "St Dwynwen's Day" },
     { month: 1, day: 14, label: "Valentine's Day" },
     { month: 2, day: 1, label: "St David's Day" }, { month: 2, day: 17, label: "St Patrick's Day" },
     { month: 3, day: 23, label: "St George's Day" },
@@ -1795,11 +1796,11 @@ function namedDays(y) {
     { month: 10, day: 5, label: 'Bonfire Night' }, { month: 10, day: 11, label: 'Remembrance Day' }, { month: 10, day: 30, label: "St Andrew's Day" },
     { month: 11, day: 24, label: 'Christmas Eve' }, { month: 11, day: 25, label: 'Christmas Day' }, { month: 11, day: 26, label: 'Boxing Day' }, { month: 11, day: 31, label: "New Year's Eve" },
   ];
-  const seen = new Set();
-  return all.filter(d => { const k = d.month + '-' + d.day; if (seen.has(k)) return false; seen.add(k); return true; });
+  const remembranceSunday = nthSunday(10, 2);
+  return all.filter(d => !(d.label === 'Remembrance Day' && remembranceSunday === 11));
 }
 function namedDayEvents(year, monthIdx) {
-  return namedDays(year).filter(d => d.month === monthIdx).map(d => ({ id: 'nd-' + year + '-' + monthIdx + '-' + d.day, type: 'day', day: d.day, kind: 'named', label: d.label }));
+  return namedDays(year).filter(d => d.month === monthIdx).map((d, n) => ({ id: 'nd-' + year + '-' + monthIdx + '-' + d.day + '-' + n, type: 'day', day: d.day, kind: 'named', label: d.label }));
 }
 // Both kinds of day for one month's printed page, with the two switches:
 // where a bank holiday falls on a named day the name wins, and a substitute
@@ -4315,8 +4316,9 @@ function App() {
                 e('div', { key:di, style:{ padding:'1.6mm 2mm', minWidth:0 } },
                   d.inMonth && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1mm', minWidth:0 } },
                     e('span', { style:{ fontFamily:mono, fontSize:'3.6mm', fontWeight:500, color:'#7A6F58', flex:'none' } }, d.day),
-                    d.icons.length > 0 && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'1.2mm', minWidth:0, overflow:'hidden' } },
-                      d.icons.map(ic => e('span', { key:ic.ev.id, style:{ display:'inline-flex', alignItems:'center', gap:'1mm', minWidth:0, color:ic.accent } },
+                    // wraps so two names on one date stack on a second line
+                    d.icons.length > 0 && e('div', { style:{ display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'flex-end', gap:'0.6mm 1.2mm', minWidth:0, overflow:'hidden' } },
+                      d.icons.map(ic => e('span', { key:ic.ev.id, style:{ display:'inline-flex', alignItems:'center', gap:'1mm', minWidth:0, maxWidth:'100%', color:ic.accent } },
                         ic.icon && e(EventIcon, { name:ic.icon, size:'4mm' }),
                         ic.text && e('span', { style:{ fontFamily:mono, fontSize:'2.6mm', color:'#5A513B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, ic.text)))
                     )
