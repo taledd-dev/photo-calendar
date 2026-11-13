@@ -2016,17 +2016,20 @@ function buildWeeks(month, weekStart = 'Monday', compact = false) {
     if (!present.length) { weeks.push({ days: slice.map(d => ({ day: '', inMonth: false, icons: [] })), items: [], lanes: 0 }); continue; }
     const wkStart = present[0], wkEnd = present[present.length - 1];
     const raw = [];
-    // Icon events (nature/season windows, see eventIconKey) don't take a bar
-    // lane: they're listed per day instead — { ev, icon, first, accent }.
+    // "Corner" events don't take a bar lane; they're listed per day instead as
+    // { ev, icon, text, first, accent }: icon windows (nature/season, see
+    // eventIconKey) show just their picture — the key under the grid names
+    // them — and bank holidays (print) show just their name as small text.
     const dayIcons = slice.map(() => []);
     for (const ev of month.events) {
       const s = ev.start != null ? ev.start : ev.day;
       const e2 = ev.end != null ? ev.end : ev.day;
       if (e2 < wkStart || s > wkEnd) continue;
       const iconKey = eventIconKey(ev);
-      if (iconKey) {
+      if (iconKey || ev.kind === 'holiday') {
         const accent = styleOf(ev).accent;
-        slice.forEach((d, c) => { if (d != null && d >= s && d <= e2) dayIcons[c].push({ ev, icon: iconKey, first: d === s, accent }); });
+        const text = ev.kind === 'holiday' ? ev.label : null;
+        slice.forEach((d, c) => { if (d != null && d >= s && d <= e2) dayIcons[c].push({ ev, icon: iconKey, text, first: d === s, accent }); });
         continue;
       }
       const segS = Math.max(s, wkStart), segE = Math.min(e2, wkEnd);
@@ -4068,17 +4071,17 @@ function App() {
         // under the grid carries the labels instead).
         weeks.map((wk, wi) =>
           e('div', { key:wi, style:{ position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)', gridAutoRows: isMobile ? ('minmax(' + Math.max(54, 28 + wk.lanes * 22) + 'px,auto)') : 'minmax(120px,auto)', borderBottom:'1px solid #E2D9C2', backgroundImage:'repeating-linear-gradient(to right,#ECE3CD 0,#ECE3CD 1px,transparent 1px,transparent 14.2857%)' } },
-            // Day cells: the number on the left; any window icons for that day
-            // on the right (the label beside the icon on the window's first
-            // day, desktop only — phones have the agenda list for labels).
+            // Day cells: the number on the left; the day's corner items on the
+            // right — window icons (named in the legend below) and, when any,
+            // small corner text.
             wk.days.map((d, di) =>
               e('div', { key:di, style:{ padding: isMobile ? '4px 6px' : '7px 9px', minWidth:0 } },
                 d.inMonth && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:4, minWidth:0 } },
                   e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 11 : 12, fontWeight:500, color:'#7A6F58', flex:'none' } }, d.day),
                   d.icons.length > 0 && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap: isMobile ? 1 : 5, minWidth:0, overflow:'hidden' } },
                     d.icons.map(ic => e('span', { key:ic.ev.id, title:ic.ev.label, onClick: editMode ? () => openEventEditor(ic.ev.id) : undefined, style:{ display:'inline-flex', alignItems:'center', gap:4, minWidth:0, color:ic.accent, cursor: editMode ? 'pointer' : 'default' } },
-                      e(EventIcon, { name:ic.icon, size: isMobile ? 11 : 15 }),
-                      ic.first && !isMobile && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, color:'#5A513B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, ic.ev.label)))
+                      ic.icon && e(EventIcon, { name:ic.icon, size: isMobile ? 11 : 15 }),
+                      ic.text && !isMobile && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, color:'#5A513B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, ic.text)))
                   )
                 )
               )
@@ -4237,8 +4240,8 @@ function App() {
       const printable = pm.events.filter(ev => !ev.noPrint && !hiddenKinds.has(ev.kind))
         .concat(hiddenKinds.has('holiday') ? [] : holidayEvents(viewYear, i));
       const wks = buildWeeks({ ...pm, events: printable }, weekStart, { top: 30, step: 24 });
-      // the key: bar kinds in use, then each window icon with its dates
-      const legendKinds = kindOrder.filter(k => printable.some(ev => ev.kind === k && !eventIconKey(ev)));
+      // the key: bar kinds in use (bank holidays are self-naming corner text), then each window icon with its dates
+      const legendKinds = kindOrder.filter(k => k !== 'holiday' && printable.some(ev => ev.kind === k && !eventIconKey(ev)));
       const iconEvents = printable.filter(ev => eventIconKey(ev)).slice().sort((a, b) => (a.start != null ? a.start : a.day) - (b.start != null ? b.start : b.day));
       pages.push(label('l-' + m2.key + '-p', m2.name + ' — photo'));
       pages.push(e('div', { key:m2.key + '-photo', className:'print-sheet', style:{ background:'#F1EBDB' } },
@@ -4275,8 +4278,8 @@ function App() {
                     e('span', { style:{ fontFamily:mono, fontSize:'3.6mm', fontWeight:500, color:'#7A6F58', flex:'none' } }, d.day),
                     d.icons.length > 0 && e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'1.2mm', minWidth:0, overflow:'hidden' } },
                       d.icons.map(ic => e('span', { key:ic.ev.id, style:{ display:'inline-flex', alignItems:'center', gap:'1mm', minWidth:0, color:ic.accent } },
-                        e(EventIcon, { name:ic.icon, size:'4mm' }),
-                        ic.first && e('span', { style:{ fontFamily:mono, fontSize:'2.6mm', color:'#5A513B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, ic.ev.label)))
+                        ic.icon && e(EventIcon, { name:ic.icon, size:'4mm' }),
+                        ic.text && e('span', { style:{ fontFamily:mono, fontSize:'2.6mm', color:'#5A513B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', minWidth:0 } }, ic.text)))
                     )
                   )
                 )

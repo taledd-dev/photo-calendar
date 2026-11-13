@@ -218,7 +218,8 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `holidayEvents(year, monthIdx)`, computed: Easter via Meeus, Monday
   holidays, Christmas/Boxing substitutes; kind `holiday`, print-only, its own
   "Bank holiday" switch, always offered) are merged into each grid page's
-  events. The print grid uses `buildWeeks(..., { top:30, step:24 })`
+  events and drawn as small corner text beside the date, not bars (so they
+  aren't in the page key). The print grid uses `buildWeeks(..., { top:30, step:24 })`
   geometry with 21px bars and a per-page type key.
 - **Coming up** (home page, under the hero): `upcoming` memo — the next 7
   events within `UPCOMING_DAYS` (120) of *today* (real date, this year and
@@ -296,10 +297,10 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   handle also prints on every grid page of the printable calendar.
 - **Window icons.** Nature/season events show as a small inline-SVG picture
   in the corner of each day they cover (`EVENT_ICONS` catalogue, `EventIcon`
-  component, accent-coloured; label beside the icon on the first day on
-  desktop and in print; phones icon-only with the agenda list) instead of a
-  bar; the legend under the grid and the print key list each window with its
-  icon and dates. `eventIconKey(ev)`: explicit `ev.icon` (`'none'` = bar),
+  component, accent-coloured; **icon only, no label in the grid** — the
+  legend under the grid and the print key name each window with its dates)
+  instead of a bar. Bank holidays (print) use the same corner slot as small
+  text (`days[i].icons` items carry `icon` and/or `text`). `eventIconKey(ev)`: explicit `ev.icon` (`'none'` = bar),
   else a title keyword match (`ICON_KEYWORDS`/`defaultIconKey`) for
   nature/season kinds, else a bar. The editor's "Shown as" row (nature,
   season, custom kinds) offers Auto / Bar / each icon; only an explicit
