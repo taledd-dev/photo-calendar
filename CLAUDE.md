@@ -214,7 +214,11 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   per-event `noPrint` (checkbox in the event editor) **and**
   `data[0].printPrefs` = `{ hideKinds:[kind…], captions:bool }` — the
   "Print these event types" / "Photo captions" chips on the print page,
-  cloud-synced. The print grid uses `buildWeeks(..., { top:30, step:24 })`
+  cloud-synced. **UK bank holidays** (`ukBankHolidays(year)` /
+  `holidayEvents(year, monthIdx)`, computed: Easter via Meeus, Monday
+  holidays, Christmas/Boxing substitutes; kind `holiday`, print-only, its own
+  "Bank holiday" switch, always offered) are merged into each grid page's
+  events. The print grid uses `buildWeeks(..., { top:30, step:24 })`
   geometry with 21px bars and a per-page type key.
 - **Coming up** (home page, under the hero): `upcoming` memo — the next 7
   events within `UPCOMING_DAYS` (120) of *today* (real date, this year and

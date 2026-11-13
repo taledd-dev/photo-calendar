@@ -1733,6 +1733,47 @@ function seasonInstant(year, index) {
   return dateFromJd(jd);
 }
 
+// ── UK bank holidays (England & Wales), computed for any year: New Year's
+// Day, Good Friday and Easter Monday (from the Easter date), the early May,
+// spring and summer Monday holidays, Christmas and Boxing Day — with the
+// substitute weekdays when they fall at a weekend. One-off holidays
+// (coronations, jubilees) can't be predicted and aren't included. Shown on
+// the printable calendar only (its "Bank holiday" switch); checked against
+// the published 2026–2030 dates.
+function easterSunday(y) { // Meeus/Jones/Butcher
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e2 = b % 4;
+  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e2 + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1, day = ((h + l - 7 * m + 114) % 31) + 1;
+  return { month, day };
+}
+function ukBankHolidays(y) {
+  const dow = (m, d) => new Date(Date.UTC(y, m, d)).getUTCDay(); // 0 = Sunday
+  const firstMonday = (m) => 1 + ((8 - dow(m, 1)) % 7);
+  const lastMonday = (m) => { const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); return last - ((dow(m, last) + 6) % 7); };
+  const out = [];
+  const w1 = dow(0, 1);
+  out.push({ month: 0, day: w1 === 6 ? 3 : w1 === 0 ? 2 : 1, label: (w1 === 6 || w1 === 0) ? "New Year's Day (substitute)" : "New Year's Day" });
+  const E = easterSunday(y), easter = Date.UTC(y, E.month, E.day);
+  const shift = (days) => { const t = new Date(easter + days * 86400000); return { month: t.getUTCMonth(), day: t.getUTCDate() }; };
+  out.push({ ...shift(-2), label: 'Good Friday' });
+  out.push({ ...shift(1), label: 'Easter Monday' });
+  out.push({ month: 4, day: firstMonday(4), label: 'Early May bank holiday' });
+  out.push({ month: 4, day: lastMonday(4), label: 'Spring bank holiday' });
+  out.push({ month: 7, day: lastMonday(7), label: 'Summer bank holiday' });
+  const w25 = dow(11, 25);
+  if (w25 === 6) out.push({ month: 11, day: 27, label: 'Christmas Day (substitute)' }, { month: 11, day: 28, label: 'Boxing Day (substitute)' });
+  else if (w25 === 0) out.push({ month: 11, day: 26, label: 'Boxing Day' }, { month: 11, day: 27, label: 'Christmas Day (substitute)' });
+  else if (w25 === 5) out.push({ month: 11, day: 25, label: 'Christmas Day' }, { month: 11, day: 28, label: 'Boxing Day (substitute)' });
+  else out.push({ month: 11, day: 25, label: 'Christmas Day' }, { month: 11, day: 26, label: 'Boxing Day' });
+  return out;
+}
+// The bank holidays of one month as print-only events (kind 'holiday').
+function holidayEvents(year, monthIdx) {
+  return ukBankHolidays(year).filter(h => h.month === monthIdx).map(h => ({ id: 'bh-' + year + '-' + monthIdx + '-' + h.day, type: 'day', day: h.day, kind: 'holiday', label: h.label }));
+}
+
 // ── A whole year of events, computed. Moons are named (Harvest = the full
 // moon nearest the autumn equinox; a second full moon in a month is a Blue
 // Moon); eclipses come from the short table (they can't be computed simply —
@@ -1864,10 +1905,11 @@ const EVENT_STYLE = {
   nature:   { glyph: '',  bg: '#DEE3C5', fg: '#46562E', accent: '#5A6B2F' },
   season:   { glyph: '',  bg: '#E5E2D2', fg: '#5A513B', accent: '#9A8C6E' },
   photoop:  { glyph: '◉', bg: '#2A251E', fg: '#FBF7EC', accent: '#C7902F' },
+  holiday:  { glyph: '',  bg: '#EAE4D3', fg: '#5A513B', accent: '#8A7D63' }, // UK bank holidays (print)
 };
 
-const KIND_ORDER = ['photoop','fullmoon','newmoon','meteor','eclipse','nature','season'];
-const KIND_LABEL = { photoop:'Photo op', fullmoon:'Full moon', newmoon:'New moon', meteor:'Meteor', eclipse:'Eclipse', nature:'Nature', season:'Season window' };
+const KIND_ORDER = ['photoop','fullmoon','newmoon','meteor','eclipse','nature','season','holiday'];
+const KIND_LABEL = { photoop:'Photo op', fullmoon:'Full moon', newmoon:'New moon', meteor:'Meteor', eclipse:'Eclipse', nature:'Nature', season:'Season window', holiday:'Bank holiday' };
 
 // User-defined event types. They live on the events themselves — an event of a
 // custom type carries kind 'x-<slug>' plus its display label (kindLabel) and a
@@ -4142,6 +4184,7 @@ function App() {
       if (!seenKinds.has(ev.kind)) { seenKinds.add(ev.kind); if (isCustomKind(ev.kind)) customSeen.push(ev.kind); }
       if (isCustomKind(ev.kind) && !customLabels[ev.kind]) customLabels[ev.kind] = ev.kindLabel || 'Custom';
     }));
+    seenKinds.add('holiday'); // computed per year, so always on offer
     const kindOrder = KIND_ORDER.filter(k => seenKinds.has(k)).concat(customSeen);
     const kindLabel = (k) => KIND_LABEL[k] || customLabels[k] || k;
     const kindGlyph = (k) => (EVENT_STYLE[k] ? EVENT_STYLE[k].glyph : CUSTOM_KIND_GLYPH);
@@ -4190,7 +4233,9 @@ function App() {
     const dayNames = weekStart === 'Sunday' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     data.forEach((m2, i) => {
       const pm = monthForYear(m2, i);
-      const printable = pm.events.filter(ev => !ev.noPrint && !hiddenKinds.has(ev.kind));
+      // the year's events, plus the UK bank holidays computed for this year
+      const printable = pm.events.filter(ev => !ev.noPrint && !hiddenKinds.has(ev.kind))
+        .concat(hiddenKinds.has('holiday') ? [] : holidayEvents(viewYear, i));
       const wks = buildWeeks({ ...pm, events: printable }, weekStart, { top: 30, step: 24 });
       // the key: bar kinds in use, then each window icon with its dates
       const legendKinds = kindOrder.filter(k => printable.some(ev => ev.kind === k && !eventIconKey(ev)));
@@ -4315,6 +4360,7 @@ function App() {
         e('div', { style:{ fontFamily:mono, fontSize:11, color:'#8A7D63', letterSpacing:'.03em', lineHeight:1.6, maxWidth:'110ch' } },
           'In the print dialog choose A4, Landscape, default margins and 100% scale (switch "Background graphics" on if colours print pale); "Save as PDF" keeps a copy. ' +
           'Each month uses its ★-starred location’s photo, or its first location with a photo; its caption sits top-right of the month’s calendar page (the "Photo captions" switch above). ' +
+          'UK bank holidays (England & Wales, substitutes included) are worked out for the chosen year — the "Bank holiday" switch turns them off. ' +
           'Drop a photo onto the cover and back-cover sheets below. Untick "Shown on the printable calendar" in an event’s editor to keep a single event off. ' +
           'Photos now upload with a print-size copy (' + PRINT_MAX_EDGE + 'px); a sheet flagged "web size only" holds an older photo — drop it on again to replace it at print quality.' +
           (isMobile ? ' Best previewed and printed from a desktop browser.' : '')
