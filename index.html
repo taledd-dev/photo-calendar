@@ -89,6 +89,10 @@
     @media (hover: none) { .check-x { opacity: .7; } }
     .trip-card:hover { border-color: #B3A988 !important; }
     input[type=date].pp-date { appearance: none; -webkit-appearance: none; }
+    .area-input:empty::before { content: 'Area'; color: #B7AD90; }
+    .country-input:empty::before { content: 'Country'; color: #B7AD90; }
+    .lb-btn:hover { background: rgba(251,247,236,0.22) !important; }
+    .gal-tab:hover { color: #2A251E !important; }
     .pause-btn:hover { background: rgba(42,37,30,0.78) !important; }
     .pause-btn:active { transform: scale(0.94); }
     .map-chip:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.14) !important; }
@@ -1084,6 +1088,50 @@ function tripEventsFor(trips, monthIdx, year, data) {
     out.push({ id: 'trip:' + t.id, kind: 'trip', label: (t.name || 'Trip') + (locNames.length ? ' · ' + locNames.join(', ') : ''), start: s, end: en, tripId: t.id });
   });
   return out;
+}
+
+// ─── Places, visits, photo tags ──────────────────────────────────────────────
+// A "place" is the same spot wherever it appears in the calendar: locations
+// whose names match (ignoring case, punctuation and a leading "the") or whose
+// coordinates are within 800 m are one place. placeGroups(data) → { groups:
+// [{ id, label, members:[{ id, i, loc }] }], byId: { locId → group } } — the
+// gallery's "Place" grouping and the brief's "Same spot" links.
+function distKm(a, b) {
+  const dLat = (b[0] - a[0]) * RAD, dLng = (b[1] - a[1]) * RAD;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * RAD) * Math.cos(b[0] * RAD) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+function normPlaceKey(name) { return (name || '').toLowerCase().replace(/^the\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim(); }
+function placeGroups(data) {
+  const items = [];
+  data.forEach((m2, i) => m2.locations.forEach(l => items.push({ id: l.id, i, loc: l, key: normPlaceKey(l.name), c: coordsOf(l) })));
+  const parent = items.map((_, k) => k);
+  const find = (k) => parent[k] === k ? k : (parent[k] = find(parent[k]));
+  const union = (a, b) => { parent[find(a)] = find(b); };
+  for (let a = 0; a < items.length; a++) for (let b = a + 1; b < items.length; b++) {
+    const A = items[a], B = items[b];
+    if ((A.key && A.key === B.key) || (A.c && B.c && distKm(A.c, B.c) < 0.8)) union(a, b);
+  }
+  const groups = {}, byId = {};
+  items.forEach((it, k) => { const r = find(k); if (!groups[r]) groups[r] = { id: 'pg-' + it.id, label: it.loc.name, members: [] }; groups[r].members.push(it); byId[it.id] = groups[r]; });
+  return { groups: Object.values(groups), byId };
+}
+// Photo tags: typed as a comma-separated line, kept as a trimmed, de-duplicated list.
+function parseTags(text) {
+  const seen = new Set(), out = [];
+  (text || '').split(/[,;\n]+/).map(s => s.trim().replace(/\s+/g, ' ')).filter(Boolean).forEach(t => { const k = t.toLowerCase(); if (!seen.has(k) && t.length <= 40) { seen.add(k); out.push(t); } });
+  return out.slice(0, 12);
+}
+function todayYmd() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+// The area and country of a point, from OpenStreetMap's Nominatim (one call
+// per location, 1.1 s apart — their usage policy; cached by the owner into the
+// data, so it runs once). Area = county (Cornwall) or the nearest equivalent.
+async function lookupArea(lat, lng) {
+  const res = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=en&lat=' + lat.toFixed(5) + '&lon=' + lng.toFixed(5));
+  if (!res.ok) return null;
+  const j = await res.json(), a = j.address || {};
+  const area = a.county || a.state_district || a.region || a.state || a.province || a.island || a.municipality || '';
+  return { area: String(area).trim(), country: String(a.country || '').trim() };
 }
 
 // ─── Tides ───────────────────────────────────────────────────────────────────
@@ -3342,6 +3390,29 @@ function App() {
   const [weatherLoc, setWeatherLoc] = useState(null); // location the Weather page opens on
   const [tripsView, setTripsView] = useState(false);
   const [tripOpen, setTripOpen] = useState(null);     // the trip expanded on the Trips page
+  // Gallery page: the Photos tab (group / filter / sort state) or the Year in
+  // review tab; `lightbox` = { items, idx } while a photo is open full-size.
+  const [galleryView, setGalleryView] = useState(false);
+  const [galleryTab, setGalleryTab] = useState('photos');
+  const [galleryGroup, setGalleryGroup] = useState('place');
+  const [gallerySort, setGallerySort] = useState('month');
+  const [galleryF, setGalleryF] = useState({ region:'all', starred:false, visited:false, year:'', tag:'' });
+  const [lightbox, setLightbox] = useState(null);
+  const [geocoding, setGeocoding] = useState(null);   // { done, total } while areas are being looked up
+  const [visitDate, setVisitDate] = useState(todayYmd());
+  const [visitNote, setVisitNote] = useState('');
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (ev) => {
+      const typing = ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA' || ev.target.isContentEditable);
+      if (ev.key === 'Escape') { setLightbox(null); return; }
+      if (typing) return;
+      if (ev.key === 'ArrowLeft') setLightbox(lb => lb && ({ ...lb, idx: (lb.idx - 1 + lb.items.length) % lb.items.length }));
+      if (ev.key === 'ArrowRight') setLightbox(lb => lb && ({ ...lb, idx: (lb.idx + 1) % lb.items.length }));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightbox]);
   const [tplEditing, setTplEditing] = useState(false); // the usual-packing-list textarea on the Trips page
   // A trip opened as a pop-up (from a grid bar, a brief's trip pill or a
   // Coming-up card) — the reader stays on the page they were on.
@@ -3688,11 +3759,12 @@ function App() {
     });
   }, []);
 
-  const goToYear = () => { setMapView(false); setPrintView(false); setWeatherView(false); setTripsView(false); setYearView(true); };
-  const goToMap = () => { setPrintView(false); setWeatherView(false); setTripsView(false); setMapView(true); };
-  const goToPrint = () => { setMapView(false); setWeatherView(false); setTripsView(false); setPrintView(true); };
-  const goToWeather = (locId) => { setMapView(false); setPrintView(false); setTripsView(false); setWeatherLoc(locId || null); setWeatherView(true); };
-  const goToTrips = (tripId) => { setMapView(false); setPrintView(false); setWeatherView(false); setTripOpen(tripId || null); setTripsView(true); };
+  const goToYear = () => { setMapView(false); setPrintView(false); setWeatherView(false); setTripsView(false); setGalleryView(false); setYearView(true); };
+  const goToMap = () => { setPrintView(false); setWeatherView(false); setTripsView(false); setGalleryView(false); setMapView(true); };
+  const goToPrint = () => { setMapView(false); setWeatherView(false); setTripsView(false); setGalleryView(false); setPrintView(true); };
+  const goToWeather = (locId) => { setMapView(false); setPrintView(false); setTripsView(false); setGalleryView(false); setWeatherLoc(locId || null); setWeatherView(true); };
+  const goToTrips = (tripId) => { setMapView(false); setPrintView(false); setWeatherView(false); setGalleryView(false); setTripOpen(tripId || null); setTripsView(true); };
+  const goToGallery = (tab) => { setMapView(false); setPrintView(false); setWeatherView(false); setTripsView(false); if (tab) setGalleryTab(tab); setGalleryView(true); };
   const goToMonth = (idx, locId) => {
     const m = data[idx];
     if (!m) return;
@@ -3700,6 +3772,7 @@ function App() {
     setPrintView(false);
     setWeatherView(false);
     setTripsView(false);
+    setGalleryView(false);
     setYearView(false);
     setMonthIdx(idx);
     // Only an explicit deep link (year-page row, map card) opens a brief —
@@ -3715,6 +3788,7 @@ function App() {
     setPrintView(false);
     setWeatherView(false);
     setTripsView(false);
+    setGalleryView(false);
     if (next === 0) { setYearView(true); return; }
     const idx = next - 1;
     setYearView(false);
@@ -3732,6 +3806,7 @@ function App() {
   // copy lands) is kept in the state so the brief opens once the data arrives.
   const routeHash = () => {
     const y = '#/' + viewYear;
+    if (galleryView) return y + '/gallery' + (galleryTab === 'review' ? '/review' : '');
     if (tripsView) return y + '/trips' + (tripOpen ? '/' + encodeURIComponent(tripOpen) : '');
     if (weatherView) return y + '/weather' + (weatherLoc ? '/' + encodeURIComponent(weatherLoc) : '');
     if (mapView) return y + '/map';
@@ -3740,6 +3815,7 @@ function App() {
     return y + '/' + data[mi].key + (selectedLoc ? '/' + encodeURIComponent(selectedLoc) : '');
   };
   const routeTitle = () => {
+    if (galleryView) return galleryTab === 'review' ? 'Photoplan — ' + viewYear + ' in review' : 'Photoplan — Gallery';
     if (tripsView) return 'Photoplan — Trips';
     if (weatherView) return 'Photoplan — Weather';
     if (mapView) return 'Photoplan — Map';
@@ -3759,6 +3835,7 @@ function App() {
     if (seg === 'map') { goToMap(); return; }
     if (seg === 'weather') { goToWeather(parts[i + 1] || null); return; }
     if (seg === 'trips') { goToTrips(parts[i + 1] || null); return; }
+    if (seg === 'gallery') { goToGallery(parts[i + 1] === 'review' ? 'review' : 'photos'); return; }
     if (seg === 'print') { if (Storage.peekUploadKey()) { setEditMode(true); goToPrint(); } else goToYear(); return; } // owner only
     const idx = data.findIndex(m2 => m2.key === seg);
     if (idx !== -1) { goToMonth(idx, parts[i + 1] || null); return; }
@@ -3787,7 +3864,7 @@ function App() {
       return;
     }
     if (location.hash !== h) history.pushState(null, '', h);
-  }, [viewYear, yearView, mapView, printView, weatherView, weatherLoc, tripsView, tripOpen, mi, selectedLoc, editMode]);
+  }, [viewYear, yearView, mapView, printView, weatherView, weatherLoc, tripsView, tripOpen, galleryView, galleryTab, mi, selectedLoc, editMode]);
 
   // ── Search ─────────────────────────────────────────────────────────────────
   // A quick find across every location (name first, then tag, where, idea,
@@ -4093,6 +4170,58 @@ function App() {
   const addShot = (locId, text) => updateShots(locId, s => s.concat([{ id: newId('s'), text, done: false }]));
   const toggleShot = (locId, shotId) => updateShots(locId, s => s.map(x => x.id === shotId ? { ...x, done: !x.done } : x));
   const removeShot = (locId, shotId) => updateShots(locId, s => s.filter(x => x.id !== shotId));
+  // ── Places, visits, photo tags, areas ───────────────────────────────────────
+  const places = useMemo(() => placeGroups(data), [data]);
+  // Every photo in the calendar (the gallery's raw list): one entry per slot
+  // that exists in the photo index (all slots while the index is unknown).
+  const galleryItems = useMemo(() => {
+    const out = [];
+    data.forEach((m2, i) => m2.locations.forEach(loc => locPhotos(loc).forEach(p => {
+      const base = slotBase(m2.key, loc.id, p.slot);
+      if (photoIndex && !photoIndex.has(base + '-thumb')) return;
+      out.push({ key: base, base, i, month: m2, loc, slot: p.slot, year: (p.year || '').trim(), tags: p.tags || [], starred: m2.printLoc === loc.id, caption: photoCaption(loc, m2.name, p.year) });
+    })));
+    return out;
+  }, [data, photoIndex]);
+  // A visit: date + a short note, newest first. The log is per location.
+  const addVisit = (locId, date, note) => {
+    const d = parseYmd(date) ? date : todayYmd();
+    mutateData(dd => { for (const m2 of dd) { const loc = m2.locations.find(l => l.id === locId); if (loc) { loc.visits = (loc.visits || []).concat([{ id: newId('v'), date: d, note: (note || '').trim() }]).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0); break; } } });
+    setVisitNote('');
+  };
+  const removeVisit = (locId, id) => mutateData(dd => { for (const m2 of dd) { const loc = m2.locations.find(l => l.id === locId); if (loc) { loc.visits = (loc.visits || []).filter(v => v.id !== id); break; } } });
+  // Tags on one photo (materialises the photo list of a legacy single-photo location).
+  const setPhotoTags = (locId, slot, tags) => mutateData(dd => {
+    for (const m2 of dd) {
+      const loc = m2.locations.find(l => l.id === locId); if (!loc) continue;
+      const list = locPhotos(loc).map(p => ({ ...p }));
+      const p = list.find(x => x.slot === slot);
+      if (p) { if (tags.length) p.tags = tags; else delete p.tags; loc.photos = list; }
+      break;
+    }
+  });
+  // Star for print from anywhere (the tile's ★ uses the current month).
+  const togglePrintStarIn = (i, locId) => mutateData(dd => { const m2 = dd[i]; m2.printLoc = m2.printLoc === locId ? undefined : locId; });
+  // Fill in area + country for every location with coordinates that lacks
+  // one, from Nominatim — sequential, with a progress count; typed values win.
+  const fillAreas = async () => {
+    if (!ensureUnlocked(fillAreas)) return;
+    const todo = [];
+    data.forEach(m2 => m2.locations.forEach(l => { const c = coordsOf(l); if (c && (!(l.area || '').trim() || !(l.country || '').trim())) todo.push({ id: l.id, c }); }));
+    if (!todo.length) { showNotice('Every location with coordinates already has an area and a country.'); return; }
+    setGeocoding({ done: 0, total: todo.length });
+    const results = {};
+    for (let k = 0; k < todo.length; k++) {
+      try { results[todo[k].id] = await lookupArea(todo[k].c[0], todo[k].c[1]); } catch (_) {}
+      setGeocoding({ done: k + 1, total: todo.length });
+      if (k < todo.length - 1) await new Promise(r => setTimeout(r, 1100));
+    }
+    setGeocoding(null);
+    let filled = 0, missed = 0;
+    data.forEach(m2 => m2.locations.forEach(l => { const r = results[l.id]; if (!r) { if (todo.some(t => t.id === l.id)) missed++; return; } if (!(l.area || '').trim() && r.area) filled++; if (!(l.country || '').trim() && r.country) filled++; }));
+    mutateData(dd => dd.forEach(m2 => m2.locations.forEach(l => { const r = results[l.id]; if (!r) return; if (!(l.area || '').trim() && r.area) l.area = r.area; if (!(l.country || '').trim() && r.country) l.country = r.country; })));
+    showNotice(filled ? 'Filled in ' + filled + ' area and country names from OpenStreetMap' + (missed ? ' (' + missed + ' lookups failed — try again later)' : '') + '.' : 'OpenStreetMap could not be reached — try again in a moment.');
+  };
   // Coastal spots show the Tides row (owner switch, cloud-synced).
   const setLocTidal = (locId, on) => mutateData(d => { for (const m2 of d) { const loc = m2.locations.find(l => l.id === locId); if (loc) { if (on) loc.tidal = true; else delete loc.tidal; break; } } });
   // A photo's focus point (see FocusCtx): fx/fy as fractions, or null to reset
@@ -4366,6 +4495,7 @@ function App() {
   const printBtn = e('button', { className:'btn-hover', onClick:goToPrint, title:'The printable wall calendar for the selected year', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⎙'), ' Calendar');
   const weatherBtn = e('button', { className:'btn-hover', onClick:()=>goToWeather(null), title:'Forecasts for each location, and the conditions each kind of shoot wants', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '☁'), ' Weather');
   const tripsBtn = e('button', { className:'btn-hover', onClick:()=>goToTrips(null), title:'Planned trips — dates, locations, shot lists and packing lists', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:11, lineHeight:1, marginTop:-1, color:'#3F6A80' } }, '▲'), ' Trips');
+  const galleryBtn = e('button', { className:'btn-hover', onClick:()=>goToGallery(null), title:'Every photo, grouped by place, area, month, tag… and the year in review', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '▦'), ' Gallery');
   const icsBtn = e('button', { className:'btn-hover', onClick:downloadIcs, title:'Export the ' + viewYear + ' events as a calendar file (.ics) for your phone or desktop calendar', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⤓'), ' Export');
   // Month view keeps both arrows; the year view drops the right arrow (it's the
   // same as the January button) and sits the left arrow just before January.
@@ -4385,7 +4515,7 @@ function App() {
   // sits at the foot of the nav column, see addLocBtn).
   const navRow = (showYearBtn) => showYearBtn
     ? e('div', { style:navRowStyle },
-        monthPicker(), prevBtn, nextBtn, navDivider(), mapBtn, weatherBtn, tripsBtn, navDivider(),
+        monthPicker(), prevBtn, nextBtn, navDivider(), mapBtn, weatherBtn, tripsBtn, galleryBtn, navDivider(),
         e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home')
       )
     : e('div', { style:navRowStyle },
@@ -4425,7 +4555,7 @@ function App() {
   // The home page's tools (Map, Weather, the owner's Calendar + Export, and
   // the search) sit under the intro on the left, so the header doesn't tower
   // on the right.
-  const homeTools = () => e('div', { style:navRowStyle }, mapBtn, weatherBtn, tripsBtn, editMode && printBtn, editMode && icsBtn, searchBox());
+  const homeTools = () => e('div', { style:navRowStyle }, mapBtn, weatherBtn, tripsBtn, galleryBtn, editMode && printBtn, editMode && icsBtn, searchBox());
 
   // Year picker — a quiet native <select> on the year itself (dotted underline,
   // small chevron); switches the calendar grid + events, locations unaffected.
@@ -4658,7 +4788,7 @@ function App() {
         e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{ flex:'1 1 auto' }) } },
           e('div', { style:navRowStyle },
             e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
-            navDivider(), mapBtn, weatherBtn),
+            navDivider(), mapBtn, weatherBtn, galleryBtn),
           editToggle()
         )
       ),
@@ -4680,6 +4810,203 @@ function App() {
               e('textarea', { autoFocus:true, defaultValue:template, 'aria-label':'Usual packing list', onBlur:(ev)=>{ setPackingTemplate(ev.target.value); setTplEditing(false); }, onKeyDown:(ev)=>{ if (ev.key === 'Escape') setTplEditing(false); }, style:{ marginTop:8, width:'100%', maxWidth:560, minHeight:240, fontFamily:mono, fontSize:12, lineHeight:1.6, color:'#2A251E', background:'#FFFDF5', border:'1px solid #C9BD9F', borderRadius:3, padding:'8px 10px', outline:'none', resize:'vertical' } }))
           : quietBtn('✎ edit the usual packing list', ()=>setTplEditing(true)))
     );
+  };
+
+  // ─── Gallery page ─────────────────────────────────────────────────────────
+  // Every photo in the calendar (galleryItems), grouped by place / area /
+  // country / month / year taken / subject / tag / trip, filtered and sorted;
+  // a click opens the lightbox. The second tab is the selected year in
+  // review: visits logged, photos dated that year, trips and places. Owner
+  // tools: fill in areas & countries (Nominatim), tag and star in the lightbox.
+  const GROUP_OPTS = [['place','Place'],['area','Area'],['country','Country'],['month','Month'],['year','Year taken'],['subject','Subject'],['tag','Tag'],['trip','Trip'],['none','No grouping']];
+  const openLightbox = (list, it) => { const idx = list.indexOf(it); setLightbox({ items: list, idx: idx < 0 ? 0 : idx }); };
+  const renderGalleryPage = () => {
+    const mono = "'IBM Plex Mono',monospace";
+    const focusMap = (data[0] && data[0].photoFocus) || {};
+    const tagLabel = {};
+    galleryItems.forEach(it => it.tags.forEach(t => { const k = t.toLowerCase(); if (!tagLabel[k]) tagLabel[k] = t; }));
+    const allTags = Object.keys(tagLabel).sort();
+    const allYears = Array.from(new Set(galleryItems.map(it => it.year).filter(Boolean))).sort((a, b) => b.localeCompare(a));
+    const f = galleryF;
+    const setF = (patch) => setGalleryF(x => ({ ...x, ...patch }));
+    // filter → sort → group ([sortKey, label] per item; tag and trip can file an item under several)
+    const sorters = {
+      month: (a, b) => a.i - b.i || a.loc.name.localeCompare(b.loc.name) || a.slot - b.slot,
+      year: (a, b) => (b.year || '').localeCompare(a.year || '') || a.i - b.i || a.slot - b.slot,
+      name: (a, b) => a.loc.name.localeCompare(b.loc.name) || a.i - b.i || a.slot - b.slot,
+    };
+    const items = galleryItems.filter(it =>
+      (f.region === 'all' || (f.region === 'uk' ? it.loc.region === 'UK' : it.loc.region !== 'UK')) &&
+      (!f.starred || it.starred) && (!f.visited || it.loc.done) && (!f.year || it.year === f.year) && (!f.tag || it.tags.some(t => t.toLowerCase() === f.tag))
+    ).sort(sorters[gallerySort] || sorters.month);
+    const keysOf = (it) => {
+      switch (galleryGroup) {
+        case 'place': { const g = places.byId[it.loc.id]; return [[g.label.toLowerCase(), g.label]]; }
+        case 'area': { const a = (it.loc.area || '').trim(); return [[a ? a.toLowerCase() : '~', a || 'No area yet']]; }
+        case 'country': { const c = (it.loc.country || '').trim(); return [[c ? c.toLowerCase() : '~', c || 'No country yet']]; }
+        case 'month': return [[String(it.i).padStart(2, '0'), data[it.i].name]];
+        case 'year': return [[it.year ? String(100 - parseInt(it.year, 10)).padStart(3, '0') : '~', it.year ? "'" + it.year : 'No year yet']];
+        case 'subject': { const s = (it.loc.tag || '').trim(); return [[s ? s.toLowerCase() : '~', s || 'No subject']]; }
+        case 'tag': return it.tags.length ? it.tags.map(t => [t.toLowerCase(), tagLabel[t.toLowerCase()] || t]) : [['~', 'No tags yet']];
+        case 'trip': { const ts = trips.filter(t => (t.locIds || []).includes(it.loc.id)); return ts.length ? ts.map(t => [(t.start || '9999') + t.name.toLowerCase(), t.name + (t.start ? ' · ' + fmtTripDates(t) : '')]) : [['~', 'Not in a trip']]; }
+        default: return [['', '']];
+      }
+    };
+    const groupMap = new Map();
+    items.forEach(it => keysOf(it).forEach(([k, label]) => { if (!groupMap.has(k)) groupMap.set(k, { key: k, label, items: [] }); groupMap.get(k).items.push(it); }));
+    const groups = Array.from(groupMap.values()).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+    const flat = groups.flatMap(g => g.items);
+
+    const selCtl = (value, onChange, opts, label) => e('label', { style:{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71' } }, label,
+      e('span', { style:{ position:'relative', display:'inline-flex' } },
+        e('select', { value, onChange:(ev)=>onChange(ev.target.value), 'aria-label':label, style:{ appearance:'none', WebkitAppearance:'none', MozAppearance:'none', height:30, padding:'0 24px 0 9px', background:'#FBF7EC', border:'1px solid #C9BD9F', color:'#2A251E', fontFamily:mono, fontSize:11, letterSpacing:'.04em', textTransform:'none', cursor:'pointer', borderRadius:0 } }, opts.map(([v, l]) => e('option', { key:v, value:v }, l))),
+        e('span', { 'aria-hidden':'true', style:{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:10, color:'#54632F' } }, '▾')));
+    const chip = (on, text, onClick, title) => e('button', { onClick, title, 'aria-pressed': on ? 'true' : 'false', className:'map-chip', style:{ height:30, padding:'0 10px', background: on ? '#54632F' : '#FBF7EC', color: on ? '#FBF7EC' : '#5A513B', border:'1px solid ' + (on ? '#2A251E' : '#C9BD9F'), fontFamily:mono, fontSize:10.5, letterSpacing:'.08em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.10)' } }, text);
+    const sectionHead = (label, right) => e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:22, marginBottom:12 } },
+      e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:18, color:'#2A251E', whiteSpace:'nowrap' } }, label),
+      e('span', { style:{ flex:1, height:1, background:'#D2C7AC' } }),
+      right != null && e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', color:'#A89A7C', whiteSpace:'nowrap' } }, right));
+    const gridStyle = { display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(210px, 1fr))', gap: isMobile ? 10 : 14 };
+    const tile = (list) => (it) => e('div', { key: it.key, className:'tile', role:'button', tabIndex:0, 'aria-label': it.caption, onClick:()=>openLightbox(list, it), onKeyDown:keyActivate(()=>openLightbox(list, it)), style:{ background:'#FBF7EC', border:'1px solid #D2C7AC', cursor:'pointer', boxShadow:'0 1px 0 #C9BFA4', transition:'transform .15s, box-shadow .15s' } },
+      e('div', { style:{ position:'relative', aspectRatio:'3 / 2', background:'#EFE7D2', overflow:'hidden' } },
+        e('img', { src: Storage.photoUrl(it.base + '-thumb', imgEpoch || undefined), alt:'', loading:'lazy', onError:(ev)=>{ ev.currentTarget.style.display = 'none'; }, style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', ...focusStyle(focusMap, it.base) } }),
+        it.starred && e('span', { title:'Fronts the printed month', style:{ position:'absolute', top:6, right:6, width:21, height:21, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, lineHeight:1, border:'1.5px solid #8A6D1C', background:'#C9971C', color:'#FFFDF5' } }, '★')),
+      e('div', { style:{ padding:'6px 9px 7px' } },
+        e('div', { style:{ display:'flex', justifyContent:'space-between', gap:8, alignItems:'baseline' } },
+          e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:14, color:'#2A251E', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, it.loc.name),
+          e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', color: it.loc.region === 'UK' ? '#54632F' : '#9E4B26', whiteSpace:'nowrap' } }, it.month.name.slice(0, 3) + (it.year ? " '" + it.year : ''))),
+        (it.tags.length > 0 || (it.loc.area || '').trim()) && e('div', { style:{ marginTop:2, fontFamily:mono, fontSize:9, letterSpacing:'.06em', color:'#A89A7C', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, [(it.loc.area || '').trim(), it.tags.join(' · ')].filter(Boolean).join(' · '))));
+
+    const photosTab = () => e('div', null,
+      e('div', { style:{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:'10px 14px', marginBottom:6 } },
+        selCtl(galleryGroup, setGalleryGroup, GROUP_OPTS, 'Group by'),
+        e('span', { style:{ display:'inline-flex', gap:6 } }, chip(f.region === 'all', 'All', ()=>setF({ region:'all' })), chip(f.region === 'uk', 'UK', ()=>setF({ region:'uk' })), chip(f.region === 'int', 'International', ()=>setF({ region:'int' }))),
+        chip(f.starred, '★ Starred', ()=>setF({ starred: !f.starred }), 'Photos that front a printed month'),
+        chip(f.visited, '✓ Visited', ()=>setF({ visited: !f.visited }), 'Locations ticked as done'),
+        allYears.length > 0 && selCtl(f.year, (v)=>setF({ year:v }), [['', 'All years']].concat(allYears.map(y => [y, "'" + y])), 'Year'),
+        allTags.length > 0 && selCtl(f.tag, (v)=>setF({ tag:v }), [['', 'All tags']].concat(allTags.map(t => [t, tagLabel[t]])), 'Tag'),
+        selCtl(gallerySort, setGallerySort, [['month','Calendar order'],['year','Year taken'],['name','Name']], 'Sort'),
+        e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', color:'#A89A7C', marginLeft:'auto' } }, items.length + (items.length === 1 ? ' photo' : ' photos')),
+        editMode && e('button', { onClick: geocoding ? undefined : fillAreas, disabled: !!geocoding, title:'Look up the area (county) and country of every location with coordinates that has none, from OpenStreetMap', style:{ height:30, padding:'0 10px', background:'none', border:'1px dashed #C9BD9F', color:'#9C8F71', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', cursor: geocoding ? 'default' : 'pointer' } }, geocoding ? 'Looking up areas… ' + geocoding.done + ' / ' + geocoding.total : '⌖ fill in areas & countries')),
+      photoIndex === undefined
+        ? e('div', { style:{ marginTop:18, fontFamily:mono, fontSize:11, color:'#A89A7C', letterSpacing:'.06em' } }, 'Loading the photo list…')
+        : !galleryItems.length
+        ? e('div', { style:{ marginTop:18, border:'1px dashed #C2B695', background:'#F1EBDB', padding:'16px 18px', fontFamily:mono, fontSize:12, color:'#8A7D63', letterSpacing:'.02em' } }, 'No photos yet — drop one on a location in any month and it appears here.')
+        : !items.length
+        ? e('div', { style:{ marginTop:18, fontSize:14, color:'#8A7D63' } }, 'No photos match these filters.')
+        : groups.map(g => e('div', { key:g.key }, galleryGroup !== 'none' && sectionHead(g.label, g.items.length + (g.items.length === 1 ? ' photo' : ' photos')), e('div', { style:{ ...gridStyle, marginTop: galleryGroup === 'none' ? 18 : 0 } }, g.items.map(tile(flat))))));
+
+    const reviewTab = () => {
+      const ys = String(viewYear), yy = ys.slice(2);
+      const visits = [];
+      data.forEach((m2, i) => m2.locations.forEach(l => (l.visits || []).forEach(v => { if ((v.date || '').indexOf(ys) === 0) visits.push({ ...v, loc: l, i, month: m2 }); })));
+      visits.sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+      const yearPhotos = galleryItems.filter(it => it.year === yy).sort(sorters.month);
+      const yearTrips = trips.filter(t => (t.start || '').indexOf(ys) === 0 || (t.end || '').indexOf(ys) === 0).sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1);
+      const placeIds = new Set(visits.map(v => places.byId[v.loc.id].id).concat(yearPhotos.map(it => places.byId[it.loc.id].id)));
+      const named = (fld) => new Set(visits.map(v => (v.loc[fld] || '').trim()).concat(yearPhotos.map(it => (it.loc[fld] || '').trim())).filter(Boolean));
+      const areas = named('area'), countries = named('country');
+      const perMonth = data.map((m2, i) => ({ name: m2.name, i, visits: visits.filter(v => { const p = parseYmd(v.date); return p && p.m === i; }).length, photos: yearPhotos.filter(it => it.i === i).length }));
+      const maxBar = Math.max(1, ...perMonth.map(m => Math.max(m.visits, m.photos)));
+      const counts = {};
+      visits.forEach(v => { const g = places.byId[v.loc.id]; if (!counts[g.id]) counts[g.id] = { g, n: 0, i: v.i, locId: v.loc.id }; counts[g.id].n++; });
+      const top = Object.values(counts).sort((a, b) => b.n - a.n).slice(0, 6);
+      const stat = (n, label) => e('div', { key:label, style:{ flex:'1 1 110px', background:'#FBF7EC', border:'1px solid #D2C7AC', padding:'12px 14px' } },
+        e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:30, lineHeight:1, color:'#2A251E' } }, n),
+        e('div', { style:{ marginTop:6, fontFamily:mono, fontSize:9.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71' } }, label));
+      const empty = (text) => e('div', { style:{ fontSize:14, color:'#8A7D63', lineHeight:1.5 } }, text);
+      const rowBtn = (key, onClick, left, right) => e('button', { key, className:'loc-row', onClick, style:{ width:'100%', display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:12, padding:'7px 8px', background:'none', border:'none', borderBottom:'1px solid #EDE5D1', cursor:'pointer', textAlign:'left' } }, left, right);
+      return e('div', null,
+        e('div', { style:{ display:'flex', alignItems:'baseline', gap:16, flexWrap:'wrap', marginBottom:16 } }, yearRow(), e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.06em', color:'#B7AD90' } }, 'visits logged · photos dated that year · trips · places')),
+        e('div', { style:{ display:'flex', gap:10, flexWrap:'wrap' } }, stat(visits.length, 'Visits logged'), stat(yearPhotos.length, 'Photos taken'), stat(yearTrips.length, 'Trips'), stat(placeIds.size, 'Places'), stat(areas.size, 'Areas'), stat(countries.size, 'Countries')),
+        sectionHead('Month by month', 'visits in green · photos in gold'),
+        e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(12, 1fr)', gap:isMobile?2:4 } }, perMonth.map(m => e('button', { key:m.i, onClick:()=>goToMonth(m.i, null), title: m.name + ': ' + m.visits + (m.visits === 1 ? ' visit · ' : ' visits · ') + m.photos + (m.photos === 1 ? ' photo' : ' photos'), style:{ display:'flex', flexDirection:'column', alignItems:'center', gap:5, padding:'6px 2px', background:'none', border:'none', cursor:'pointer' } },
+          e('div', { style:{ width:'100%', height:64, display:'flex', alignItems:'flex-end', justifyContent:'center', gap:2 } },
+            e('div', { style:{ width:'36%', height: (m.visits ? Math.max(3, Math.round(64 * m.visits / maxBar)) : 0) + 'px', background:'#54632F' } }),
+            e('div', { style:{ width:'36%', height: (m.photos ? Math.max(3, Math.round(64 * m.photos / maxBar)) : 0) + 'px', background:'#C9971C' } })),
+          e('span', { style:{ fontFamily:mono, fontSize:isMobile?8.5:9.5, letterSpacing:'.06em', color:'#8A7D63' } }, m.name.slice(0, 3))))),
+        e('div', { style:{ display:'flex', gap:24, flexWrap:'wrap' } },
+          e('div', { style:{ flex:'1 1 280px', minWidth:0 } }, sectionHead('Most visited'),
+            top.length ? top.map(x => rowBtn(x.g.id, ()=>goToMonth(x.i, x.locId), e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'#2A251E' } }, x.g.label), e('span', { style:{ fontFamily:mono, fontSize:10.5, color:'#8A7D63', whiteSpace:'nowrap' } }, x.n + (x.n === 1 ? ' visit' : ' visits')))) : empty('No visits logged for ' + viewYear + ' yet — log them in a location\'s Visits row.')),
+          e('div', { style:{ flex:'1 1 280px', minWidth:0 } }, sectionHead('Trips'),
+            yearTrips.length ? yearTrips.map(t => rowBtn(t.id, ()=>setTripPeek(t.id), e('span', { style:{ display:'inline-flex', alignItems:'center', gap:8 } }, e('span', { style:{ color:'#3F6A80', fontSize:11 } }, '▲'), e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'#2A251E' } }, t.name)), e('span', { style:{ fontFamily:mono, fontSize:10.5, color:'#8A7D63', whiteSpace:'nowrap' } }, fmtTripDates(t)))) : empty('No trips in ' + viewYear + '.'))),
+        sectionHead('Visit log', visits.length ? visits.length + (visits.length === 1 ? ' visit' : ' visits') : null),
+        visits.length
+          ? e('div', null, visits.map(v => rowBtn(v.id, ()=>goToMonth(v.i, v.loc.id),
+              e('span', { style:{ display:'flex', alignItems:'baseline', gap:12, minWidth:0, flexWrap:'wrap' } },
+                e('span', { style:{ fontFamily:mono, fontSize:11, color:'#5A513B', whiteSpace:'nowrap' } }, fmtTripDates({ start: v.date })),
+                e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'#2A251E' } }, v.loc.name),
+                v.note && e('span', { style:{ fontSize:14, color:'#6E6450' } }, v.note)),
+              e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.1em', textTransform:'uppercase', color: v.loc.region === 'UK' ? '#54632F' : '#9E4B26', whiteSpace:'nowrap' } }, v.month.name))))
+          : empty('Nothing logged yet. Each location brief has a Visits row — a date and a line about how it went.'),
+        sectionHead('Photos taken in ' + viewYear, yearPhotos.length ? yearPhotos.length + (yearPhotos.length === 1 ? ' photo' : ' photos') : null),
+        yearPhotos.length ? e('div', { style:gridStyle }, yearPhotos.map(tile(yearPhotos))) : empty("No photos dated '" + yy + " yet — the year under each photo in its brief (or the camera's date on upload) puts it here.")
+      );
+    };
+
+    const tabBtn = (key, label) => e('button', { className:'gal-tab', role:'tab', onClick:()=>setGalleryTab(key), 'aria-selected': galleryTab === key ? 'true' : 'false', style:{ background:'none', border:'none', borderBottom:'2px solid ' + (galleryTab === key ? '#54632F' : 'transparent'), padding:'8px 2px 10px', marginBottom:-1, cursor:'pointer', fontFamily:mono, fontSize:11, letterSpacing:'.14em', textTransform:'uppercase', color: galleryTab === key ? '#2A251E' : '#8A7D63' } }, label);
+    return e('div', null,
+      e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
+        e('div', { style: isMobile ? {} : { flex:'1 1 380px', minWidth:0 } },
+          e('div', { onClick:goToYear, onKeyDown:keyActivate(goToYear), role:'button', tabIndex:0, title:'Back to the home page', style:{ display:'inline-flex', alignItems:'center', gap:9, cursor:'pointer' } },
+            e('img', { src:LOGO_SRC, alt:'', style:{ height:24, width:'auto', display:'block' } }),
+            e('div', { style:{ fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, fontSize:12.5, letterSpacing:'0.24em', textTransform:'uppercase', color:'#201e1d' } }, 'Photoplan')
+          ),
+          e('h1', { style:{ margin:'6px 0 0', fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, 'Gallery'),
+          e('div', { style:{ marginTop:10, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'46ch', lineHeight:1.5 } }, 'Every photo in the calendar, gathered by place, area, month or tag — and the year in review: where you went, what you brought back.')
+        ),
+        e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{ flex:'1 1 auto' }) } },
+          e('div', { style:navRowStyle },
+            e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
+            navDivider(), mapBtn, tripsBtn),
+          editToggle()
+        )
+      ),
+      e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 0':'22px 0 0' } }),
+      e('div', { role:'tablist', style:{ display:'flex', gap:22, borderBottom:'1px solid #D2C7AC', marginBottom:18 } }, tabBtn('photos', 'Photos · ' + galleryItems.length), tabBtn('review', 'Year in review · ' + viewYear)),
+      galleryTab === 'review' ? reviewTab() : photosTab()
+    );
+  };
+
+  // ─── Lightbox ─────────────────────────────────────────────────────────────
+  // One photo full-size over the page, with ‹ › through the list it came
+  // from (arrow keys too), the caption and meta, a way to its brief, and for
+  // the owner the photo's tags and the print star.
+  const renderLightbox = () => {
+    if (!lightbox) return null;
+    const stale = lightbox.items[lightbox.idx];
+    if (!stale) return null;
+    const it = galleryItems.find(x => x.key === stale.key) || stale; // live tags / star
+    const mono = "'IBM Plex Mono',monospace";
+    const close = () => setLightbox(null);
+    const go = (d) => setLightbox(lb => lb && ({ ...lb, idx: (lb.idx + d + lb.items.length) % lb.items.length }));
+    const many = lightbox.items.length > 1;
+    const roundBtn = (extra) => ({ width:40, height:40, borderRadius:'50%', background:'rgba(251,247,236,0.12)', border:'1px solid rgba(251,247,236,0.4)', color:'#FBF7EC', lineHeight:1, cursor:'pointer', zIndex:2, display:'flex', alignItems:'center', justifyContent:'center', padding:0, ...extra });
+    const meta = [it.month.name + (it.year ? " '" + it.year : ''), [(it.loc.area || '').trim(), (it.loc.country || '').trim()].filter(Boolean).join(', '), (it.loc.tag || '').trim()].filter(Boolean).join(' · ');
+    return e('div', { onClick:close, role:'dialog', 'aria-modal':'true', 'aria-label': it.caption, style:{ position:'fixed', inset:0, background:'rgba(20,18,14,0.88)', zIndex:60, display:'flex', alignItems:'center', justifyContent:'center', padding: isMobile ? '48px 8px 10px' : '24px 72px' } },
+      many && e('button', { className:'lb-btn', onClick:(ev)=>{ ev.stopPropagation(); go(-1); }, 'aria-label':'Previous photo', style:roundBtn({ position:'absolute', left:isMobile?6:16, top:'50%', transform:'translateY(-50%)', fontSize:26 }) }, '‹'),
+      many && e('button', { className:'lb-btn', onClick:(ev)=>{ ev.stopPropagation(); go(1); }, 'aria-label':'Next photo', style:roundBtn({ position:'absolute', right:isMobile?6:16, top:'50%', transform:'translateY(-50%)', fontSize:26 }) }, '›'),
+      e('button', { className:'lb-btn', onClick:close, 'aria-label':'Close', style:roundBtn({ position:'absolute', top:12, right:12, width:36, height:36, fontSize:20 }) }, '×'),
+      e('div', { onClick:(ev)=>ev.stopPropagation(), style:{ width:'100%', maxWidth:1200, display:'flex', flexDirection:'column' } },
+        e('div', { style:{ background:'#000', display:'flex', alignItems:'center', justifyContent:'center' } },
+          e('img', { key:it.base, src: Storage.photoUrl(it.base, imgEpoch || undefined), alt: it.caption, style:{ maxWidth:'100%', maxHeight: isMobile ? '58vh' : '72vh', objectFit:'contain', display:'block' } })),
+        e('div', { style:{ background:'#FBF7EC', border:'1px solid #2A251E', borderTop:'none', padding:'10px 14px', display:'flex', flexWrap:'wrap', alignItems:'center', gap:'8px 16px' } },
+          e('div', { style:{ minWidth:0, flex:'1 1 260px' } },
+            e('div', { style:{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' } },
+              e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:17, color:'#2A251E' } }, it.loc.name),
+              e('span', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color: it.loc.region === 'UK' ? '#54632F' : '#9E4B26' } }, meta),
+              many && e('span', { style:{ fontFamily:mono, fontSize:10, color:'#A89A7C' } }, (lightbox.idx + 1) + ' / ' + lightbox.items.length)),
+            editMode
+              ? e('div', { style:{ marginTop:6, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' } },
+                  e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71' } }, 'Tags'),
+                  e('input', { key:'tags-' + it.key, defaultValue: it.tags.join(', '), placeholder:'portfolio, long exposure, print candidate…', 'aria-label':'Photo tags, comma-separated',
+                    onBlur:(ev)=>{ const next = parseTags(ev.target.value); if (next.join('|') !== it.tags.join('|')) setPhotoTags(it.loc.id, it.slot, next); },
+                    onKeyDown:(ev)=>{ if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); } },
+                    style:{ flex:'1 1 220px', minWidth:0, height:28, padding:'0 9px', background:'#FFFDF5', border:'1px solid #C9BD9F', color:'#2A251E', fontFamily:mono, fontSize:11.5, outline:'none', borderRadius:0 } }))
+              : it.tags.length > 0 && e('div', { style:{ marginTop:5, display:'flex', gap:6, flexWrap:'wrap' } }, it.tags.map(t => e('span', { key:t, style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.06em', padding:'2px 7px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B' } }, t)))),
+          e('div', { style:{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' } },
+            editMode && e('button', { onClick:()=>togglePrintStarIn(it.i, it.loc.id), 'aria-pressed': it.starred ? 'true' : 'false', title: it.starred ? 'Starred — this location fronts the printed month (click to unstar)' : 'Star — use this location on the printed month', style:{ height:30, padding:'0 10px', background: it.starred ? '#C9971C' : 'none', border:'1px solid ' + (it.starred ? '#8A6D1C' : '#C9BD9F'), color: it.starred ? '#FFFDF5' : '#8A7D63', fontFamily:mono, fontSize:10.5, letterSpacing:'.08em', textTransform:'uppercase', cursor:'pointer' } }, '★ ' + (it.starred ? 'Starred' : 'Star')),
+            e('button', { className:'btn-hover', onClick:()=>{ close(); goToMonth(it.i, it.loc.id); }, style:{ height:30, padding:'0 12px', background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:mono, fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.14)' } }, 'Open brief →')))));
   };
 
   // ─── Trip pop-up ──────────────────────────────────────────────────────────
@@ -5107,6 +5434,16 @@ function App() {
                       e(Editable, { key:'where-'+sel.id, tag:'div', value:sel.where, onCommit:(t)=>editField(sel.id,'where',t), title:'Click to edit', style:{ fontSize:15, color:'#2A251E', cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
                     )
                   ),
+                  // Area & country — the gallery's groupings (typed here, or
+                  // filled in from OpenStreetMap on the Gallery page). view-only: when set.
+                  (editMode || (sel.area || '').trim() || (sel.country || '').trim()) && e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                    e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Area'),
+                    e('div', { style:{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' } },
+                      e(Editable, { key:'area-'+sel.id, tag:'span', value: sel.area || '', onCommit:(t)=>editField(sel.id,'area',t), title:'The area — Cornwall, Lake District, Lofoten…', className:'area-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, padding:'4px 10px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:70, cursor:'text', outline:'none' } }),
+                      e(Editable, { key:'country-'+sel.id, tag:'span', value: sel.country || '', onCommit:(t)=>editField(sel.id,'country',t), title:'The country', className:'country-input', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:12, padding:'4px 10px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', minWidth:70, cursor:'text', outline:'none' } }),
+                      editMode && !((sel.area || '').trim() && (sel.country || '').trim()) && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#B7AD90' } }, 'type, or fill in from the Gallery page')
+                    )
+                  ),
                   // Idea
                   e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
                     e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Idea'),
@@ -5127,6 +5464,25 @@ function App() {
                       e(Checklist, { key:'shots-'+sel.id, items:list, onToggle:(id)=>toggleShot(sel.id, id), onAdd:(t)=>addShot(sel.id, t), onRemove:(id)=>removeShot(sel.id, id), placeholder:'Add a shot to get here and press Enter' })
                     );
                   })(),
+                  // Visits — the log of when you actually went (date + a short
+                  // note), newest first; the owner logs one inline. view-only: when any.
+                  (editMode || (sel.visits || []).length > 0) && (() => {
+                    const mono = "'IBM Plex Mono',monospace";
+                    const list = (sel.visits || []).slice().sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+                    return e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                      e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Visits',
+                        list.length > 0 && e('div', { style:{ marginTop:3, fontSize:9.5, letterSpacing:'.06em', textTransform:'none', color:'#B7AD90' } }, list.length + ' logged')),
+                      e('div', null,
+                        list.map(v => e('div', { key:v.id, className:'check-row', style:{ display:'flex', alignItems:'baseline', gap:10, padding:'3px 0' } },
+                          e('span', { style:{ fontFamily:mono, fontSize:11, color:'#5A513B', whiteSpace:'nowrap' } }, fmtTripDates({ start: v.date })),
+                          e('span', { style:{ flex:1, fontSize:14, color: v.note ? '#3B3528' : '#B7AD90', lineHeight:1.45 } }, v.note || '—'),
+                          editMode && e('button', { className:'check-x', onClick:()=>removeVisit(sel.id, v.id), title:'Remove this visit', 'aria-label':'Remove the visit of ' + v.date, style:{ flex:'none', width:18, height:18, padding:0, background:'none', border:'none', color:'#B7AD90', cursor:'pointer', fontSize:14, lineHeight:1, fontFamily:"'Spectral',serif" } }, '×'))),
+                        editMode && e('form', { onSubmit:(ev)=>{ ev.preventDefault(); addVisit(sel.id, visitDate, visitNote); }, style:{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', marginTop: list.length ? 8 : 0 } },
+                          e('input', { type:'date', className:'pp-date', value: visitDate, onChange:(ev)=>setVisitDate(ev.target.value), 'aria-label':'Visit date', style:{ height:30, padding:'0 8px', background:'#FFFDF5', border:'1px solid #C9BD9F', color:'#2A251E', fontFamily:mono, fontSize:12, borderRadius:0 } }),
+                          e('input', { value: visitNote, onChange:(ev)=>setVisitNote(ev.target.value), placeholder:'How was it? Conditions, what worked…', 'aria-label':'Visit note', style:{ flex:'1 1 200px', height:30, padding:'0 10px', background:'#FFFDF5', border:'1px solid #C9BD9F', color:'#2A251E', fontFamily:"'Spectral',serif", fontSize:14, outline:'none', borderRadius:0 } }),
+                          e('button', { type:'submit', style:{ height:30, padding:'0 12px', background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:mono, fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer' } }, '+ Log visit')))
+                    );
+                  })(),
                   // Trips — the planned trips this spot is part of (chips open
                   // the trip); the owner can add it to another trip.
                   (() => {
@@ -5143,6 +5499,20 @@ function App() {
                           e('option', { value:'' }, '+ add to a trip…'),
                           others.map(t => e('option', { key:t.id, value:t.id }, t.name)))
                       )
+                    );
+                  })(),
+                  // Same spot — this place's other entries (other months),
+                  // matched by name or by being within 800 m (placeGroups).
+                  (() => {
+                    const g = places.byId[sel.id];
+                    const others = g ? g.members.filter(m2 => m2.id !== sel.id) : [];
+                    if (!others.length) return null;
+                    const mono = "'IBM Plex Mono',monospace";
+                    return e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                      e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Same spot'),
+                      e('div', { style:{ display:'flex', flexWrap:'wrap', gap:7, alignItems:'center' } },
+                        others.map(m2 => e('button', { key:m2.id, className:'map-chip', onClick:()=>goToMonth(m2.i, m2.id), title:'Open this entry', style:{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', padding:'4px 9px', background:'#EFE7D2', border:'1px solid #DDD2B8', color:'#5A513B', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.08)' } }, data[m2.i].name, e('span', { style:{ color:'#A89A7C' } }, '· ' + m2.loc.name))),
+                        e('button', { className:'quiet-link', onClick:()=>{ setGalleryGroup('place'); goToGallery('photos'); }, style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', textTransform:'uppercase', color:'#9C8F71', textDecoration:'underline', textUnderlineOffset:3 } }, 'all photos of this place →'))
                     );
                   })(),
                   // Light — computed for the brief's day (see skyDay) at this
@@ -5819,11 +6189,13 @@ function App() {
   return e(EditCtx.Provider, { value: editMode }, e(ConfirmCtx.Provider, { value: askConfirm }, e(FocusCtx.Provider, { value: { map: (data[0] && data[0].photoFocus) || {}, set: editMode ? setPhotoFocus : null } }, e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       renderCloudBanner(),
-      tripsView
+      galleryView
+        ? renderGalleryPage()
+        : tripsView
         ? renderTripsPage()
         : weatherView
         ? e(WeatherView, { data, initialLocId: weatherLoc, defaultLocId: data[0] && data[0].weatherDefault, onSetDefault: editMode ? setWeatherDefault : null, onBack: goToYear, onOpenMonth: goToMonth, isMobile,
-            navControl: e('div', { style:navRowStyle }, e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'), navDivider(), mapBtn, tripsBtn) })
+            navControl: e('div', { style:navRowStyle }, e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'), navDivider(), mapBtn, tripsBtn, galleryBtn) })
         : mapView
         ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro, editMode, editControl: editToggle() })
         : (printView && editMode)
@@ -5832,6 +6204,7 @@ function App() {
       renderEventModal(),
       renderBackups(),
       renderTripPeek(),
+      renderLightbox(),
       renderDialog(),
       notice && e('div', { role:'status', style:{ position:'fixed', left:'50%', bottom:22, transform:'translateX(-50%)', maxWidth:'calc(100% - 32px)', background:'#2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:12, letterSpacing:'.04em', lineHeight:1.45, padding:'10px 16px', boxShadow:'4px 4px 0 rgba(42,37,30,0.18)', zIndex:65, animation:'heroFade .3s ease' } }, notice)
     )

@@ -310,6 +310,45 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   nearest cell with data, so coordinates a little inland still work; near
   estuaries/headlands it may be the wrong side. Synthetic-tide test:
   scratchpad `tide_test.js`.
+- **Places, area & country, visits, photo tags** (Batch 4 data):
+  `placeGroups(data)` unions locations with the same normalised name
+  (`normPlaceKey`) or coordinates within 800 m (`distKm`) into places →
+  `{ groups, byId }` (`places` memo in `App`): the gallery's Place grouping
+  and the brief's **Same spot** row (chips to the other months' entries + "all
+  photos of this place →"). `loc.area` / `loc.country` — the brief's **Area**
+  row (two Editables, after Where; shown to visitors when set) — typed, or
+  filled in by the Gallery page's owner button "⌖ fill in areas & countries"
+  (`fillAreas` → `lookupArea(lat, lng)` = Nominatim reverse geocode, zoom 10,
+  `county || state_district || region || state …` + `country`, one call per
+  location 1.1 s apart with a `geocoding {done,total}` progress; only
+  locations lacking a value; typed values are never overwritten).
+  `loc.visits = [{ id, date:'YYYY-MM-DD', note }]` — the brief's **Visits**
+  row (after Shots; list newest first; owner form: date (`visitDate`, default
+  today) + note → `addVisit`, × → `removeVisit`). Photo tags live on the
+  photo entry (`loc.photos[i].tags`, `setPhotoTags(locId, slot, tags)`
+  materialises a legacy single photo; `parseTags` splits a comma line, dedupes,
+  max 12). `togglePrintStarIn(i, locId)` stars from outside the month page.
+- **Gallery page** (`galleryView`, tabs `galleryTab` 'photos' | 'review',
+  route `#/<year>/gallery[/review]`, "▦ Gallery" on home/month/weather/trips
+  navs, `renderGalleryPage` in `App`): `galleryItems` memo = one entry per
+  photo slot present in the photo index (`{ key, base, i, month, loc, slot,
+  year, tags, starred, caption }`). Photos tab: **Group by** (`galleryGroup`:
+  place / area / country / month / year taken / subject (= `loc.tag`) / tag /
+  trip / none — tag and trip can file a photo under several groups), filters
+  (`galleryF`: region all/uk/int, ★ starred = the month's print pick,
+  ✓ visited = `loc.done`, year taken, tag), **Sort** (`gallerySort`: calendar
+  order / year taken / name), a per-group count, and 3:2 tiles (thumb +
+  `focusStyle`, ★ badge, name, Mon 'YY, area · tags). **Year in review** tab
+  (for `viewYear`, with `yearRow()`): stat tiles (visits logged, photos dated
+  that year, trips, places, areas, countries), a 12-month bar strip (visits
+  green, photos gold; click → month), Most visited (by place), Trips (→
+  pop-up), the Visit log (→ brief) and the year's photos. **Lightbox**
+  (`lightbox = { items, idx }`, `openLightbox(list, it)`, `renderLightbox`,
+  zIndex 60): hero image, ‹ › / arrow keys / Escape (an effect on `lightbox`),
+  caption + meta (month 'YY · area, country · subject), counter, "Open brief
+  →", owner: a comma-separated **Tags** input (saves on blur/Enter) and the
+  **★ Star** toggle; reads the live item from `galleryItems` so edits show
+  at once.
 - **`LinksField` / `parseLinks`** — per-location links (`loc.links`, text, one
   per line, `Label | url` or a bare address) shown as chips in a "Links" row
   under Parking; owner edits via an "edit" button → textarea. **`NotesField`**
@@ -386,9 +425,9 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   AuroraWatch); and the `WEATHER_GUIDE` cards (conditions / settings / tips
   per kind of shoot — editorial, edit the array). All fetches fail quietly.
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView` / `weatherView`
-  / `tripsView`. Navigation:
+  / `tripsView` / `galleryView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `goToTrips(id)`,
-  `changeMonth` (all mirrored
+  `goToGallery(tab)`, `changeMonth` (all mirrored
   in the URL hash — see Deep links); the shared
   `navRow(showYearBtn)` renders the top buttons. Month pages: `[month picker]
   ‹ › | Map Weather | ← Home`, with the owner's "+ Add location" (`addLocBtn`)
@@ -496,9 +535,10 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `context.route(/^https?:\/\/(?!127\.0\.0\.1)/, r => r.abort())` (the cloud
   load then settles as "offline" and the UI still renders) — or answer the
   Worker's URLs from the route handler to fake the cloud (the scratchpad
-  `smoke.js` / `restore.js` / `trips.js` scripts do both: routes, search,
-  backups modal, restore + conflict, an EXIF upload, shots/trips/tides with
-  a faked marine API). d3/Google Fonts stay unreachable (the map body
+  `smoke.js` / `restore.js` / `trips.js` / `gallery.js` scripts do both:
+  routes, search, backups modal, restore + conflict, an EXIF upload,
+  shots/trips/tides with a faked marine API, visits/gallery/lightbox/review
+  with a faked photo index + Nominatim). d3/Google Fonts stay unreachable (the map body
   doesn't render); Leaflet can be served from a local `npm pack leaflet@1.9.4`
   copy via the route handler (see `sky.js`) so the mini map does. Setting
   `localStorage['calendar:uploadKey']` makes the page the owner's. NB a
