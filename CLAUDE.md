@@ -217,7 +217,39 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   via `ensureScript`/`ensureStyle`, OpenStreetMap tiles) under the brief's
   coordinates: green dot = location, "P" = parking, fitted to both. Scroll-wheel
   zoom off; wrapper has `zIndex:0` so Leaflet's controls stay under the app's
-  dialogs. Renders nothing without coordinates or if the CDN fails.
+  dialogs. Renders nothing without coordinates or if the CDN fails. Takes
+  `rays` (`[{ az, color, dash, label }]`, built in `App` as `skyRays` from
+  `sky`): polylines from the spot (`destPoint`), sunrise gold `#D9A441` /
+  sunset `#C8551F` solid, moonrise/moonset slate dashed, sized to 30 % of
+  the first view's diagonal and redrawn in place (`rayLayer`) when the day
+  changes — the map is only rebuilt when coordinates/parking change. A small
+  legend (swatches + the day) sits under the map.
+- **The brief's day + Sky row.** `skyPick` state (reset on location/month/
+  year change) → `skyDay`: the location's photo-op day in this month/year
+  (`selOp`, `skyFromOp`) else the 15th; `stepSkyDay(±1)` wraps within the
+  month. The **Light** row now computes `lightAt(..., skyDay)` and carries the
+  `‹ Sat 15 Nov 2026 ›` stepper (`skyDayLabel`, en-GB). The **Sky** row
+  (under Light, needs coordinates) shows `sky = skyAt(lat, lng, year, mi,
+  skyDay)`: Sun ↑/↓ with 16-point compass directions, Moon ↑/↓ + direction +
+  `illum`% + `phase` (`moonPhaseName`), and the **Milky Way** line: `core` =
+  the night's longest stretch with the Galactic Centre (`GALACTIC_CENTRE`,
+  precessed by `ofDate`) above the horizon in astronomical darkness (Sun <
+  −18°) — "Core up 22:55–00:30 (1.6 h), peaking 7° in the SSW · moon down /
+  moon-free a–b / moon up throughout (x% lit)"; no window → "no full darkness
+  tonight" (`dark` false) or "core below the horizon while it's dark". The
+  footnote lists the **core season** (`coreSeason` memo: months whose 15th
+  has a window, compressed to ranges, e.g. "Feb–Apr, Aug–Sep" for the Peak
+  District). Times follow `lightAt`'s zone rule (UK civil time, else UTC).
+- **Sky maths** (after `moonIllumination`): `gmstDeg`, `obliquityDeg`,
+  `eclToEq`, `altAz(ra, dec, jd, lat, lng)` (geometric alt, az from north),
+  `sunEquatorial`, `moonPosition(jd)` (Meeus ch. 47, tables 47.A/B in full as
+  `MOON_LR`/`MOON_B`; geocentric), `riseSetScan(startJd, lat, lng, posFn,
+  h0Fn)` (10-min steps + bisection; `MOON_H0` = 0.7275π − 0°34′, `SUN_H0` =
+  −0.8333°), `compass16`, `moonPhaseName`, `skyAt`. Validated against PyEphem
+  (28 site/date cases, rise/set within 0.3 min and 0.1° az; scratchpad
+  `ephem_ref.py` → `ephem_ref.json`, `astro2_test.js`, run through
+  `load_app.js`, which evaluates the inline script in a node `vm` with React/
+  DOM stubs and returns every top-level function — reuse it for unit tests).
 - **`LinksField` / `parseLinks`** — per-location links (`loc.links`, text, one
   per line, `Label | url` or a bare address) shown as chips in a "Links" row
   under Parking; owner edits via an "edit" button → textarea. **`NotesField`**
