@@ -84,6 +84,11 @@
     input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
     .quiet-link:hover { color: #54632F !important; }
     .backup-row:hover { background: #F4EEDE !important; }
+    .check-x { opacity: 0; transition: opacity .15s; }
+    .check-row:hover .check-x, .check-x:focus-visible { opacity: 1; }
+    @media (hover: none) { .check-x { opacity: .7; } }
+    .trip-card:hover { border-color: #B3A988 !important; }
+    input[type=date].pp-date { appearance: none; -webkit-appearance: none; }
     .pause-btn:hover { background: rgba(42,37,30,0.78) !important; }
     .pause-btn:active { transform: scale(0.94); }
     .map-chip:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(42,37,30,0.14) !important; }
@@ -998,6 +1003,231 @@ function NotesField({ value, onCommit }) {
     placeholder: 'Access, permits, where the gate is, what worked last time…',
     style: { width: '100%', minHeight: 96, fontFamily: "'Spectral',serif", fontSize: 14.5, lineHeight: 1.55, color: '#2A251E', background: '#FFFDF5', border: '1px solid #C9BD9F', borderRadius: 3, padding: '8px 10px', outline: 'none', resize: 'vertical' },
   });
+}
+
+// ─── Checklist ───────────────────────────────────────────────────────────────
+// A tickable list — the brief's shot list and a trip's packing list. Items are
+// { id, text, done }. The owner ticks, adds (Enter in the field) and removes
+// (×); visitors see the list with its ticks. `onToggle/onAdd/onRemove` are
+// omitted for a read-only list.
+function newId(prefix) { return (prefix || 'i') + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function Checklist({ items = [], onToggle, onAdd, onRemove, placeholder, emptyText, compact = false }) {
+  const canEdit = React.useContext(EditCtx) && !!onToggle;
+  const [text, setText] = useState('');
+  const mono = "'IBM Plex Mono',monospace";
+  const commit = () => { const t = text.trim(); if (t && onAdd) { onAdd(t); setText(''); } };
+  if (!items.length && !canEdit) return emptyText ? e('div', { style:{ fontSize:13.5, color:'#A89A7C' } }, emptyText) : null;
+  return e('div', null,
+    items.map(it => e('div', { key: it.id, className:'check-row', style:{ display:'flex', alignItems:'flex-start', gap:9, padding: compact ? '3px 0' : '4px 0' } },
+      e('button', { onClick: canEdit ? () => onToggle(it.id) : undefined, disabled: !canEdit, 'aria-label': (it.done ? 'Untick ' : 'Tick ') + it.text, 'aria-pressed': it.done ? 'true' : 'false', title: canEdit ? (it.done ? 'Untick' : 'Tick off') : undefined,
+        style:{ flex:'none', width:16, height:16, marginTop:3, padding:0, borderRadius:2, border:'1.5px solid ' + (it.done ? '#54632F' : '#B3A988'), background: it.done ? '#54632F' : '#FFFDF5', color:'#FBF7EC', fontSize:11, lineHeight:1, cursor: canEdit ? 'pointer' : 'default', display:'inline-flex', alignItems:'center', justifyContent:'center' } }, it.done ? '✓' : ''),
+      e('span', { style:{ flex:1, fontSize: compact ? 13.5 : 14.5, lineHeight:1.45, color: it.done ? '#9C8F71' : '#3B3528', textDecoration: it.done ? 'line-through' : 'none', textDecorationColor:'#C9BD9F' } }, it.text),
+      canEdit && onRemove && e('button', { className:'check-x', onClick: () => onRemove(it.id), title:'Remove', 'aria-label':'Remove ' + it.text, style:{ flex:'none', width:18, height:18, padding:0, background:'none', border:'none', color:'#B7AD90', cursor:'pointer', fontSize:14, lineHeight:1, fontFamily:"'Spectral',serif" } }, '×')
+    )),
+    canEdit && onAdd && e('div', { style:{ display:'flex', alignItems:'center', gap:8, marginTop: items.length ? 4 : 0 } },
+      e('span', { 'aria-hidden':'true', style:{ flex:'none', width:16, height:16, borderRadius:2, border:'1.5px dashed #C9BD9F' } }),
+      e('input', { value:text, onChange:(ev)=>setText(ev.target.value), onKeyDown:(ev)=>{ if (ev.key === 'Enter') { ev.preventDefault(); commit(); } }, onBlur: commit, placeholder: placeholder || 'Add an item and press Enter', 'aria-label': placeholder || 'Add an item',
+        style:{ flex:1, minWidth:0, background:'transparent', border:'none', borderBottom:'1px dashed #D2C7AC', padding:'3px 2px', fontFamily:"'Spectral',serif", fontSize:14, color:'#2A251E', outline:'none' } })
+    )
+  );
+}
+
+// ─── Trips ───────────────────────────────────────────────────────────────────
+// A trip is a dated outing to one or more locations with a packing list:
+// data[0].trips = [{ id, name, start:'YYYY-MM-DD', end:'YYYY-MM-DD', locIds,
+// notes, packing:[{id,text,done}] }]. New trips start from the usual packing
+// list (data[0].packingTemplate, one item per line; DEFAULT_PACKING until the
+// owner edits it). Trips also show in every calendar as 'trip' events, made
+// on the fly by tripEventsFor (never stored in the month's event lists).
+const DEFAULT_PACKING = [
+  'Camera body (+ spare)', 'Lenses — wide, standard, telephoto', 'Batteries ×4, charged · charger', 'Memory cards, formatted · card reader',
+  'Tripod + plate · L-bracket', 'Filters — polariser, ND, grads · filter cloth', 'Remote release / intervalometer', 'Head-torch + spare batteries',
+  'Lens cloths · blower · rain cover', 'Phone + power bank · cables', 'Map / GPX · light and tide times saved offline',
+  'Waterproofs · warm layers · hat & gloves', 'Boots · gaiters · spare socks', 'Flask · food · water', 'First-aid kit · whistle · foil blanket', 'Permits / tickets · cash for parking',
+].join('\n');
+function packingFromTemplate(text) {
+  return (text || DEFAULT_PACKING).split('\n').map(s => s.trim()).filter(Boolean).map(t => ({ id: newId('p'), text: t, done: false }));
+}
+function parseYmd(s) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? { y: +m[1], m: +m[2] - 1, d: +m[3] } : null; }
+// A trip's dates as "Sat 14 – Sun 15 Nov 2026" (or a single day, or "undated").
+const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function fmtTripDates(trip) {
+  const a = parseYmd(trip.start), b = parseYmd(trip.end) || a;
+  if (!a) return 'No dates yet';
+  const mon = (p) => MONTH_KEYS[p.m][0].toUpperCase() + MONTH_KEYS[p.m].slice(1);
+  const dow = (p) => DOW_SHORT[new Date(Date.UTC(p.y, p.m, p.d)).getUTCDay()];
+  const full = (p) => dow(p) + ' ' + p.d + ' ' + mon(p) + ' ' + p.y;
+  if (a.y === b.y && a.m === b.m && a.d === b.d) return full(a);
+  if (a.y === b.y && a.m === b.m) return dow(a) + ' ' + a.d + ' – ' + full(b);
+  if (a.y === b.y) return dow(a) + ' ' + a.d + ' ' + mon(a) + ' – ' + full(b);
+  return a.d + ' ' + mon(a) + ' ' + a.y + ' – ' + b.d + ' ' + mon(b) + ' ' + b.y;
+}
+function tripNights(trip) { const a = parseYmd(trip.start), b = parseYmd(trip.end) || a; if (!a) return null; return Math.round((Date.UTC(b.y, b.m, b.d) - Date.UTC(a.y, a.m, a.d)) / 86400000); }
+// The 'trip' events for one month of one year: each dated trip overlapping
+// the month, clipped to it. { id:'trip:<id>', kind:'trip', label, start, end, tripId }.
+function tripEventsFor(trips, monthIdx, year) {
+  if (!trips || !trips.length) return [];
+  const days = new Date(year, monthIdx + 1, 0).getDate();
+  const m0 = Date.UTC(year, monthIdx, 1), m1 = Date.UTC(year, monthIdx, days);
+  const out = [];
+  trips.forEach(t => {
+    const a = parseYmd(t.start), b = parseYmd(t.end) || a;
+    if (!a) return;
+    const t0 = Date.UTC(a.y, a.m, a.d), t1 = Math.max(t0, Date.UTC(b.y, b.m, b.d));
+    if (t1 < m0 || t0 > m1) return;
+    const s = t0 < m0 ? 1 : a.d, en = t1 > m1 ? days : new Date(t1).getUTCDate();
+    out.push({ id: 'trip:' + t.id, kind: 'trip', label: t.name || 'Trip', start: s, end: en, tripId: t.id });
+  });
+  return out;
+}
+
+// ─── Tides ───────────────────────────────────────────────────────────────────
+// For coastal spots (the owner turns "Tides" on per location). Sea level comes
+// from Open-Meteo's marine model (hourly `sea_level_height_msl`, tides plus
+// surge, relative to mean sea level): the past ~60 days and the 8-day
+// forecast. Days inside that span use the series itself (high/low found by a
+// parabola through the hourly samples); any other day uses a small harmonic
+// tide model fitted to the series by least squares — M2, S2, N2, K1, O1, Q1
+// plus the shallow-water M4/MS4 (constituents that the span can separate) —
+// which predicts the timing to roughly ±20 min and the height to a few tenths
+// of a metre, enough to plan a shoot (the card says to check official tables
+// for anything critical). Fetched and fitted once per place per session.
+const TIDE_API = 'https://marine-api.open-meteo.com/v1/marine';
+const TIDE_SPEEDS = { M2: 28.9841042, S2: 30.0, N2: 28.4397295, K1: 15.0410686, O1: 13.9430356, Q1: 13.3986609, M4: 57.9682084, MS4: 58.9841042 }; // deg/hour
+const TIDE_CACHE = new Map();
+// Solve the normal equations (Gaussian elimination with partial pivoting).
+function solveLinear(A, b) {
+  const n = b.length, M = A.map((row, i) => row.concat([b[i]]));
+  for (let c = 0; c < n; c++) {
+    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-12) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < n; r++) { if (r === c) continue; const f = M[r][c] / M[c][c]; for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((row, i) => row[n] / row[i]);
+}
+// Fit mean + Σ (a cos ωt + b sin ωt) to hourly levels (t in hours). Which
+// constituents depends on the span: separating S2 from M2 needs ~15 days,
+// N2/Q1 from M2/O1 ~28 days.
+function fitTides(hours, levels) {
+  const span = hours[hours.length - 1] - hours[0];
+  const names = span >= 27 * 24 ? ['M2','S2','N2','K1','O1','Q1','M4','MS4'] : span >= 14.5 * 24 ? ['M2','S2','K1','O1','M4','MS4'] : ['M2','K1','O1','M4'];
+  const cols = [() => 1];
+  names.forEach(nm => { const w = TIDE_SPEEDS[nm] * RAD; cols.push(t => Math.cos(w * t)); cols.push(t => Math.sin(w * t)); });
+  const n = cols.length, A = Array.from({ length: n }, () => new Array(n).fill(0)), b = new Array(n).fill(0);
+  for (let i = 0; i < hours.length; i++) {
+    const t = hours[i], y = levels[i], row = cols.map(f => f(t));
+    for (let r = 0; r < n; r++) { b[r] += row[r] * y; for (let c = r; c < n; c++) A[r][c] += row[r] * row[c]; }
+  }
+  for (let r = 0; r < n; r++) for (let c = 0; c < r; c++) A[r][c] = A[c][r];
+  const x = solveLinear(A, b);
+  if (!x) return null;
+  const comps = names.map((nm, k) => ({ name: nm, w: TIDE_SPEEDS[nm] * RAD, a: x[1 + 2 * k], b: x[2 + 2 * k] }));
+  const level = (t) => comps.reduce((s, c) => s + c.a * Math.cos(c.w * t) + c.b * Math.sin(c.w * t), x[0]);
+  let ss = 0, st = 0; const mean = levels.reduce((s, v) => s + v, 0) / levels.length;
+  for (let i = 0; i < hours.length; i++) { ss += (levels[i] - level(hours[i])) ** 2; st += (levels[i] - mean) ** 2; }
+  return { mean: x[0], comps, level, r2: st ? 1 - ss / st : 0, range: 2 * Math.hypot(comps[0].a, comps[0].b) };
+}
+// Highs and lows of level(t) between t0 and t1 (hours), scanning every
+// `step` hours and refining each turning point with a parabola.
+function tideExtrema(level, t0, t1, step = 0.1) {
+  const out = [];
+  let pm = level(t0 - step), p = level(t0);
+  for (let t = t0 + step; t <= t1 + step; t += step) {
+    const nx = level(t);
+    if ((p > pm && p >= nx) || (p < pm && p <= nx)) {
+      const den = pm - 2 * p + nx, off = den ? 0.5 * (pm - nx) / den : 0; // vertex offset in steps
+      const tt = t - step + off * step, lv = p - 0.25 * (pm - nx) * off;
+      if (tt >= t0 && tt < t1) out.push({ t: tt, level: lv, type: p > pm ? 'high' : 'low' });
+    }
+    pm = p; p = nx;
+  }
+  return out;
+}
+// Load (once per place) the sea-level series and fit the model. Resolves to
+// { status:'ok', t0 (ms of the first sample), hours[], levels[], fit, dataAt(t), span:[h0,h1] }
+// or { status:'none' } (no sea level here — inland) or { status:'error' }.
+async function loadTides(lat, lng) {
+  const key = lat.toFixed(3) + ',' + lng.toFixed(3);
+  if (TIDE_CACHE.has(key)) return TIDE_CACHE.get(key);
+  const p = (async () => {
+    for (const past of [60, 30, 0]) {
+      try {
+        const url = TIDE_API + '?latitude=' + lat.toFixed(4) + '&longitude=' + lng.toFixed(4) + '&hourly=sea_level_height_msl&forecast_days=8' + (past ? '&past_days=' + past : '') + '&timezone=UTC';
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const j = await res.json();
+        const times = (j.hourly && j.hourly.time) || [], vals = (j.hourly && j.hourly.sea_level_height_msl) || [];
+        const t0 = times.length ? Date.parse(times[0] + (times[0].length <= 16 ? ':00Z' : '')) : NaN;
+        if (!times.length || isNaN(t0)) continue;
+        const hours = [], levels = [];
+        times.forEach((ts, i) => { const v = vals[i]; if (typeof v === 'number' && isFinite(v)) { hours.push((Date.parse(ts + (ts.length <= 16 ? ':00Z' : '')) - t0) / 3600000); levels.push(v); } });
+        if (levels.length < 48) return { status: 'none' };
+        const fit = fitTides(hours, levels);
+        if (!fit || fit.range < 0.05) return { status: 'none' }; // a lake or a tideless sea
+        // linear interpolation of the series itself, for days inside the span
+        const dataAt = (t) => { let lo = 0, hi = hours.length - 1; if (t <= hours[0]) return levels[0]; if (t >= hours[hi]) return levels[hi]; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (hours[mid] <= t) lo = mid; else hi = mid; } const f = (t - hours[lo]) / (hours[hi] - hours[lo]); return levels[lo] + f * (levels[hi] - levels[lo]); };
+        return { status: 'ok', t0, hours, levels, fit, dataAt, span: [hours[0], hours[hours.length - 1]] };
+      } catch (_) { /* try a shorter request */ }
+    }
+    return { status: 'error' };
+  })();
+  TIDE_CACHE.set(key, p);
+  p.then(r => { if (r.status === 'error') TIDE_CACHE.delete(key); }); // let a later open retry
+  return p;
+}
+// The tides on one local day: highs/lows (local HH:MM + height), the state at
+// two reference minutes (sunrise/sunset), and where the numbers came from.
+// Turning points straight from the hourly samples (a parabola through the
+// three around each local max/min), for days inside the fetched span.
+function sampleExtrema(hours, levels, h0, h1) {
+  const out = [];
+  for (let i = 1; i < hours.length - 1; i++) {
+    if (hours[i] < h0 - 1 || hours[i] > h1 + 1) continue;
+    const a = levels[i - 1], b = levels[i], c = levels[i + 1];
+    const isMax = b >= a && b > c, isMin = b <= a && b < c;
+    if (!isMax && !isMin) continue;
+    const even = hours[i] - hours[i - 1] === 1 && hours[i + 1] - hours[i] === 1;
+    const den = a - 2 * b + c, off = (even && den) ? 0.5 * (a - c) / den : 0;
+    const t = hours[i] + off, lv = even ? b - 0.25 * (a - c) * off : b;
+    if (t >= h0 && t < h1) out.push({ t, level: lv, type: isMax ? 'high' : 'low' });
+  }
+  return out;
+}
+function tidesForDay(tides, year, monthIdx, day, offH, refs) {
+  const dayStart = Date.UTC(year, monthIdx, day) - offH * 3600000;
+  const h0 = (dayStart - tides.t0) / 3600000, h1 = h0 + 24;
+  const inData = h0 >= tides.span[0] && h1 <= tides.span[1];
+  const level = inData ? tides.dataAt : tides.fit.level;
+  const ext = (inData ? sampleExtrema(tides.hours, tides.levels, h0, h1) : tideExtrema(level, h0, h1, 0.1)).map(x => ({ ...x, time: fmtMinutes((x.t - h0) * 60, 0) }));
+  const state = (min) => { if (min == null) return null; const t = h0 + min / 60; const now = level(t), later = level(t + 0.25); const next = ext.find(x => x.t > t); return { level: now, rising: later > now, next }; };
+  return { ext, source: inData ? 'forecast' : 'model', at: (refs || []).map(r => ({ ...r, ...state(r.min) })) };
+}
+// The brief's Tides row body. Fetches (and fits) once per place; shows the
+// chosen day's highs and lows and the state at sunrise and sunset.
+function TideRow({ lat, lng, year, monthIdx, day, zone, offH, sunriseMin, sunsetMin, uk }) {
+  const [tides, setTides] = useState(null);
+  const key = lat.toFixed(3) + ',' + lng.toFixed(3);
+  useEffect(() => { let on = true; setTides(null); loadTides(lat, lng).then(r => { if (on) setTides(r); }); return () => { on = false; }; }, [key]);
+  const mono = "'IBM Plex Mono',monospace";
+  const small = { fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', color:'#B7AD90' };
+  if (!tides) return e('div', { style:{ ...small, padding:'2px 0' } }, 'Loading sea level…');
+  if (tides.status === 'none') return e('div', { style:{ fontSize:13.5, color:'#8A7D63', lineHeight:1.5 } }, 'No tide data for this spot — the sea-level model has no cell here (inland, or a tideless water).');
+  if (tides.status === 'error') return e('div', { style:{ fontSize:13.5, color:'#8A7D63', lineHeight:1.5 } }, "Tide data couldn't be fetched just now — it reconnects next time the card opens.");
+  const T = tidesForDay(tides, year, monthIdx, day, offH, [{ name:'sunrise', min:sunriseMin }, { name:'sunset', min:sunsetMin }]);
+  const m = (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' m';
+  const cell = (k, v) => e('span', { key:k + v, style:{ display:'inline-flex', alignItems:'baseline', gap:6, whiteSpace:'nowrap' } },
+    e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color: k === 'High' ? '#3F6A80' : '#9C8F71' } }, k),
+    e('span', { style:{ fontFamily:mono, fontSize:12.5, color:'#3B3528' } }, v));
+  const atLine = T.at.filter(a => a.level != null).map(a => a.name + ' ' + fmtMinutes(a.min, 0) + ': ' + (a.rising ? 'rising' : 'falling') + ' (' + m(a.level) + (a.next ? ', ' + a.next.type + ' at ' + a.next.time : '') + ')');
+  const tables = uk ? 'https://easytide.admiralty.co.uk/' : 'https://www.tide-forecast.com/';
+  return e('div', null,
+    e('div', { style:{ display:'flex', flexWrap:'wrap', gap:'7px 18px' } }, T.ext.length ? T.ext.map(x => cell(x.type === 'high' ? 'High' : 'Low', x.time + ' · ' + m(x.level))) : e('span', { style:{ fontSize:13.5, color:'#8A7D63' } }, 'No turning point that day')),
+    atLine.length > 0 && e('div', { style:{ marginTop:6, fontSize:13.5, color:'#5A513B', lineHeight:1.5 } }, 'At ' + atLine.join(' · ')),
+    e('div', { style:{ marginTop:5, display:'flex', alignItems:'baseline', gap:12, flexWrap:'wrap' } },
+      e('span', { style:small }, (T.source === 'forecast' ? 'Open-Meteo sea-level forecast (tide + surge)' : 'Predicted from a tide model fitted to the forecast (≈ ±20 min)') + ' · heights v. mean sea level · ' + zone),
+      e('a', { href: tables, target:'_blank', rel:'noopener noreferrer', className:'map-link', style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', textTransform:'uppercase', color:'#54632F', textDecoration:'none', borderBottom:'1px solid #C9D4A8' } }, 'Official tables ↗'))
+  );
 }
 
 // ─── Mini map (location card) ─────────────────────────────────────────────────
@@ -2076,12 +2306,13 @@ const EVENT_STYLE = {
   nature:   { glyph: '',  bg: '#DEE3C5', fg: '#46562E', accent: '#5A6B2F' },
   season:   { glyph: '',  bg: '#E5E2D2', fg: '#5A513B', accent: '#9A8C6E' },
   photoop:  { glyph: '◉', bg: '#2A251E', fg: '#FBF7EC', accent: '#C7902F' },
+  trip:     { glyph: '▲', bg: '#DCE3E8', fg: '#2E4A5C', accent: '#3F6A80' }, // a planned trip (from data[0].trips, see tripEventsFor)
   holiday:  { glyph: '',  bg: '#EAE4D3', fg: '#5A513B', accent: '#8A7D63' }, // UK bank holidays (print, corner text)
   named:    { glyph: '',  bg: '#EAE4D3', fg: '#5A513B', accent: '#8A7D63' }, // other named days (print, corner text)
 };
 
-const KIND_ORDER = ['photoop','fullmoon','newmoon','meteor','eclipse','nature','season','holiday','named'];
-const KIND_LABEL = { photoop:'Photo op', fullmoon:'Full moon', newmoon:'New moon', meteor:'Meteor', eclipse:'Eclipse', nature:'Nature', season:'Season window', holiday:'Bank holidays', named:'Named days' };
+const KIND_ORDER = ['photoop','trip','fullmoon','newmoon','meteor','eclipse','nature','season','holiday','named'];
+const KIND_LABEL = { photoop:'Photo op', trip:'Trip', fullmoon:'Full moon', newmoon:'New moon', meteor:'Meteor', eclipse:'Eclipse', nature:'Nature', season:'Season window', holiday:'Bank holidays', named:'Named days' };
 
 // User-defined event types. They live on the events themselves — an event of a
 // custom type carries kind 'x-<slug>' plus its display label (kindLabel) and a
@@ -3096,6 +3327,9 @@ function App() {
   const [printView, setPrintView] = useState(false);
   const [weatherView, setWeatherView] = useState(false);
   const [weatherLoc, setWeatherLoc] = useState(null); // location the Weather page opens on
+  const [tripsView, setTripsView] = useState(false);
+  const [tripOpen, setTripOpen] = useState(null);     // the trip expanded on the Trips page
+  const [tplEditing, setTplEditing] = useState(false); // the usual-packing-list textarea on the Trips page
   const [monthIdx, setMonthIdx] = useState(0);
   const [selectedLoc, setSelectedLoc] = useState(null); // no brief open until a tile is tapped
   const [editingEvent, setEditingEvent] = useState(null);
@@ -3344,12 +3578,15 @@ function App() {
   // across years; the grid layout (start weekday, day count — Date's 0=Sunday
   // convention, leap years included) and the events are year-specific.
   const yKey = String(viewYear);
+  // A month's events in a year, plus the planned trips that touch it (made on
+  // the fly from data[0].trips — see tripEventsFor; never stored as events).
+  const allEventsFor = (m2, i, y) => eventsFor(m2, y).concat(tripEventsFor(data[0] && data[0].trips, i, y));
   const monthForYear = (m2, i) => ({
     ...m2,
     year: viewYear,
     dow: new Date(viewYear, i, 1).getDay(),
     days: new Date(viewYear, i + 1, 0).getDate(),
-    events: eventsFor(m2, viewYear),
+    events: allEventsFor(m2, i, viewYear),
   });
   // Sunrise/sunset shown for a month (home rows, month header, print): on the
   // 15th of the selected year at the home reference, Hindhead.
@@ -3366,7 +3603,7 @@ function App() {
     const horizon = new Date(today.getTime() + UPCOMING_DAYS * 86400000);
     const items = [];
     [today.getFullYear(), today.getFullYear() + 1].forEach(y => {
-      data.forEach((m2, i) => eventsFor(m2, y).forEach(ev => {
+      data.forEach((m2, i) => allEventsFor(m2, i, y).forEach(ev => {
         const s = ev.start != null ? ev.start : ev.day, en = ev.end != null ? ev.end : s;
         const startD = new Date(y, i, s), endD = new Date(y, i, en);
         if (endD < today || startD > horizon) return;
@@ -3388,7 +3625,7 @@ function App() {
     const fold = (line) => { const out = []; while (line.length > 73) { out.push(line.slice(0, 73)); line = ' ' + line.slice(73); } out.push(line); return out; };
     const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
     const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Photoplan//photoplan.studio//EN', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:Photoplan ' + viewYear];
-    data.forEach((m2, i) => eventsFor(m2, viewYear).forEach(ev => {
+    data.forEach((m2, i) => allEventsFor(m2, i, viewYear).forEach(ev => {
       const s = ev.start != null ? ev.start : ev.day, en = ev.end != null ? ev.end : s;
       const endExcl = new Date(viewYear, i, en + 1); // DTEND is exclusive for all-day events
       const loc = ev.kind === 'photoop' && ev.locId ? m2.locations.find(l => l.id === ev.locId) : null;
@@ -3429,16 +3666,18 @@ function App() {
     });
   }, []);
 
-  const goToYear = () => { setMapView(false); setPrintView(false); setWeatherView(false); setYearView(true); };
-  const goToMap = () => { setPrintView(false); setWeatherView(false); setMapView(true); };
-  const goToPrint = () => { setMapView(false); setWeatherView(false); setPrintView(true); };
-  const goToWeather = (locId) => { setMapView(false); setPrintView(false); setWeatherLoc(locId || null); setWeatherView(true); };
+  const goToYear = () => { setMapView(false); setPrintView(false); setWeatherView(false); setTripsView(false); setYearView(true); };
+  const goToMap = () => { setPrintView(false); setWeatherView(false); setTripsView(false); setMapView(true); };
+  const goToPrint = () => { setMapView(false); setWeatherView(false); setTripsView(false); setPrintView(true); };
+  const goToWeather = (locId) => { setMapView(false); setPrintView(false); setTripsView(false); setWeatherLoc(locId || null); setWeatherView(true); };
+  const goToTrips = (tripId) => { setMapView(false); setPrintView(false); setWeatherView(false); setTripOpen(tripId || null); setTripsView(true); };
   const goToMonth = (idx, locId) => {
     const m = data[idx];
     if (!m) return;
     setMapView(false);
     setPrintView(false);
     setWeatherView(false);
+    setTripsView(false);
     setYearView(false);
     setMonthIdx(idx);
     // Only an explicit deep link (year-page row, map card) opens a brief —
@@ -3453,6 +3692,7 @@ function App() {
     setMapView(false);
     setPrintView(false);
     setWeatherView(false);
+    setTripsView(false);
     if (next === 0) { setYearView(true); return; }
     const idx = next - 1;
     setYearView(false);
@@ -3470,6 +3710,7 @@ function App() {
   // copy lands) is kept in the state so the brief opens once the data arrives.
   const routeHash = () => {
     const y = '#/' + viewYear;
+    if (tripsView) return y + '/trips' + (tripOpen ? '/' + encodeURIComponent(tripOpen) : '');
     if (weatherView) return y + '/weather' + (weatherLoc ? '/' + encodeURIComponent(weatherLoc) : '');
     if (mapView) return y + '/map';
     if (printView && editMode) return y + '/print';
@@ -3477,6 +3718,7 @@ function App() {
     return y + '/' + data[mi].key + (selectedLoc ? '/' + encodeURIComponent(selectedLoc) : '');
   };
   const routeTitle = () => {
+    if (tripsView) return 'Photoplan — Trips';
     if (weatherView) return 'Photoplan — Weather';
     if (mapView) return 'Photoplan — Map';
     if (printView && editMode) return 'Photoplan — ' + viewYear + ' calendar';
@@ -3494,6 +3736,7 @@ function App() {
     if (!seg) { goToYear(); return; }
     if (seg === 'map') { goToMap(); return; }
     if (seg === 'weather') { goToWeather(parts[i + 1] || null); return; }
+    if (seg === 'trips') { goToTrips(parts[i + 1] || null); return; }
     if (seg === 'print') { if (Storage.peekUploadKey()) { setEditMode(true); goToPrint(); } else goToYear(); return; } // owner only
     const idx = data.findIndex(m2 => m2.key === seg);
     if (idx !== -1) { goToMonth(idx, parts[i + 1] || null); return; }
@@ -3522,7 +3765,7 @@ function App() {
       return;
     }
     if (location.hash !== h) history.pushState(null, '', h);
-  }, [viewYear, yearView, mapView, printView, weatherView, weatherLoc, mi, selectedLoc, editMode]);
+  }, [viewYear, yearView, mapView, printView, weatherView, weatherLoc, tripsView, tripOpen, mi, selectedLoc, editMode]);
 
   // ── Search ─────────────────────────────────────────────────────────────────
   // A quick find across every location (name first, then tag, where, idea,
@@ -3747,6 +3990,65 @@ function App() {
   });
   // The Weather page's default location (owner-set, cloud-synced).
   const setWeatherDefault = (locId) => mutateData(d => { if (locId) d[0].weatherDefault = locId; else delete d[0].weatherDefault; });
+
+  // ── Trips, shot lists, tides flag ───────────────────────────────────────────
+  // Every location by id (with its month), for the Trips page and kit import.
+  const locIndex = useMemo(() => { const o = {}; data.forEach((m2, i) => m2.locations.forEach(l => { o[l.id] = { loc: l, month: m2, i }; })); return o; }, [data]);
+  const trips = (data[0] && data[0].trips) || [];
+  const tripsOf = (d) => (d[0].trips || []);
+  const addTrip = async () => {
+    if (!ensureUnlocked(addTrip)) return;
+    const name = await askText({ kind:'text', title:'New trip', label:'Name the trip — a place or a weekend, e.g. "Skye in March". Dates, locations and the packing list come next.', placeholder:'e.g. Northumberland coast', confirm:'Create trip' });
+    if (name === null) return;
+    const id = newId('trip');
+    const template = (data[0] && data[0].packingTemplate) || '';
+    mutateData(d => { d[0].trips = tripsOf(d).concat([{ id, name: name.trim() || 'Trip', start:'', end:'', locIds: [], notes:'', packing: packingFromTemplate(template) }]); });
+    setTripOpen(id);
+  };
+  // patch = object or (trip) => object; trips and their lists are always replaced, never mutated.
+  const updateTrip = (id, patch) => mutateData(d => { d[0].trips = tripsOf(d).map(t => t.id === id ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) } : t); });
+  const deleteTrip = async (id) => {
+    const t = trips.find(x => x.id === id); if (!t) return;
+    const yes = await askConfirm({ title:'Delete this trip?', label:'"' + t.name + '" and its packing list will be removed. The locations themselves stay in the calendar.', confirm:'Delete trip', danger:true });
+    if (!yes) return;
+    mutateData(d => { d[0].trips = tripsOf(d).filter(x => x.id !== id); });
+    if (tripOpen === id) setTripOpen(null);
+  };
+  // Dates keep end ≥ start: moving one past the other drags the other along.
+  const setTripDates = (id, start, end) => updateTrip(id, t => {
+    let s = start != null ? start : (t.start || ''), en = end != null ? end : (t.end || '');
+    if (s && !en) en = s;
+    if (s && en && en < s) { if (end != null) s = en; else en = s; }
+    return { start: s, end: en };
+  });
+  const addTripLoc = (id, locId) => updateTrip(id, t => ({ locIds: (t.locIds || []).includes(locId) ? t.locIds : (t.locIds || []).concat([locId]) }));
+  const removeTripLoc = (id, locId) => updateTrip(id, t => ({ locIds: (t.locIds || []).filter(x => x !== locId) }));
+  const togglePacking = (id, itemId) => updateTrip(id, t => ({ packing: (t.packing || []).map(p => p.id === itemId ? { ...p, done: !p.done } : p) }));
+  const addPacking = (id, text) => updateTrip(id, t => ({ packing: (t.packing || []).concat([{ id: newId('p'), text, done: false }]) }));
+  const removePacking = (id, itemId) => updateTrip(id, t => ({ packing: (t.packing || []).filter(p => p.id !== itemId) }));
+  const untickPacking = (id) => updateTrip(id, t => ({ packing: (t.packing || []).map(p => ({ ...p, done: false })) }));
+  const resetPacking = async (id) => {
+    const yes = await askConfirm({ title:'Reset the packing list?', label:"Replaces this trip's list with your usual packing list, everything unticked.", confirm:'Reset list' });
+    if (yes) updateTrip(id, { packing: packingFromTemplate(data[0] && data[0].packingTemplate) });
+  };
+  // Add the kit named on the trip's locations (their Kit chips) to the packing list, skipping what's there.
+  const addKitToPacking = (id) => updateTrip(id, t => {
+    const have = new Set((t.packing || []).map(p => p.text.trim().toLowerCase()));
+    const extra = [];
+    (t.locIds || []).forEach(lid => {
+      const hit = locIndex[lid]; if (!hit) return;
+      (hit.loc.kit || '').split(/\s*[·•,;|]\s*|\n/).map(s => s.trim()).filter(Boolean).forEach(k => { const key = k.toLowerCase(); if (!have.has(key)) { have.add(key); extra.push({ id: newId('p'), text: k, done: false }); } });
+    });
+    return { packing: (t.packing || []).concat(extra) };
+  });
+  const setPackingTemplate = (text) => mutateData(d => { if ((text || '').trim()) d[0].packingTemplate = text; else delete d[0].packingTemplate; });
+  // Shot lists live on the location (loc.shots); always a fresh array.
+  const updateShots = (locId, fn) => mutateData(d => { for (const m2 of d) { const loc = m2.locations.find(l => l.id === locId); if (loc) { loc.shots = fn(loc.shots || []); break; } } });
+  const addShot = (locId, text) => updateShots(locId, s => s.concat([{ id: newId('s'), text, done: false }]));
+  const toggleShot = (locId, shotId) => updateShots(locId, s => s.map(x => x.id === shotId ? { ...x, done: !x.done } : x));
+  const removeShot = (locId, shotId) => updateShots(locId, s => s.filter(x => x.id !== shotId));
+  // Coastal spots show the Tides row (owner switch, cloud-synced).
+  const setLocTidal = (locId, on) => mutateData(d => { for (const m2 of d) { const loc = m2.locations.find(l => l.id === locId); if (loc) { if (on) loc.tidal = true; else delete loc.tidal; break; } } });
   // A photo's focus point (see FocusCtx): fx/fy as fractions, or null to reset
   // to the centre. Keyed by the photo's storage base in data[0].photoFocus.
   const setPhotoFocus = (base, fx, fy) => mutateData(d => {
@@ -3835,9 +4137,13 @@ function App() {
     setEditingEvent({ id, label:'New event', start:'1', end:'3', kind:'nature', locId:null, noPrint:false, isNew:true });
   };
 
+  // What a click on an event chip does: a trip bar opens the trip (for
+  // everyone); anything else opens the editor (owner only).
+  const chipClick = (ev) => ev.tripId ? () => goToTrips(ev.tripId) : (editMode ? () => openEventEditor(ev.id) : undefined);
   const openEventEditor = (evId) => {
     const ev = month.events.find(e2 => e2.id === evId);
     if (!ev) return;
+    if (ev.tripId) { goToTrips(ev.tripId); return; } // trips are edited on their own page
     const s = ev.start != null ? ev.start : ev.day;
     const e2 = ev.end != null ? ev.end : ev.day;
     setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, kindLabel: ev.kindLabel, kindColor: ev.kindColor, locId: ev.locId || null, noPrint: !!ev.noPrint, annual: !!ev.annual, icon: ev.icon || 'auto', isNew: false });
@@ -4013,6 +4319,7 @@ function App() {
   const mapBtn = e('button', { className:'btn-hover', onClick:goToMap, style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '◍'), ' Map');
   const printBtn = e('button', { className:'btn-hover', onClick:goToPrint, title:'The printable wall calendar for the selected year', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⎙'), ' Calendar');
   const weatherBtn = e('button', { className:'btn-hover', onClick:()=>goToWeather(null), title:'Forecasts for each location, and the conditions each kind of shoot wants', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:14, lineHeight:1, marginTop:-1, color:'#54632F' } }, '☁'), ' Weather');
+  const tripsBtn = e('button', { className:'btn-hover', onClick:()=>goToTrips(null), title:'Planned trips — dates, locations, shot lists and packing lists', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:11, lineHeight:1, marginTop:-1, color:'#3F6A80' } }, '▲'), ' Trips');
   const icsBtn = e('button', { className:'btn-hover', onClick:downloadIcs, title:'Export the ' + viewYear + ' events as a calendar file (.ics) for your phone or desktop calendar', style:{ ...BtnBase, background:'#FBF7EC', color:'#2A251E', display:'inline-flex', alignItems:'center', gap:7, padding:'0 15px' } }, e('span', { style:{ fontSize:13, lineHeight:1, marginTop:-1, color:'#54632F' } }, '⤓'), ' Export');
   // Month view keeps both arrows; the year view drops the right arrow (it's the
   // same as the January button) and sits the left arrow just before January.
@@ -4032,7 +4339,7 @@ function App() {
   // sits at the foot of the nav column, see addLocBtn).
   const navRow = (showYearBtn) => showYearBtn
     ? e('div', { style:navRowStyle },
-        monthPicker(), prevBtn, nextBtn, navDivider(), mapBtn, weatherBtn, navDivider(),
+        monthPicker(), prevBtn, nextBtn, navDivider(), mapBtn, weatherBtn, tripsBtn, navDivider(),
         e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home')
       )
     : e('div', { style:navRowStyle },
@@ -4072,7 +4379,7 @@ function App() {
   // The home page's tools (Map, Weather, the owner's Calendar + Export, and
   // the search) sit under the intro on the left, so the header doesn't tower
   // on the right.
-  const homeTools = () => e('div', { style:navRowStyle }, mapBtn, weatherBtn, editMode && printBtn, editMode && icsBtn, searchBox());
+  const homeTools = () => e('div', { style:navRowStyle }, mapBtn, weatherBtn, tripsBtn, editMode && printBtn, editMode && icsBtn, searchBox());
 
   // Year picker — a quiet native <select> on the year itself (dotted underline,
   // small chevron); switches the calendar grid + events, locations unaffected.
@@ -4192,6 +4499,137 @@ function App() {
     );
   };
 
+  // ─── Trips page ───────────────────────────────────────────────────────────
+  // Planned outings (data[0].trips): dates, the locations to visit (with the
+  // light on the first day), the shots to get there, a packing list and
+  // notes. Everyone reads; the owner edits in place. Cards collapse to a
+  // summary; `tripOpen` (in the URL) is the expanded one.
+  const renderTripsPage = () => {
+    const mono = "'IBM Plex Mono',monospace";
+    const today = new Date();
+    const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+    const dayDiff = (ymd) => { const p = parseYmd(ymd); return p ? Math.round((Date.UTC(p.y, p.m, p.d) - todayUtc) / 86400000) : null; };
+    const isPast = (t) => { const d = dayDiff(t.end || t.start); return d != null && d < 0; };
+    const byStart = (a, b) => { const x = a.start || '9999', y = b.start || '9999'; return x < y ? -1 : x > y ? 1 : 0; };
+    const sorted = trips.slice().sort(byStart);
+    const ahead = sorted.filter(t => !isPast(t)), past = sorted.filter(isPast).reverse();
+    const when = (t) => { const d0 = dayDiff(t.start), d1 = dayDiff(t.end || t.start); if (d0 == null) return null; if (d1 < 0) return 'past'; if (d0 <= 0) return 'now'; if (d0 === 1) return 'tomorrow'; return 'in ' + d0 + ' days'; };
+    const rowStyle = { display:'grid', gridTemplateColumns:isMobile?'64px 1fr':'90px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' };
+    const rowLabel = (t, sub) => e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:3 } }, t, sub && e('div', { style:{ marginTop:3, fontSize:9.5, letterSpacing:'.06em', textTransform:'none', color:'#B7AD90' } }, sub));
+    const smallBtn = (label, onClick) => e('button', { key:label, onClick, style:{ background:'none', border:'1px dashed #C9BD9F', color:'#9C8F71', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', padding:'4px 9px', cursor:'pointer' } }, label);
+    const quietBtn = (label, onClick) => e('button', { className:'quiet-link', onClick, style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', textTransform:'uppercase', color:'#9C8F71', textDecoration:'underline', textUnderlineOffset:3 } }, label);
+    const dateInput = (value, onChange, label) => e('label', { style:{ display:'inline-flex', alignItems:'center', gap:7, fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71' } }, label,
+      e('input', { type:'date', className:'pp-date', value: value || '', onChange:(ev)=>onChange(ev.target.value), 'aria-label': label + ' date', style:{ height:30, padding:'0 8px', background:'#FFFDF5', border:'1px solid #C9BD9F', color:'#2A251E', fontFamily:mono, fontSize:12, borderRadius:0 } }));
+    const template = (data[0] && data[0].packingTemplate) || DEFAULT_PACKING;
+
+    const tripCard = (t) => {
+      const open = tripOpen === t.id;
+      const locs = (t.locIds || []).map(id => locIndex[id]).filter(Boolean);
+      const packing = t.packing || [];
+      const packed = packing.filter(p => p.done).length;
+      const shotsTotal = locs.reduce((n2, h) => n2 + (h.loc.shots || []).length, 0);
+      const shotsDone = locs.reduce((n2, h) => n2 + (h.loc.shots || []).filter(s => s.done).length, 0);
+      const first = parseYmd(t.start);
+      const w = when(t), nights = tripNights(t), pastTrip = isPast(t);
+      const toggle = () => setTripOpen(open ? null : t.id);
+      return e('div', { key:t.id, className:'trip-card', 'data-trip':t.id, style:{ background:'#FBF7EC', border:'1px solid ' + (open ? '#2A251E' : '#D2C7AC'), boxShadow: open ? '6px 6px 0 rgba(42,37,30,0.12)' : '0 1px 0 #C9BFA4', marginBottom:12, opacity: pastTrip && !open ? .72 : 1 } },
+        e('div', { onClick:toggle, onKeyDown:keyActivate(toggle), role:'button', tabIndex:0, 'aria-expanded': open ? 'true' : 'false', style:{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:14, padding:isMobile?'12px 14px':'14px 18px', cursor:'pointer', flexWrap:'wrap' } },
+          e('div', { style:{ minWidth:0, flex:'1 1 260px' } },
+            e('div', { style:{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' } },
+              e('span', { style:{ color:'#3F6A80', fontSize:12 } }, '▲'),
+              open && editMode
+                ? e('span', { onClick:(ev)=>ev.stopPropagation(), onKeyDown:(ev)=>ev.stopPropagation() }, e(Editable, { key:'tripname-'+t.id, tag:'span', value:t.name, onCommit:(v)=>updateTrip(t.id, { name:(v || '').trim() || 'Trip' }), title:'Click to rename', style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?20:23, color:'#2A251E', lineHeight:1.15, cursor:'text', outline:'none', borderRadius:3, padding:'0 4px', margin:'0 -4px' } }))
+                : e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?20:23, color:'#2A251E', lineHeight:1.15 } }, t.name),
+              w && e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', padding:'3px 8px', background: w === 'now' ? '#54632F' : (w === 'past' ? '#EFE7D2' : '#DCE3E8'), color: w === 'now' ? '#FBF7EC' : (w === 'past' ? '#9C8F71' : '#2E4A5C') } }, w)
+            ),
+            e('div', { style:{ marginTop:5, fontFamily:mono, fontSize:11.5, color:'#5A513B', letterSpacing:'.03em' } }, fmtTripDates(t) + (nights ? ' · ' + nights + (nights === 1 ? ' night' : ' nights') : ''))
+          ),
+          e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', color:'#8A7D63', textAlign:isMobile?'left':'right', lineHeight:1.7 } },
+            e('div', null, locs.length + (locs.length === 1 ? ' location' : ' locations') + (shotsTotal ? ' · ' + shotsDone + '/' + shotsTotal + ' shots' : '')),
+            e('div', null, packing.length ? packed + '/' + packing.length + ' packed' : 'no packing list')
+          )
+        ),
+        open && e('div', { style:{ padding:isMobile?'0 14px 14px':'0 18px 18px' } },
+          editMode && e('div', { style:rowStyle }, rowLabel('Dates'),
+            e('div', { style:{ display:'flex', gap:14, flexWrap:'wrap', alignItems:'center' } },
+              dateInput(t.start, (v)=>setTripDates(t.id, v, null), 'From'), dateInput(t.end, (v)=>setTripDates(t.id, null, v), 'To'),
+              (t.start || t.end) ? quietBtn('clear', ()=>updateTrip(t.id, { start:'', end:'' })) : null)),
+          e('div', { style:rowStyle }, rowLabel('Locations'),
+            e('div', null,
+              locs.length
+                ? e('div', { style:{ display:'flex', flexWrap:'wrap', gap:8 } }, locs.map(h => {
+                    const c = coordsOf(h.loc);
+                    const L = (c && first) ? lightAt(c[0], c[1], first.y, first.m, first.d) : null;
+                    return e('div', { key:h.loc.id, style:{ display:'inline-flex', alignItems:'stretch', border:'1px solid #D2C7AC', background:'#FFFDF5' } },
+                      e('button', { className:'loc-pick', onClick:()=>goToMonth(h.i, h.loc.id), title:'Open the location brief', style:{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, padding:'7px 11px', background:'none', border:'none', cursor:'pointer', textAlign:'left' } },
+                        e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'#2A251E', lineHeight:1.2 } }, h.loc.name),
+                        e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.1em', textTransform:'uppercase', color: h.loc.region === 'UK' ? '#54632F' : '#9E4B26' } }, h.month.name + (L && !L.polar ? ' · ↑ ' + L.rise + ' ↓ ' + L.set : ''))),
+                      editMode && e('button', { className:'close-btn', onClick:()=>removeTripLoc(t.id, h.loc.id), title:'Remove from this trip', 'aria-label':'Remove ' + h.loc.name + ' from this trip', style:{ width:26, background:'none', border:'none', borderLeft:'1px solid #E6DECA', color:'#B7AD90', cursor:'pointer', fontSize:15, fontFamily:"'Spectral',serif" } }, '×'));
+                  }))
+                : e('div', { style:{ fontSize:13.5, color:'#A89A7C' } }, editMode ? 'No locations yet — pick them below.' : 'No locations yet.'),
+              editMode && e('select', { value:'', onChange:(ev)=>{ if (ev.target.value) addTripLoc(t.id, ev.target.value); }, 'aria-label':'Add a location to this trip', style:{ marginTop:8, height:30, padding:'0 8px', background:'none', border:'1px dashed #C9BD9F', color:'#9C8F71', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', cursor:'pointer', borderRadius:0, maxWidth:'100%' } },
+                e('option', { value:'' }, '+ add a location…'),
+                data.map(m2 => { const opts = m2.locations.filter(l => !(t.locIds || []).includes(l.id)); return opts.length ? e('optgroup', { key:m2.key, label:m2.name }, opts.map(l => e('option', { key:l.id, value:l.id }, l.name))) : null; }))
+            )),
+          (shotsTotal > 0 || (editMode && locs.length > 0)) && e('div', { style:rowStyle }, rowLabel('Shots', shotsTotal ? shotsDone + ' of ' + shotsTotal : null),
+            e('div', { style:{ display:'flex', flexDirection:'column', gap:8 } }, locs.map(h => e('div', { key:h.loc.id },
+              e('div', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71', marginBottom:2 } }, h.loc.name),
+              e(Checklist, { items: h.loc.shots || [], onToggle:(id)=>toggleShot(h.loc.id, id), onAdd:(txt)=>addShot(h.loc.id, txt), onRemove:(id)=>removeShot(h.loc.id, id), placeholder:'Add a shot for ' + h.loc.name, compact:true, emptyText: editMode ? null : 'No shot list yet' }))))),
+          e('div', { style:rowStyle }, rowLabel('Packing', packing.length ? packed + ' of ' + packing.length : null),
+            e('div', null,
+              e(Checklist, { items: packing, onToggle:(id)=>togglePacking(t.id, id), onAdd:(txt)=>addPacking(t.id, txt), onRemove:(id)=>removePacking(t.id, id), placeholder:'Add something to pack and press Enter', emptyText:'Nothing listed yet.' }),
+              editMode && e('div', { style:{ display:'flex', flexWrap:'wrap', gap:8, marginTop:10 } },
+                locs.length > 0 ? smallBtn('+ kit from these locations', ()=>addKitToPacking(t.id)) : null,
+                packed > 0 ? smallBtn('untick all', ()=>untickPacking(t.id)) : null,
+                smallBtn('reset to the usual list', ()=>resetPacking(t.id)))
+            )),
+          (editMode || (t.notes || '').trim()) && e('div', { style:rowStyle }, rowLabel('Notes'),
+            e(NotesField, { key:'tripnotes-'+t.id, value:t.notes, onCommit:(v)=>updateTrip(t.id, { notes:v }) })),
+          editMode && e('div', { style:{ display:'flex', justifyContent:'flex-end', marginTop:14, paddingTop:12, borderTop:'1px solid #E6DECA' } },
+            e('button', { className:'del-btn', onClick:()=>deleteTrip(t.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid #D9B3A6', color:'#9C3B22', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer' } }, e('span', { style:{ fontSize:13, lineHeight:1 } }, '✕'), ' Delete trip'))
+        )
+      );
+    };
+
+    const sectionHead = (text, right) => e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:26, marginBottom:12 } },
+      e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'#8A7D63', whiteSpace:'nowrap' } }, text),
+      e('span', { style:{ flex:1, height:1, background:'#D2C7AC' } }),
+      right && e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.06em', color:'#A89A7C' } }, right));
+    return e('div', null,
+      e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
+        e('div', { style: isMobile ? {} : { flex:'1 1 380px', minWidth:0 } },
+          e('div', { onClick:goToYear, onKeyDown:keyActivate(goToYear), role:'button', tabIndex:0, title:'Back to the home page', style:{ display:'inline-flex', alignItems:'center', gap:9, cursor:'pointer' } },
+            e('img', { src:LOGO_SRC, alt:'', style:{ height:24, width:'auto', display:'block' } }),
+            e('div', { style:{ fontFamily:"'Figtree',system-ui,sans-serif", fontWeight:700, fontSize:12.5, letterSpacing:'0.24em', textTransform:'uppercase', color:'#201e1d' } }, 'Photoplan')
+          ),
+          e('h1', { style:{ margin:'6px 0 0', fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'#2A251E', letterSpacing:'-0.01em' } }, 'Trips'),
+          e('div', { style:{ marginTop:10, fontSize:isMobile?15:16, color:'#6E6450', maxWidth:'44ch', lineHeight:1.5 } }, 'Planned outings — when, where, what to shoot and what to pack. Each trip also shows as a bar in the calendar and in the export.')
+        ),
+        e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{ flex:'1 1 auto' }) } },
+          e('div', { style:navRowStyle },
+            e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'),
+            navDivider(), mapBtn, weatherBtn),
+          editToggle()
+        )
+      ),
+      e('div', { style:{ height:1, background:'#D2C7AC', margin:isMobile?'16px 0 14px':'22px 0 16px' } }),
+      editMode && e('div', { style:{ marginBottom:16 } }, e('button', { className:'btn-hover', onClick:addTrip, style:{ ...GreenBtn, gap:8, padding:'0 15px' } }, e('span', { style:{ fontSize:17, lineHeight:1, marginTop:-1 } }, '+'), ' New trip')),
+      !trips.length && e('div', { style:{ border:'1px dashed #C2B695', background:'#F1EBDB', padding:'16px 18px', fontFamily:mono, fontSize:12, color:'#8A7D63', letterSpacing:'.02em' } }, editMode ? 'No trips yet — "+ New trip" starts one with your usual packing list.' : 'No trips planned yet.'),
+      ahead.length > 0 && sectionHead('Coming up', ahead.length + (ahead.length === 1 ? ' trip' : ' trips')),
+      ahead.map(tripCard),
+      past.length > 0 && sectionHead('Past trips', past.length + (past.length === 1 ? ' trip' : ' trips')),
+      past.map(tripCard),
+      editMode && e('div', { style:{ marginTop:30, borderTop:'1px solid #D2C7AC', paddingTop:16 } },
+        e('div', { style:{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' } },
+          e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Usual packing list'),
+          e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.06em', color:'#B7AD90' } }, 'what a new trip starts with · one item per line'),
+          !tplEditing && smallBtn('✎ edit', ()=>setTplEditing(true))),
+        tplEditing
+          ? e('textarea', { autoFocus:true, defaultValue:template, 'aria-label':'Usual packing list', onBlur:(ev)=>{ setPackingTemplate(ev.target.value); setTplEditing(false); }, onKeyDown:(ev)=>{ if (ev.key === 'Escape') setTplEditing(false); }, style:{ marginTop:10, width:'100%', maxWidth:560, minHeight:240, fontFamily:mono, fontSize:12, lineHeight:1.6, color:'#2A251E', background:'#FFFDF5', border:'1px solid #C9BD9F', borderRadius:3, padding:'8px 10px', outline:'none', resize:'vertical' } })
+          : e('div', { style:{ marginTop:8, fontFamily:mono, fontSize:11, color:'#8A7D63', lineHeight:1.7, whiteSpace:'pre-wrap', maxWidth:560 } }, template))
+    );
+  };
+
   const regionLegend = () => e('div', { style:{ display:'flex', gap:16, alignItems:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', color:'#6E6450' } },
     e('span', { style:{ display:'flex', alignItems:'center', gap:7 } }, dot('#54632F'), 'UK'),
     e('span', { style:{ display:'flex', alignItems:'center', gap:7 } }, dot('#9E4B26'), 'INTERNATIONAL')
@@ -4293,7 +4731,7 @@ function App() {
           const st = styleOf(it.ev);
           const fmt = (d) => d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
           const when = it.ongoing ? 'Now · until ' + fmt(it.end) : fmt(it.date) + (it.multi ? ' – ' + fmt(it.end) : '');
-          const open = () => { setViewYear(it.y); goToMonth(it.i, it.ev.kind === 'photoop' ? (it.ev.locId || null) : null); };
+          const open = () => { setViewYear(it.y); if (it.ev.tripId) { goToTrips(it.ev.tripId); return; } goToMonth(it.i, it.ev.kind === 'photoop' ? (it.ev.locId || null) : null); };
           return e('div', { key: it.y + '-' + it.m2.key + '-' + it.ev.id, role:'button', tabIndex:0, onClick:open, onKeyDown:keyActivate(open), className:'map-chip', title:'Open ' + it.m2.name + ' ' + it.y,
               style:{ flex:'0 0 auto', width: isMobile ? 168 : 196, padding:'10px 12px 11px', background:'#FBF7EC', border:'1px solid #C9BD9F', borderLeft:'4px solid ' + st.accent, cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.08)' } },
             e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color: it.ongoing ? '#54632F' : '#9C8F71', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, when),
@@ -4566,6 +5004,34 @@ function App() {
                     e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'When'),
                     e(Editable, { key:'when-'+sel.id, tag:'div', value:sel.when, onCommit:(t)=>editField(sel.id,'when',t), title:'Click to edit', style:{ fontSize:15, color:'#3B3528', lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px', margin:'-1px -4px' } })
                   ),
+                  // Shots — the shot list for this spot (loc.shots), ticked off
+                  // as they're taken. view-only: only when there are any.
+                  (editMode || (sel.shots || []).length > 0) && (() => {
+                    const list = sel.shots || [], done = list.filter(s => s.done).length;
+                    return e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                      e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Shots',
+                        list.length > 0 && e('div', { style:{ marginTop:3, fontSize:9.5, letterSpacing:'.06em', textTransform:'none', color:'#B7AD90' } }, done + ' of ' + list.length)),
+                      e(Checklist, { key:'shots-'+sel.id, items:list, onToggle:(id)=>toggleShot(sel.id, id), onAdd:(t)=>addShot(sel.id, t), onRemove:(id)=>removeShot(sel.id, id), placeholder:'Add a shot to get here and press Enter' })
+                    );
+                  })(),
+                  // Trips — the planned trips this spot is part of (chips open
+                  // the trip); the owner can add it to another trip.
+                  (() => {
+                    const mine = trips.filter(t => (t.locIds || []).includes(sel.id));
+                    const others = trips.filter(t => !(t.locIds || []).includes(sel.id));
+                    if (!mine.length && !(editMode && others.length)) return null;
+                    const mono = "'IBM Plex Mono',monospace";
+                    return e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                      e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Trips'),
+                      e('div', { style:{ display:'flex', flexWrap:'wrap', gap:7, alignItems:'center' } },
+                        mine.map(t => e('button', { key:t.id, className:'map-chip', onClick:()=>goToTrips(t.id), title:'Open this trip', style:{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', padding:'4px 9px', background:'#DCE3E8', border:'1px solid #B9C7D1', color:'#2E4A5C', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.08)' } },
+                          e('span', { style:{ color:'#3F6A80', fontSize:9 } }, '▲'), t.name, t.start && e('span', { style:{ color:'#6E8494' } }, '· ' + fmtTripDates(t)))),
+                        editMode && others.length > 0 && e('select', { value:'', onChange:(ev)=>{ if (ev.target.value) addTripLoc(ev.target.value, sel.id); }, 'aria-label':'Add this location to a trip', style:{ height:28, padding:'0 8px', background:'none', border:'1px dashed #C9BD9F', color:'#9C8F71', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', cursor:'pointer', borderRadius:0 } },
+                          e('option', { value:'' }, '+ add to a trip…'),
+                          others.map(t => e('option', { key:t.id, value:t.id }, t.name)))
+                      )
+                    );
+                  })(),
                   // Light — computed for the brief's day (see skyDay) at this
                   // spot: sun, golden hour (Sun below 6°), blue hour (civil
                   // twilight), day length, with the ‹ › day stepper. Needs coordinates.
@@ -4641,6 +5107,22 @@ function App() {
                           e('span', { style:{ fontSize:14, color:tone, lineHeight:1.5 } }, core)),
                         season && e('div', { style:{ marginTop:5, fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', color:'#B7AD90' } }, 'Core season here (mid-month nights, moon aside) · ' + season)
                       )
+                    );
+                  })(),
+                  // Tides — coastal spots (owner switch, loc.tidal): the day's
+                  // highs and lows and the state at sunrise/sunset (TideRow).
+                  sky && selCoords && (sel.tidal || editMode) && (() => {
+                    const mono = "'IBM Plex Mono',monospace";
+                    const uk = coordsInUK(selCoords[0], selCoords[1]);
+                    const offH = uk ? ukOffsetHours(new Date(Date.UTC(viewYear, mi, skyDay, 12))) : 0;
+                    const toMin = (x) => x ? parseInt(x.time.slice(0, 2), 10) * 60 + parseInt(x.time.slice(3), 10) : null;
+                    return e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
+                      e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Tides'),
+                      sel.tidal
+                        ? e('div', null,
+                            e(TideRow, { lat:selCoords[0], lng:selCoords[1], year:viewYear, monthIdx:mi, day:skyDay, zone:sky.zone, offH, sunriseMin:toMin(sky.sunrise), sunsetMin:toMin(sky.sunset), uk }),
+                            editMode && e('div', { style:{ marginTop:5 } }, e('button', { className:'quiet-link', onClick:()=>setLocTidal(sel.id, false), style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', textTransform:'uppercase', color:'#9C8F71', textDecoration:'underline', textUnderlineOffset:3 } }, 'hide tides for this spot')))
+                        : e('button', { onClick:()=>setLocTidal(sel.id, true), title:'Coastal spot? Show the tides for the chosen day', style:{ justifySelf:'start', background:'none', border:'1px dashed #C9BD9F', color:'#9C8F71', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', padding:'4px 9px', cursor:'pointer' } }, '+ show tides here (coastal spot)')
                     );
                   })(),
                   // Kit
@@ -4756,10 +5238,10 @@ function App() {
                 key: it.id,
                 title: it.label,
                 className: 'ev-chip',
-                onClick: editMode ? () => openEventEditor(it.ev.id) : undefined,
+                onClick: chipClick(it.ev),
                 // lineHeight must clear the font's descenders — at 1 the label
                 // span's own line box clips the tails of p/g/y.
-                style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height:19, display:'flex', alignItems:'center', justifyContent: glyphOnly ? 'center' : 'flex-start', gap:isMobile?4:5, padding: glyphOnly ? 0 : (isMobile ? '0 4px' : '0 6px'), background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 9.5 : 10, fontWeight:500, lineHeight:1.4, whiteSpace:'nowrap', overflow:'hidden', cursor: editMode ? 'pointer' : 'default' }
+                style:{ position:'absolute', left:it.left, width:it.width, top:it.top, height:19, display:'flex', alignItems:'center', justifyContent: glyphOnly ? 'center' : 'flex-start', gap:isMobile?4:5, padding: glyphOnly ? 0 : (isMobile ? '0 4px' : '0 6px'), background:it.bg, color:it.fg, borderLeft:'3px solid '+it.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize: isMobile ? 9.5 : 10, fontWeight:500, lineHeight:1.4, whiteSpace:'nowrap', overflow:'hidden', cursor: chipClick(it.ev) ? 'pointer' : 'default' }
               },
                 it.hasGlyph && e('span', { style:{ flex:'none' } }, it.glyph),
                 !glyphOnly && e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis' } }, it.label),
@@ -4779,7 +5261,8 @@ function App() {
                 const st = styleOf(ev);
                 const s = ev.start != null ? ev.start : ev.day;
                 const e2 = ev.end != null ? ev.end : ev.day;
-                return e('div', { key:ev.id, className:'ev-chip', ...(editMode ? { onClick:()=>openEventEditor(ev.id), onKeyDown:keyActivate(()=>openEventEditor(ev.id)), role:'button', tabIndex:0 } : {}), style:{ display:'grid', gridTemplateColumns:'44px 1fr', gap:9, alignItems:'center', padding:'6px 8px', background:st.bg, color:st.fg, borderLeft:'3px solid '+st.accent, borderRadius:2, cursor: editMode ? 'pointer' : 'default' } },
+                const go = chipClick(ev);
+                return e('div', { key:ev.id, className:'ev-chip', ...(go ? { onClick:go, onKeyDown:keyActivate(go), role:'button', tabIndex:0 } : {}), style:{ display:'grid', gridTemplateColumns:'44px 1fr', gap:9, alignItems:'center', padding:'6px 8px', background:st.bg, color:st.fg, borderLeft:'3px solid '+st.accent, borderRadius:2, cursor: go ? 'pointer' : 'default' } },
                   e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, fontWeight:600, letterSpacing:'.02em' } }, s === e2 ? String(s) : (s + '–' + e2)),
                   e('span', { style:{ display:'flex', alignItems:'center', gap:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:500, minWidth:0 } },
                     eventIconKey(ev) ? e(EventIcon, { name:eventIconKey(ev), size:13, color:st.accent }) : (st.glyph && e('span', { style:{ flex:'none' } }, st.glyph)),
@@ -5048,7 +5531,7 @@ function App() {
       if (isCustomKind(ev.kind) && !customKindMap.has(ev.kind)) customKindMap.set(ev.kind, { kind: ev.kind, label: ev.kindLabel || 'Custom', color: ev.kindColor });
     }));
     if (isCustomKind(draft.kind) && !customKindMap.has(draft.kind)) customKindMap.set(draft.kind, { kind: draft.kind, label: draft.kindLabel || 'Custom', color: draft.kindColor });
-    const kindOpts = KIND_ORDER.map(k => {
+    const kindOpts = KIND_ORDER.filter(k => k !== 'trip').map(k => { // trips come from the Trips page
       const st = EVENT_STYLE[k];
       return { k, label:KIND_LABEL[k], ...st, sel: draft.kind===k };
     }).concat(Array.from(customKindMap.values()).map(ck => {
@@ -5223,9 +5706,11 @@ function App() {
   return e(EditCtx.Provider, { value: editMode }, e(ConfirmCtx.Provider, { value: askConfirm }, e(FocusCtx.Provider, { value: { map: (data[0] && data[0].photoFocus) || {}, set: editMode ? setPhotoFocus : null } }, e('div', { className:'app-shell', style:{ minHeight:'100vh', background:'#E5DCC6', backgroundImage:'radial-gradient(#dccfb3 0.8px, transparent 0.8px)', backgroundSize:'22px 22px', color:'#2A251E', fontFamily:"'Spectral',Georgia,serif", padding:isMobile?'18px 13px 56px':'36px 26px 70px' } },
     e('div', { style:{ maxWidth:1180, margin:'0 auto' } },
       renderCloudBanner(),
-      weatherView
+      tripsView
+        ? renderTripsPage()
+        : weatherView
         ? e(WeatherView, { data, initialLocId: weatherLoc, defaultLocId: data[0] && data[0].weatherDefault, onSetDefault: editMode ? setWeatherDefault : null, onBack: goToYear, onOpenMonth: goToMonth, isMobile,
-            navControl: e('div', { style:navRowStyle }, e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'), navDivider(), mapBtn) })
+            navControl: e('div', { style:navRowStyle }, e('button', { className:'btn-hover', onClick:goToYear, style:{ ...GreenBtn, gap:9 } }, e('span', { style:{ fontSize:15, lineHeight:1, marginTop:-1 } }, '←'), ' Home'), navDivider(), mapBtn, tripsBtn) })
         : mapView
         ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro, editMode, editControl: editToggle() })
         : (printView && editMode)

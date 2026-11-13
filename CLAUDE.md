@@ -250,6 +250,50 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `ephem_ref.py` → `ephem_ref.json`, `astro2_test.js`, run through
   `load_app.js`, which evaluates the inline script in a node `vm` with React/
   DOM stubs and returns every top-level function — reuse it for unit tests).
+- **Shot lists.** `loc.shots = [{ id, text, done }]` — the brief's **Shots**
+  row (after When; visitors see it only when non-empty) via the reusable
+  **`Checklist`** component (`items`, `onToggle/onAdd/onRemove`; read-only
+  without them; tick box, strike-through, × on hover, add field saving on
+  Enter/blur). `App`: `addShot/toggleShot/removeShot` (always a fresh array
+  — `mutateData` only shallow-copies locations). `newId(prefix)` makes ids.
+- **Trips** (`data[0].trips = [{ id, name, start:'YYYY-MM-DD', end, locIds,
+  notes, packing:[{id,text,done}] }]`): the **Trips page** (`tripsView` +
+  `tripOpen`, route `#/<year>/trips[/<id>]`, "▲ Trips" button on home/
+  month/weather navs, `renderTripsPage` in `App`): cards (upcoming, then
+  "Past trips"), each a header (name — Editable for the owner — dates via
+  `fmtTripDates`, nights, a now/tomorrow/in-N-days/past badge, summary
+  counts) that expands to Dates (two `<input type=date>`, `setTripDates`
+  keeps end ≥ start), Locations (chips with the first day's sunrise/sunset,
+  open the brief; add via a month-grouped `<select>`), Shots (roll-up of the
+  locations' shot lists, editable), Packing (`Checklist` + "kit from these
+  locations" = the Kit chips not already listed, "untick all", "reset to the
+  usual list"), Notes (`NotesField`), Delete. New trips start from the
+  **usual packing list** (`data[0].packingTemplate`, one per line; the
+  editable block at the page foot; `DEFAULT_PACKING` until set). Trips also
+  appear everywhere events do: `tripEventsFor(trips, monthIdx, year)` makes
+  `kind:'trip'` events (`id 'trip:<id>'`, `tripId`, clipped per month) which
+  `allEventsFor(m2, i, y)` appends to `eventsFor` for the month grid,
+  Coming up, the .ics and the print page (a "Trip" switch). They're never
+  stored: `chipClick(ev)` routes a trip chip to `goToTrips` for everyone,
+  `openEventEditor` bounces trips to the page, the editor's type list skips
+  `'trip'`. The brief has a **Trips** row (chips → the trip; owner "+ add to
+  a trip…" select). `EVENT_STYLE.trip` is the slate-blue ▲.
+- **Tides** (coastal spots; `loc.tidal = true`, the owner's "+ show tides
+  here" / "hide tides" in the brief's **Tides** row after Sky): `TideRow`
+  calls `loadTides(lat, lng)` (cached per place/session) → Open-Meteo marine
+  `hourly=sea_level_height_msl` (`TIDE_API`; `past_days` 60, then 30, then
+  none if refused; `forecast_days=8`, UTC) and fits a harmonic model
+  (`fitTides`: least squares, `solveLinear`; constituents by span —
+  M2 S2 N2 K1 O1 Q1 M4 MS4 ≥ 27 d, M2 S2 K1 O1 M4 MS4 ≥ 14.5 d, else
+  M2 K1 O1 M4). `tidesForDay(tides, y, m, d, offH, refs)`: a day inside the
+  fetched span uses the series (`sampleExtrema`, parabola through hourly
+  samples; label "forecast (tide + surge)"), any other day the model
+  (`tideExtrema` at 6-min steps; label "predicted … ≈ ±20 min"); plus the
+  level/trend at sunrise and sunset and an "Official tables ↗" link
+  (EasyTide for UK coords, tide-forecast.com elsewhere). Heights are v. mean
+  sea level, not chart datum. No sea-level cell (inland) → `status:'none'`
+  message; a fetch error isn't cached. Synthetic-tide test: scratchpad
+  `tide_test.js`.
 - **`LinksField` / `parseLinks`** — per-location links (`loc.links`, text, one
   per line, `Label | url` or a bare address) shown as chips in a "Links" row
   under Parking; owner edits via an "edit" button → textarea. **`NotesField`**
@@ -325,8 +369,10 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   meteoblue, light-pollution map, MWIS/Met Office mountain, tide times,
   AuroraWatch); and the `WEATHER_GUIDE` cards (conditions / settings / tips
   per kind of shoot — editorial, edit the array). All fetches fail quietly.
-- **Views:** `App` holds `yearView` / `monthIdx` / `mapView` / `weatherView`. Navigation:
-  `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `changeMonth` (all mirrored
+- **Views:** `App` holds `yearView` / `monthIdx` / `mapView` / `weatherView`
+  / `tripsView`. Navigation:
+  `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `goToTrips(id)`,
+  `changeMonth` (all mirrored
   in the URL hash — see Deep links); the shared
   `navRow(showYearBtn)` renders the top buttons. Month pages: `[month picker]
   ‹ › | Map Weather | ← Home`, with the owner's "+ Add location" (`addLocBtn`)
@@ -434,9 +480,11 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `context.route(/^https?:\/\/(?!127\.0\.0\.1)/, r => r.abort())` (the cloud
   load then settles as "offline" and the UI still renders) — or answer the
   Worker's URLs from the route handler to fake the cloud (the scratchpad
-  `smoke.js` / `restore.js` scripts do both: routes, search, backups modal,
-  restore + conflict, an EXIF upload). d3/Leaflet/Google Fonts stay
-  unreachable, so the map body and the mini map don't render. Setting
+  `smoke.js` / `restore.js` / `trips.js` scripts do both: routes, search,
+  backups modal, restore + conflict, an EXIF upload, shots/trips/tides with
+  a faked marine API). d3/Google Fonts stay unreachable (the map body
+  doesn't render); Leaflet can be served from a local `npm pack leaflet@1.9.4`
+  copy via the route handler (see `sky.js`) so the mini map does. Setting
   `localStorage['calendar:uploadKey']` makes the page the owner's. NB a
   `page.goto` that only changes the hash is a same-document navigation —
   go via `about:blank` for a real reload. Still have the owner test live.
