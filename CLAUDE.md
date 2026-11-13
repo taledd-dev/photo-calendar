@@ -274,10 +274,22 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   `kind:'trip'` events (`id 'trip:<id>'`, `tripId`, clipped per month) which
   `allEventsFor(m2, i, y)` appends to `eventsFor` for the month grid,
   Coming up, the .ics and the print page (a "Trip" switch). They're never
-  stored: `chipClick(ev)` routes a trip chip to `goToTrips` for everyone,
-  `openEventEditor` bounces trips to the page, the editor's type list skips
-  `'trip'`. The brief has a **Trips** row (chips → the trip; owner "+ add to
-  a trip…" select). `EVENT_STYLE.trip` is the slate-blue ▲.
+  stored. A trip bar's label names the trip's locations ("Peaks weekend ·
+  Mam Tor, Ham Wall" — `tripEventsFor`'s 4th arg `data`). **Trip pop-up:**
+  `chipClick(ev)`, `openEventEditor`, the brief's Trips pills and Coming-up
+  cards all open `renderTripPeek()` (`tripPeek` state, zIndex 60, Escape
+  closes) — dates, the `tripWhen` badge, location chips (→ the brief),
+  tickable shots, packing progress bar + the unpacked items, notes, and an
+  "Edit on the Trips page →" button — so the reader stays on the page. The
+  editor's type list skips `'trip'`. The brief has a **Trips** row (pills →
+  pop-up; owner "+ add to a trip…" select). `EVENT_STYLE.trip` is the
+  slate-blue ▲. The locations `<select>` on a card reads "Choose a
+  location…" and ends with a "New location in…" group (`new:<monthIdx>` →
+  `addNewLocToTrip`: `askText` name → `createLocation(idx, name)` — the
+  shared half of `addLocation` — then `addTripLoc`). An undated card tells
+  the owner to set dates to put it on the calendar. The usual packing list
+  is hidden behind a quiet "✎ edit the usual packing list" link
+  (`tplEditing`) at the page foot.
 - **Tides** (coastal spots; `loc.tidal = true`, the owner's "+ show tides
   here" / "hide tides" in the brief's **Tides** row after Sky): `TideRow`
   calls `loadTides(lat, lng)` (cached per place/session) → Open-Meteo marine
@@ -292,8 +304,12 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   level/trend at sunrise and sunset and an "Official tables ↗" link
   (EasyTide for UK coords, tide-forecast.com elsewhere). Heights are v. mean
   sea level, not chart datum. No sea-level cell (inland) → `status:'none'`
-  message; a fetch error isn't cached. Synthetic-tide test: scratchpad
-  `tide_test.js`.
+  message; a fetch error isn't cached. The response's own `latitude`/
+  `longitude` (the sea cell that answered) is kept as `cell` and the footnote
+  says "sea cell N km from the spot" when ≥ 0.5 km — Open-Meteo picks its
+  nearest cell with data, so coordinates a little inland still work; near
+  estuaries/headlands it may be the wrong side. Synthetic-tide test:
+  scratchpad `tide_test.js`.
 - **`LinksField` / `parseLinks`** — per-location links (`loc.links`, text, one
   per line, `Label | url` or a bare address) shown as chips in a "Links" row
   under Parking; owner edits via an "edit" button → textarea. **`NotesField`**

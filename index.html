@@ -1065,10 +1065,14 @@ function fmtTripDates(trip) {
 function tripNights(trip) { const a = parseYmd(trip.start), b = parseYmd(trip.end) || a; if (!a) return null; return Math.round((Date.UTC(b.y, b.m, b.d) - Date.UTC(a.y, a.m, a.d)) / 86400000); }
 // The 'trip' events for one month of one year: each dated trip overlapping
 // the month, clipped to it. { id:'trip:<id>', kind:'trip', label, start, end, tripId }.
-function tripEventsFor(trips, monthIdx, year) {
+// With `data`, the label names the trip's locations too ("Peaks weekend ·
+// Mam Tor, Ham Wall"), the way a photo-op bar names its spot.
+function tripEventsFor(trips, monthIdx, year, data) {
   if (!trips || !trips.length) return [];
   const days = new Date(year, monthIdx + 1, 0).getDate();
   const m0 = Date.UTC(year, monthIdx, 1), m1 = Date.UTC(year, monthIdx, days);
+  let names = null;
+  const nameOf = (id) => { if (!names) { names = {}; (data || []).forEach(m2 => m2.locations.forEach(l => { names[l.id] = l.name; })); } return names[id]; };
   const out = [];
   trips.forEach(t => {
     const a = parseYmd(t.start), b = parseYmd(t.end) || a;
@@ -1076,7 +1080,8 @@ function tripEventsFor(trips, monthIdx, year) {
     const t0 = Date.UTC(a.y, a.m, a.d), t1 = Math.max(t0, Date.UTC(b.y, b.m, b.d));
     if (t1 < m0 || t0 > m1) return;
     const s = t0 < m0 ? 1 : a.d, en = t1 > m1 ? days : new Date(t1).getUTCDate();
-    out.push({ id: 'trip:' + t.id, kind: 'trip', label: t.name || 'Trip', start: s, end: en, tripId: t.id });
+    const locNames = data ? (t.locIds || []).map(nameOf).filter(Boolean) : [];
+    out.push({ id: 'trip:' + t.id, kind: 'trip', label: (t.name || 'Trip') + (locNames.length ? ' · ' + locNames.join(', ') : ''), start: s, end: en, tripId: t.id });
   });
   return out;
 }
@@ -1165,9 +1170,17 @@ async function loadTides(lat, lng) {
         if (levels.length < 48) return { status: 'none' };
         const fit = fitTides(hours, levels);
         if (!fit || fit.range < 0.05) return { status: 'none' }; // a lake or a tideless sea
+        // Which sea cell answered, and how far it is from the spot (the model
+        // picks its nearest cell with data; cells are several km across).
+        let cell = null;
+        if (typeof j.latitude === 'number' && typeof j.longitude === 'number') {
+          const dLat = (j.latitude - lat) * RAD, dLng = (j.longitude - lng) * RAD;
+          const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat * RAD) * Math.cos(j.latitude * RAD) * Math.sin(dLng / 2) ** 2;
+          cell = { lat: j.latitude, lng: j.longitude, km: 2 * 6371 * Math.asin(Math.sqrt(a)) };
+        }
         // linear interpolation of the series itself, for days inside the span
         const dataAt = (t) => { let lo = 0, hi = hours.length - 1; if (t <= hours[0]) return levels[0]; if (t >= hours[hi]) return levels[hi]; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (hours[mid] <= t) lo = mid; else hi = mid; } const f = (t - hours[lo]) / (hours[hi] - hours[lo]); return levels[lo] + f * (levels[hi] - levels[lo]); };
-        return { status: 'ok', t0, hours, levels, fit, dataAt, span: [hours[0], hours[hours.length - 1]] };
+        return { status: 'ok', t0, hours, levels, fit, dataAt, span: [hours[0], hours[hours.length - 1]], cell };
       } catch (_) { /* try a shorter request */ }
     }
     return { status: 'error' };
@@ -1225,7 +1238,7 @@ function TideRow({ lat, lng, year, monthIdx, day, zone, offH, sunriseMin, sunset
     e('div', { style:{ display:'flex', flexWrap:'wrap', gap:'7px 18px' } }, T.ext.length ? T.ext.map(x => cell(x.type === 'high' ? 'High' : 'Low', x.time + ' · ' + m(x.level))) : e('span', { style:{ fontSize:13.5, color:'#8A7D63' } }, 'No turning point that day')),
     atLine.length > 0 && e('div', { style:{ marginTop:6, fontSize:13.5, color:'#5A513B', lineHeight:1.5 } }, 'At ' + atLine.join(' · ')),
     e('div', { style:{ marginTop:5, display:'flex', alignItems:'baseline', gap:12, flexWrap:'wrap' } },
-      e('span', { style:small }, (T.source === 'forecast' ? 'Open-Meteo sea-level forecast (tide + surge)' : 'Predicted from a tide model fitted to the forecast (≈ ±20 min)') + ' · heights v. mean sea level · ' + zone),
+      e('span', { style:small }, (T.source === 'forecast' ? 'Open-Meteo sea-level forecast (tide + surge)' : 'Predicted from a tide model fitted to the forecast (≈ ±20 min)') + ' · heights v. mean sea level · ' + zone + (tides.cell && tides.cell.km >= 0.5 ? ' · sea cell ' + (tides.cell.km < 10 ? tides.cell.km.toFixed(1) : Math.round(tides.cell.km)) + ' km from the spot' : '')),
       e('a', { href: tables, target:'_blank', rel:'noopener noreferrer', className:'map-link', style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', textTransform:'uppercase', color:'#54632F', textDecoration:'none', borderBottom:'1px solid #C9D4A8' } }, 'Official tables ↗'))
   );
 }
@@ -3330,6 +3343,15 @@ function App() {
   const [tripsView, setTripsView] = useState(false);
   const [tripOpen, setTripOpen] = useState(null);     // the trip expanded on the Trips page
   const [tplEditing, setTplEditing] = useState(false); // the usual-packing-list textarea on the Trips page
+  // A trip opened as a pop-up (from a grid bar, a brief's trip pill or a
+  // Coming-up card) — the reader stays on the page they were on.
+  const [tripPeek, setTripPeek] = useState(null);
+  useEffect(() => {
+    if (!tripPeek) return;
+    const onKey = (ev) => { if (ev.key === 'Escape') setTripPeek(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tripPeek]);
   const [monthIdx, setMonthIdx] = useState(0);
   const [selectedLoc, setSelectedLoc] = useState(null); // no brief open until a tile is tapped
   const [editingEvent, setEditingEvent] = useState(null);
@@ -3580,7 +3602,7 @@ function App() {
   const yKey = String(viewYear);
   // A month's events in a year, plus the planned trips that touch it (made on
   // the fly from data[0].trips — see tripEventsFor; never stored as events).
-  const allEventsFor = (m2, i, y) => eventsFor(m2, y).concat(tripEventsFor(data[0] && data[0].trips, i, y));
+  const allEventsFor = (m2, i, y) => eventsFor(m2, y).concat(tripEventsFor(data[0] && data[0].trips, i, y, data));
   const monthForYear = (m2, i) => ({
     ...m2,
     year: viewYear,
@@ -3838,20 +3860,24 @@ function App() {
     mutateData(d => { for (const m of d) { const loc = m.locations.find(l => l.id === locId); if (loc) { loc.done = !loc.done; break; } } });
   };
 
-  const addLocation = async () => {
-    if (!ensureUnlocked(addLocation)) return;
-    const nameInput = await askText({ kind:'text', title:'New location', label:'Name the new location — it will be added to ' + month.name + '.', placeholder:'e.g. Buttermere', confirm:'Add location' });
-    if (nameInput === null) return; // cancelled
-    const name = nameInput.trim() || 'New location';
-    // Readable, unique id derived from the name — this becomes part of the photo filename.
+  // Create a location in a month (the shared part of "+ Add location" and the
+  // Trips page's "New location in…"); returns its id. Readable, unique id
+  // from the name — it becomes part of the photo filename.
+  const createLocation = (idx, name) => {
     const existing = new Set(data.flatMap(m => m.locations.map(l => l.id)));
     const slugBase = slugify(name) || 'location';
     let id = slugBase, n = 2;
     while (existing.has(id)) { id = slugBase + '-' + (n++); }
     mutateData(d => {
-      d[monthIdx].locations.push({ id, region:'UK', name, tag:'New spot', done:false, where:'Where is it?', idea:'Describe the shot you have in mind — what makes this spot worth the trip.', when:'Best season, time of day and conditions to aim for.', kit:'Lens · Tripod' });
+      d[idx].locations.push({ id, region:'UK', name, tag:'New spot', done:false, where:'Where is it?', idea:'Describe the shot you have in mind — what makes this spot worth the trip.', when:'Best season, time of day and conditions to aim for.', kit:'Lens · Tripod' });
     });
-    setSelectedLoc(id);
+    return id;
+  };
+  const addLocation = async () => {
+    if (!ensureUnlocked(addLocation)) return;
+    const nameInput = await askText({ kind:'text', title:'New location', label:'Name the new location — it will be added to ' + month.name + '.', placeholder:'e.g. Buttermere', confirm:'Add location' });
+    if (nameInput === null) return; // cancelled
+    setSelectedLoc(createLocation(monthIdx, nameInput.trim() || 'New location'));
   };
 
   const deleteLocation = async (id) => {
@@ -4022,6 +4048,26 @@ function App() {
     return { start: s, end: en };
   });
   const addTripLoc = (id, locId) => updateTrip(id, t => ({ locIds: (t.locIds || []).includes(locId) ? t.locIds : (t.locIds || []).concat([locId]) }));
+  // A brand-new location straight from the trip: named in the dialog, created
+  // in the chosen month, then added to the trip.
+  const addNewLocToTrip = async (id, idx) => {
+    if (!ensureUnlocked(() => addNewLocToTrip(id, idx))) return;
+    const nameInput = await askText({ kind:'text', title:'New location', label:'Name the new location — it will be added to ' + data[idx].name + ' and to this trip. Fill in its brief from the month page.', placeholder:'e.g. Buttermere', confirm:'Add location' });
+    if (nameInput === null) return;
+    addTripLoc(id, createLocation(idx, nameInput.trim() || 'New location'));
+  };
+  // When a trip is, relative to today: 'past' | 'now' | 'tomorrow' | 'in N days' | null (undated).
+  const tripWhen = (t) => {
+    const now = new Date(), todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const diff = (ymd) => { const p = parseYmd(ymd); return p ? Math.round((Date.UTC(p.y, p.m, p.d) - todayUtc) / 86400000) : null; };
+    const d0 = diff(t.start), d1 = diff(t.end || t.start);
+    if (d0 == null) return null;
+    if (d1 < 0) return 'past';
+    if (d0 <= 0) return 'now';
+    if (d0 === 1) return 'tomorrow';
+    return 'in ' + d0 + ' days';
+  };
+  const whenBadge = (w) => w && e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', padding:'3px 8px', background: w === 'now' ? '#54632F' : (w === 'past' ? '#EFE7D2' : '#DCE3E8'), color: w === 'now' ? '#FBF7EC' : (w === 'past' ? '#9C8F71' : '#2E4A5C') } }, w);
   const removeTripLoc = (id, locId) => updateTrip(id, t => ({ locIds: (t.locIds || []).filter(x => x !== locId) }));
   const togglePacking = (id, itemId) => updateTrip(id, t => ({ packing: (t.packing || []).map(p => p.id === itemId ? { ...p, done: !p.done } : p) }));
   const addPacking = (id, text) => updateTrip(id, t => ({ packing: (t.packing || []).concat([{ id: newId('p'), text, done: false }]) }));
@@ -4139,11 +4185,11 @@ function App() {
 
   // What a click on an event chip does: a trip bar opens the trip (for
   // everyone); anything else opens the editor (owner only).
-  const chipClick = (ev) => ev.tripId ? () => goToTrips(ev.tripId) : (editMode ? () => openEventEditor(ev.id) : undefined);
+  const chipClick = (ev) => ev.tripId ? () => setTripPeek(ev.tripId) : (editMode ? () => openEventEditor(ev.id) : undefined);
   const openEventEditor = (evId) => {
     const ev = month.events.find(e2 => e2.id === evId);
     if (!ev) return;
-    if (ev.tripId) { goToTrips(ev.tripId); return; } // trips are edited on their own page
+    if (ev.tripId) { setTripPeek(ev.tripId); return; } // trips are edited on their own page; here just a peek
     const s = ev.start != null ? ev.start : ev.day;
     const e2 = ev.end != null ? ev.end : ev.day;
     setEditingEvent({ id: evId, label: ev.label, start: String(s), end: String(e2), kind: ev.kind, kindLabel: ev.kindLabel, kindColor: ev.kindColor, locId: ev.locId || null, noPrint: !!ev.noPrint, annual: !!ev.annual, icon: ev.icon || 'auto', isNew: false });
@@ -4513,7 +4559,7 @@ function App() {
     const byStart = (a, b) => { const x = a.start || '9999', y = b.start || '9999'; return x < y ? -1 : x > y ? 1 : 0; };
     const sorted = trips.slice().sort(byStart);
     const ahead = sorted.filter(t => !isPast(t)), past = sorted.filter(isPast).reverse();
-    const when = (t) => { const d0 = dayDiff(t.start), d1 = dayDiff(t.end || t.start); if (d0 == null) return null; if (d1 < 0) return 'past'; if (d0 <= 0) return 'now'; if (d0 === 1) return 'tomorrow'; return 'in ' + d0 + ' days'; };
+    const when = tripWhen;
     const rowStyle = { display:'grid', gridTemplateColumns:isMobile?'64px 1fr':'90px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' };
     const rowLabel = (t, sub) => e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:3 } }, t, sub && e('div', { style:{ marginTop:3, fontSize:9.5, letterSpacing:'.06em', textTransform:'none', color:'#B7AD90' } }, sub));
     const smallBtn = (label, onClick) => e('button', { key:label, onClick, style:{ background:'none', border:'1px dashed #C9BD9F', color:'#9C8F71', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', padding:'4px 9px', cursor:'pointer' } }, label);
@@ -4540,9 +4586,10 @@ function App() {
               open && editMode
                 ? e('span', { onClick:(ev)=>ev.stopPropagation(), onKeyDown:(ev)=>ev.stopPropagation() }, e(Editable, { key:'tripname-'+t.id, tag:'span', value:t.name, onCommit:(v)=>updateTrip(t.id, { name:(v || '').trim() || 'Trip' }), title:'Click to rename', style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?20:23, color:'#2A251E', lineHeight:1.15, cursor:'text', outline:'none', borderRadius:3, padding:'0 4px', margin:'0 -4px' } }))
                 : e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?20:23, color:'#2A251E', lineHeight:1.15 } }, t.name),
-              w && e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', padding:'3px 8px', background: w === 'now' ? '#54632F' : (w === 'past' ? '#EFE7D2' : '#DCE3E8'), color: w === 'now' ? '#FBF7EC' : (w === 'past' ? '#9C8F71' : '#2E4A5C') } }, w)
+              whenBadge(w)
             ),
-            e('div', { style:{ marginTop:5, fontFamily:mono, fontSize:11.5, color:'#5A513B', letterSpacing:'.03em' } }, fmtTripDates(t) + (nights ? ' · ' + nights + (nights === 1 ? ' night' : ' nights') : ''))
+            e('div', { style:{ marginTop:5, fontFamily:mono, fontSize:11.5, color:'#5A513B', letterSpacing:'.03em' } }, fmtTripDates(t) + (nights ? ' · ' + nights + (nights === 1 ? ' night' : ' nights') : ''),
+              !t.start && editMode && e('span', { style:{ color:'#A89A7C' } }, ' — set the dates below to put it on the calendar'))
           ),
           e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', color:'#8A7D63', textAlign:isMobile?'left':'right', lineHeight:1.7 } },
             e('div', null, locs.length + (locs.length === 1 ? ' location' : ' locations') + (shotsTotal ? ' · ' + shotsDone + '/' + shotsTotal + ' shots' : '')),
@@ -4567,9 +4614,12 @@ function App() {
                       editMode && e('button', { className:'close-btn', onClick:()=>removeTripLoc(t.id, h.loc.id), title:'Remove from this trip', 'aria-label':'Remove ' + h.loc.name + ' from this trip', style:{ width:26, background:'none', border:'none', borderLeft:'1px solid #E6DECA', color:'#B7AD90', cursor:'pointer', fontSize:15, fontFamily:"'Spectral',serif" } }, '×'));
                   }))
                 : e('div', { style:{ fontSize:13.5, color:'#A89A7C' } }, editMode ? 'No locations yet — pick them below.' : 'No locations yet.'),
-              editMode && e('select', { value:'', onChange:(ev)=>{ if (ev.target.value) addTripLoc(t.id, ev.target.value); }, 'aria-label':'Add a location to this trip', style:{ marginTop:8, height:30, padding:'0 8px', background:'none', border:'1px dashed #C9BD9F', color:'#9C8F71', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', cursor:'pointer', borderRadius:0, maxWidth:'100%' } },
-                e('option', { value:'' }, '+ add a location…'),
-                data.map(m2 => { const opts = m2.locations.filter(l => !(t.locIds || []).includes(l.id)); return opts.length ? e('optgroup', { key:m2.key, label:m2.name }, opts.map(l => e('option', { key:l.id, value:l.id }, l.name))) : null; }))
+              // Pick an existing location (grouped by month) — or make a new
+              // one in a month, which the dialog then names.
+              editMode && e('select', { value:'', onChange:(ev)=>{ const v = ev.target.value; if (!v) return; if (v.indexOf('new:') === 0) addNewLocToTrip(t.id, parseInt(v.slice(4), 10)); else addTripLoc(t.id, v); }, 'aria-label':'Add a location to this trip', style:{ marginTop:8, height:30, padding:'0 8px', background:'none', border:'1px dashed #C9BD9F', color:'#9C8F71', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', cursor:'pointer', borderRadius:0, maxWidth:'100%' } },
+                e('option', { value:'' }, 'Choose a location…'),
+                data.map(m2 => { const opts = m2.locations.filter(l => !(t.locIds || []).includes(l.id)); return opts.length ? e('optgroup', { key:m2.key, label:m2.name }, opts.map(l => e('option', { key:l.id, value:l.id }, l.name))) : null; }),
+                e('optgroup', { label:'New location in…' }, data.map((m2, i) => e('option', { key:'new-' + m2.key, value:'new:' + i }, '+ New location in ' + m2.name + (first && first.m === i ? ' (the trip\'s month)' : '')))))
             )),
           (shotsTotal > 0 || (editMode && locs.length > 0)) && e('div', { style:rowStyle }, rowLabel('Shots', shotsTotal ? shotsDone + ' of ' + shotsTotal : null),
             e('div', { style:{ display:'flex', flexDirection:'column', gap:8 } }, locs.map(h => e('div', { key:h.loc.id },
@@ -4619,14 +4669,74 @@ function App() {
       ahead.map(tripCard),
       past.length > 0 && sectionHead('Past trips', past.length + (past.length === 1 ? ' trip' : ' trips')),
       past.map(tripCard),
-      editMode && e('div', { style:{ marginTop:30, borderTop:'1px solid #D2C7AC', paddingTop:16 } },
-        e('div', { style:{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' } },
-          e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Usual packing list'),
-          e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.06em', color:'#B7AD90' } }, 'what a new trip starts with · one item per line'),
-          !tplEditing && smallBtn('✎ edit', ()=>setTplEditing(true))),
+      // The usual packing list (what a new trip starts with) stays out of
+      // sight: a quiet link opens its editor.
+      editMode && e('div', { style:{ marginTop:28 } },
         tplEditing
-          ? e('textarea', { autoFocus:true, defaultValue:template, 'aria-label':'Usual packing list', onBlur:(ev)=>{ setPackingTemplate(ev.target.value); setTplEditing(false); }, onKeyDown:(ev)=>{ if (ev.key === 'Escape') setTplEditing(false); }, style:{ marginTop:10, width:'100%', maxWidth:560, minHeight:240, fontFamily:mono, fontSize:12, lineHeight:1.6, color:'#2A251E', background:'#FFFDF5', border:'1px solid #C9BD9F', borderRadius:3, padding:'8px 10px', outline:'none', resize:'vertical' } })
-          : e('div', { style:{ marginTop:8, fontFamily:mono, fontSize:11, color:'#8A7D63', lineHeight:1.7, whiteSpace:'pre-wrap', maxWidth:560 } }, template))
+          ? e('div', null,
+              e('div', { style:{ display:'flex', alignItems:'baseline', gap:12, flexWrap:'wrap' } },
+                e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Usual packing list'),
+                e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.06em', color:'#B7AD90' } }, 'what a new trip starts with · one item per line · saves when you click away')),
+              e('textarea', { autoFocus:true, defaultValue:template, 'aria-label':'Usual packing list', onBlur:(ev)=>{ setPackingTemplate(ev.target.value); setTplEditing(false); }, onKeyDown:(ev)=>{ if (ev.key === 'Escape') setTplEditing(false); }, style:{ marginTop:8, width:'100%', maxWidth:560, minHeight:240, fontFamily:mono, fontSize:12, lineHeight:1.6, color:'#2A251E', background:'#FFFDF5', border:'1px solid #C9BD9F', borderRadius:3, padding:'8px 10px', outline:'none', resize:'vertical' } }))
+          : quietBtn('✎ edit the usual packing list', ()=>setTplEditing(true)))
+    );
+  };
+
+  // ─── Trip pop-up ──────────────────────────────────────────────────────────
+  // The trip's essentials over the current page (dates, locations, shots,
+  // packing progress, notes) with a way through to the Trips page.
+  const renderTripPeek = () => {
+    if (!tripPeek) return null;
+    const t = trips.find(x => x.id === tripPeek);
+    if (!t) return null;
+    const mono = "'IBM Plex Mono',monospace";
+    const locs = (t.locIds || []).map(id => locIndex[id]).filter(Boolean);
+    const packing = t.packing || [], packed = packing.filter(p => p.done).length;
+    const shotsTotal = locs.reduce((n2, h) => n2 + (h.loc.shots || []).length, 0), shotsDone = locs.reduce((n2, h) => n2 + (h.loc.shots || []).filter(s => s.done).length, 0);
+    const nights = tripNights(t), first = parseYmd(t.start);
+    const rowStyle = { display:'grid', gridTemplateColumns:'76px 1fr', gap:14, padding:'10px 0', borderTop:'1px solid #E6DECA' };
+    const rowLabel = (txt, sub) => e('div', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:3 } }, txt, sub && e('div', { style:{ marginTop:3, fontSize:9.5, letterSpacing:'.06em', textTransform:'none', color:'#B7AD90' } }, sub));
+    const close = () => setTripPeek(null);
+    return e('div', { onClick:close, style:{ position:'fixed', inset:0, background:'rgba(42,37,30,0.34)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:60 } },
+      e('div', { role:'dialog', 'aria-modal':'true', 'aria-labelledby':'pp-trip-title', onClick:(ev)=>ev.stopPropagation(), style:{ width:520, maxWidth:'100%', maxHeight:'88vh', display:'flex', flexDirection:'column', background:'#FBF7EC', border:'1px solid #2A251E', boxShadow:'9px 9px 0 rgba(42,37,30,0.20)' } },
+        e('div', { style:{ height:5, background:'#3F6A80', flex:'none' } }),
+        e('div', { style:{ padding:'15px 20px 0', flex:'none' } },
+          e('div', { style:{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 } },
+            e('div', { style:{ minWidth:0 } },
+              e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'#8A7D63' } }, 'Trip'),
+              e('div', { id:'pp-trip-title', style:{ marginTop:4, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' } },
+                e('span', { style:{ color:'#3F6A80', fontSize:12 } }, '▲'),
+                e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:22, color:'#2A251E', lineHeight:1.15 } }, t.name),
+                whenBadge(tripWhen(t))),
+              e('div', { style:{ marginTop:5, fontFamily:mono, fontSize:11.5, color:'#5A513B', letterSpacing:'.03em' } }, fmtTripDates(t) + (nights ? ' · ' + nights + (nights === 1 ? ' night' : ' nights') : ''))),
+            e('button', { className:'close-btn', onClick:close, title:'Close', 'aria-label':'Close', autoFocus:true, style:{ flex:'none', width:30, height:30, background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontSize:17, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×'))
+        ),
+        e('div', { style:{ overflowY:'auto', padding:'8px 20px 16px', flex:'1 1 auto' } },
+          e('div', { style:rowStyle }, rowLabel('Locations'),
+            locs.length
+              ? e('div', { style:{ display:'flex', flexWrap:'wrap', gap:7 } }, locs.map(h => {
+                  const c = coordsOf(h.loc), L = (c && first) ? lightAt(c[0], c[1], first.y, first.m, first.d) : null;
+                  return e('button', { key:h.loc.id, className:'loc-pick', onClick:()=>{ close(); if (first) setViewYear(YEARS.indexOf(first.y) !== -1 ? first.y : viewYear); goToMonth(h.i, h.loc.id); }, title:'Open the location brief', style:{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, padding:'6px 10px', background:'#FFFDF5', border:'1px solid #D2C7AC', cursor:'pointer', textAlign:'left' } },
+                    e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:14.5, color:'#2A251E', lineHeight:1.2 } }, h.loc.name),
+                    e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.1em', textTransform:'uppercase', color: h.loc.region === 'UK' ? '#54632F' : '#9E4B26' } }, h.month.name + (L && !L.polar ? ' · ↑ ' + L.rise + ' ↓ ' + L.set : '')));
+                }))
+              : e('div', { style:{ fontSize:13.5, color:'#A89A7C' } }, 'No locations yet.')),
+          shotsTotal > 0 && e('div', { style:rowStyle }, rowLabel('Shots', shotsDone + ' of ' + shotsTotal),
+            e('div', { style:{ display:'flex', flexDirection:'column', gap:6 } }, locs.filter(h => (h.loc.shots || []).length).map(h => e('div', { key:h.loc.id },
+              locs.length > 1 && e('div', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'#9C8F71', marginBottom:2 } }, h.loc.name),
+              e(Checklist, { items: h.loc.shots || [], onToggle:(id)=>toggleShot(h.loc.id, id), compact:true }))))),
+          packing.length > 0 && e('div', { style:rowStyle }, rowLabel('Packing', packed + ' of ' + packing.length),
+            e('div', null,
+              e('div', { style:{ height:5, background:'#EFE7D2', border:'1px solid #E6DECA', marginTop:6, marginBottom:8 } }, e('div', { style:{ height:'100%', width: Math.round(100 * packed / packing.length) + '%', background:'#54632F' } })),
+              packed < packing.length
+                ? e(Checklist, { items: packing.filter(p => !p.done), onToggle:(id)=>togglePacking(t.id, id), compact:true })
+                : e('div', { style:{ fontSize:13.5, color:'#54632F' } }, 'All packed.'))),
+          (t.notes || '').trim() && e('div', { style:rowStyle }, rowLabel('Notes'), e('div', { style:{ fontSize:14, color:'#3B3528', lineHeight:1.55, whiteSpace:'pre-wrap' } }, t.notes))
+        ),
+        e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, padding:'12px 20px 16px', borderTop:'1px solid #E6DECA', flex:'none' } },
+          e('button', { type:'button', className:'close-btn', onClick:close, style:{ background:'none', border:'1px solid #D2C7AC', color:'#8A7D63', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 13px', cursor:'pointer' } }, 'Close'),
+          e('button', { type:'button', className:'save-btn', onClick:()=>{ close(); goToTrips(t.id); }, style:{ background:'#54632F', border:'1px solid #2A251E', color:'#FBF7EC', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'9px 17px', cursor:'pointer', boxShadow:'3px 3px 0 rgba(42,37,30,0.14)' } }, (editMode ? 'Edit on the Trips page' : 'Open the Trips page') + ' →'))
+      )
     );
   };
 
@@ -4731,7 +4841,7 @@ function App() {
           const st = styleOf(it.ev);
           const fmt = (d) => d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
           const when = it.ongoing ? 'Now · until ' + fmt(it.end) : fmt(it.date) + (it.multi ? ' – ' + fmt(it.end) : '');
-          const open = () => { setViewYear(it.y); if (it.ev.tripId) { goToTrips(it.ev.tripId); return; } goToMonth(it.i, it.ev.kind === 'photoop' ? (it.ev.locId || null) : null); };
+          const open = () => { if (it.ev.tripId) { setTripPeek(it.ev.tripId); return; } setViewYear(it.y); goToMonth(it.i, it.ev.kind === 'photoop' ? (it.ev.locId || null) : null); };
           return e('div', { key: it.y + '-' + it.m2.key + '-' + it.ev.id, role:'button', tabIndex:0, onClick:open, onKeyDown:keyActivate(open), className:'map-chip', title:'Open ' + it.m2.name + ' ' + it.y,
               style:{ flex:'0 0 auto', width: isMobile ? 168 : 196, padding:'10px 12px 11px', background:'#FBF7EC', border:'1px solid #C9BD9F', borderLeft:'4px solid ' + st.accent, cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.08)' } },
             e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color: it.ongoing ? '#54632F' : '#9C8F71', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, when),
@@ -5024,7 +5134,7 @@ function App() {
                     return e('div', { style:{ display:'grid', gridTemplateColumns:isMobile?'52px 1fr':'74px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid #E6DECA' } },
                       e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', paddingTop:2 } }, 'Trips'),
                       e('div', { style:{ display:'flex', flexWrap:'wrap', gap:7, alignItems:'center' } },
-                        mine.map(t => e('button', { key:t.id, className:'map-chip', onClick:()=>goToTrips(t.id), title:'Open this trip', style:{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', padding:'4px 9px', background:'#DCE3E8', border:'1px solid #B9C7D1', color:'#2E4A5C', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.08)' } },
+                        mine.map(t => e('button', { key:t.id, className:'map-chip', onClick:()=>setTripPeek(t.id), title:'Open this trip', style:{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', padding:'4px 9px', background:'#DCE3E8', border:'1px solid #B9C7D1', color:'#2E4A5C', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.08)' } },
                           e('span', { style:{ color:'#3F6A80', fontSize:9 } }, '▲'), t.name, t.start && e('span', { style:{ color:'#6E8494' } }, '· ' + fmtTripDates(t)))),
                         editMode && others.length > 0 && e('select', { value:'', onChange:(ev)=>{ if (ev.target.value) addTripLoc(ev.target.value, sel.id); }, 'aria-label':'Add this location to a trip', style:{ height:28, padding:'0 8px', background:'none', border:'1px dashed #C9BD9F', color:'#9C8F71', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', cursor:'pointer', borderRadius:0 } },
                           e('option', { value:'' }, '+ add to a trip…'),
@@ -5718,6 +5828,7 @@ function App() {
           : (yearView ? renderYearPage() : renderMonthPage()),
       renderEventModal(),
       renderBackups(),
+      renderTripPeek(),
       renderDialog(),
       notice && e('div', { role:'status', style:{ position:'fixed', left:'50%', bottom:22, transform:'translateX(-50%)', maxWidth:'calc(100% - 32px)', background:'#2A251E', color:'#FBF7EC', fontFamily:"'IBM Plex Mono',monospace", fontSize:12, letterSpacing:'.04em', lineHeight:1.45, padding:'10px 16px', boxShadow:'4px 4px 0 rgba(42,37,30,0.18)', zIndex:65, animation:'heroFade .3s ease' } }, notice)
     )
