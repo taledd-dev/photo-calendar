@@ -1773,6 +1773,44 @@ function ukBankHolidays(y) {
 function holidayEvents(year, monthIdx) {
   return ukBankHolidays(year).filter(h => h.month === monthIdx).map(h => ({ id: 'bh-' + year + '-' + monthIdx + '-' + h.day, type: 'day', day: h.day, kind: 'holiday', label: h.label }));
 }
+// Other named days (print, the "Named days" switch): the saints' days,
+// Shrove Tuesday, Mothering Sunday and Easter Sunday (from Easter), Father's
+// Day and Remembrance Sunday (from the weekday), Burns Night, Valentine's,
+// Halloween, Bonfire Night, Remembrance Day, Christmas Eve/Day, Boxing Day
+// and New Year's Eve. Listed with the computed days first so that, when two
+// land on one date, the first keeps the day.
+function namedDays(y) {
+  const dow = (m, d) => new Date(Date.UTC(y, m, d)).getUTCDay();
+  const nthSunday = (m, n) => 1 + ((7 - dow(m, 1)) % 7) + 7 * (n - 1);
+  const E = easterSunday(y), easter = Date.UTC(y, E.month, E.day);
+  const fromEaster = (days, label) => { const t = new Date(easter + days * 86400000); return { month: t.getUTCMonth(), day: t.getUTCDate(), label }; };
+  const all = [
+    fromEaster(0, 'Easter Sunday'), fromEaster(-21, 'Mothering Sunday'), fromEaster(-47, 'Shrove Tuesday'),
+    { month: 10, day: nthSunday(10, 2), label: 'Remembrance Sunday' }, { month: 5, day: nthSunday(5, 3), label: "Father's Day" },
+    { month: 0, day: 1, label: "New Year's Day" }, { month: 0, day: 25, label: 'Burns Night' },
+    { month: 1, day: 14, label: "Valentine's Day" },
+    { month: 2, day: 1, label: "St David's Day" }, { month: 2, day: 17, label: "St Patrick's Day" },
+    { month: 3, day: 23, label: "St George's Day" },
+    { month: 9, day: 31, label: 'Halloween' },
+    { month: 10, day: 5, label: 'Bonfire Night' }, { month: 10, day: 11, label: 'Remembrance Day' }, { month: 10, day: 30, label: "St Andrew's Day" },
+    { month: 11, day: 24, label: 'Christmas Eve' }, { month: 11, day: 25, label: 'Christmas Day' }, { month: 11, day: 26, label: 'Boxing Day' }, { month: 11, day: 31, label: "New Year's Eve" },
+  ];
+  const seen = new Set();
+  return all.filter(d => { const k = d.month + '-' + d.day; if (seen.has(k)) return false; seen.add(k); return true; });
+}
+function namedDayEvents(year, monthIdx) {
+  return namedDays(year).filter(d => d.month === monthIdx).map(d => ({ id: 'nd-' + year + '-' + monthIdx + '-' + d.day, type: 'day', day: d.day, kind: 'named', label: d.label }));
+}
+// Both kinds of day for one month's printed page, with the two switches:
+// where a bank holiday falls on a named day the name wins, and a substitute
+// bank holiday is then simply "Bank holiday" (its named day shows on the
+// real date).
+function printDayNames(year, monthIdx, showHolidays, showNamed) {
+  const named = showNamed ? namedDayEvents(year, monthIdx) : [];
+  let hol = showHolidays ? holidayEvents(year, monthIdx) : [];
+  if (named.length) hol = hol.filter(h => !named.some(n => n.day === h.day)).map(h => /\(substitute\)/.test(h.label) ? { ...h, label: 'Bank holiday' } : h);
+  return named.concat(hol);
+}
 
 // ── A whole year of events, computed. Moons are named (Harvest = the full
 // moon nearest the autumn equinox; a second full moon in a month is a Blue
@@ -1905,11 +1943,12 @@ const EVENT_STYLE = {
   nature:   { glyph: '',  bg: '#DEE3C5', fg: '#46562E', accent: '#5A6B2F' },
   season:   { glyph: '',  bg: '#E5E2D2', fg: '#5A513B', accent: '#9A8C6E' },
   photoop:  { glyph: '◉', bg: '#2A251E', fg: '#FBF7EC', accent: '#C7902F' },
-  holiday:  { glyph: '',  bg: '#EAE4D3', fg: '#5A513B', accent: '#8A7D63' }, // UK bank holidays (print)
+  holiday:  { glyph: '',  bg: '#EAE4D3', fg: '#5A513B', accent: '#8A7D63' }, // UK bank holidays (print, corner text)
+  named:    { glyph: '',  bg: '#EAE4D3', fg: '#5A513B', accent: '#8A7D63' }, // other named days (print, corner text)
 };
 
-const KIND_ORDER = ['photoop','fullmoon','newmoon','meteor','eclipse','nature','season','holiday'];
-const KIND_LABEL = { photoop:'Photo op', fullmoon:'Full moon', newmoon:'New moon', meteor:'Meteor', eclipse:'Eclipse', nature:'Nature', season:'Season window', holiday:'Bank holiday' };
+const KIND_ORDER = ['photoop','fullmoon','newmoon','meteor','eclipse','nature','season','holiday','named'];
+const KIND_LABEL = { photoop:'Photo op', fullmoon:'Full moon', newmoon:'New moon', meteor:'Meteor', eclipse:'Eclipse', nature:'Nature', season:'Season window', holiday:'Bank holidays', named:'Named days' };
 
 // User-defined event types. They live on the events themselves — an event of a
 // custom type carries kind 'x-<slug>' plus its display label (kindLabel) and a
@@ -2026,9 +2065,9 @@ function buildWeeks(month, weekStart = 'Monday', compact = false) {
       const e2 = ev.end != null ? ev.end : ev.day;
       if (e2 < wkStart || s > wkEnd) continue;
       const iconKey = eventIconKey(ev);
-      if (iconKey || ev.kind === 'holiday') {
+      if (iconKey || ev.kind === 'holiday' || ev.kind === 'named') {
         const accent = styleOf(ev).accent;
-        const text = ev.kind === 'holiday' ? ev.label : null;
+        const text = (ev.kind === 'holiday' || ev.kind === 'named') ? ev.label : null;
         slice.forEach((d, c) => { if (d != null && d >= s && d <= e2) dayIcons[c].push({ ev, icon: iconKey, text, first: d === s, accent }); });
         continue;
       }
@@ -4187,7 +4226,7 @@ function App() {
       if (!seenKinds.has(ev.kind)) { seenKinds.add(ev.kind); if (isCustomKind(ev.kind)) customSeen.push(ev.kind); }
       if (isCustomKind(ev.kind) && !customLabels[ev.kind]) customLabels[ev.kind] = ev.kindLabel || 'Custom';
     }));
-    seenKinds.add('holiday'); // computed per year, so always on offer
+    seenKinds.add('holiday'); seenKinds.add('named'); // computed per year, so always on offer
     const kindOrder = KIND_ORDER.filter(k => seenKinds.has(k)).concat(customSeen);
     const kindLabel = (k) => KIND_LABEL[k] || customLabels[k] || k;
     const kindGlyph = (k) => (EVENT_STYLE[k] ? EVENT_STYLE[k].glyph : CUSTOM_KIND_GLYPH);
@@ -4236,12 +4275,12 @@ function App() {
     const dayNames = weekStart === 'Sunday' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     data.forEach((m2, i) => {
       const pm = monthForYear(m2, i);
-      // the year's events, plus the UK bank holidays computed for this year
+      // the year's events, plus the bank holidays and named days computed for this year
       const printable = pm.events.filter(ev => !ev.noPrint && !hiddenKinds.has(ev.kind))
-        .concat(hiddenKinds.has('holiday') ? [] : holidayEvents(viewYear, i));
+        .concat(printDayNames(viewYear, i, !hiddenKinds.has('holiday'), !hiddenKinds.has('named')));
       const wks = buildWeeks({ ...pm, events: printable }, weekStart, { top: 30, step: 24 });
       // the key: bar kinds in use (bank holidays are self-naming corner text), then each window icon with its dates
-      const legendKinds = kindOrder.filter(k => k !== 'holiday' && printable.some(ev => ev.kind === k && !eventIconKey(ev)));
+      const legendKinds = kindOrder.filter(k => k !== 'holiday' && k !== 'named' && printable.some(ev => ev.kind === k && !eventIconKey(ev)));
       const iconEvents = printable.filter(ev => eventIconKey(ev)).slice().sort((a, b) => (a.start != null ? a.start : a.day) - (b.start != null ? b.start : b.day));
       pages.push(label('l-' + m2.key + '-p', m2.name + ' — photo'));
       pages.push(e('div', { key:m2.key + '-photo', className:'print-sheet', style:{ background:'#F1EBDB' } },
@@ -4363,7 +4402,7 @@ function App() {
         e('div', { style:{ fontFamily:mono, fontSize:11, color:'#8A7D63', letterSpacing:'.03em', lineHeight:1.6, maxWidth:'110ch' } },
           'In the print dialog choose A4, Landscape, default margins and 100% scale (switch "Background graphics" on if colours print pale); "Save as PDF" keeps a copy. ' +
           'Each month uses its ★-starred location’s photo, or its first location with a photo; its caption sits top-right of the month’s calendar page (the "Photo captions" switch above). ' +
-          'UK bank holidays (England & Wales, substitutes included) are worked out for the chosen year — the "Bank holiday" switch turns them off. ' +
+          'UK bank holidays (England & Wales, substitutes included) and the named days — saints’ days, Mothering Sunday, Father’s Day, Remembrance, Halloween, Bonfire Night, Christmas Eve, New Year’s Eve and so on — are worked out for the chosen year and sit as small text beside the date; the "Bank holidays" and "Named days" switches turn them off. ' +
           'Drop a photo onto the cover and back-cover sheets below. Untick "Shown on the printable calendar" in an event’s editor to keep a single event off. ' +
           'Photos now upload with a print-size copy (' + PRINT_MAX_EDGE + 'px); a sheet flagged "web size only" holds an older photo — drop it on again to replace it at print quality.' +
           (isMobile ? ' Best previewed and printed from a desktop browser.' : '')

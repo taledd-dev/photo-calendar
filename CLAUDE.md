@@ -216,10 +216,16 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   "Print these event types" / "Photo captions" chips on the print page,
   cloud-synced. **UK bank holidays** (`ukBankHolidays(year)` /
   `holidayEvents(year, monthIdx)`, computed: Easter via Meeus, Monday
-  holidays, Christmas/Boxing substitutes; kind `holiday`, print-only, its own
-  "Bank holiday" switch, always offered) are merged into each grid page's
-  events and drawn as small corner text beside the date, not bars (so they
-  aren't in the page key). The print grid uses `buildWeeks(..., { top:30, step:24 })`
+  holidays, Christmas/Boxing substitutes; kind `holiday`, "Bank holidays"
+  switch) and **named days** (`namedDays(year)` / `namedDayEvents`: saints'
+  days, Shrove Tuesday / Mothering Sunday / Easter Sunday from Easter,
+  Father's Day and Remembrance Sunday by weekday, Burns Night, Valentine's,
+  Halloween, Bonfire Night, Remembrance Day, Christmas Eve/Day, Boxing Day,
+  New Year's Eve; kind `named`, "Named days" switch) are print-only, always
+  offered, merged per page by `printDayNames(year, i, holidays, named)` —
+  a name beats a coinciding bank holiday and substitutes become plain "Bank
+  holiday" — and drawn as small corner text beside the date, not bars (so
+  neither is in the page key). The print grid uses `buildWeeks(..., { top:30, step:24 })`
   geometry with 21px bars and a per-page type key.
 - **Coming up** (home page, under the hero): `upcoming` memo — the next 7
   events within `UPCOMING_DAYS` (120) of *today* (real date, this year and
