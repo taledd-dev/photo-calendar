@@ -3398,6 +3398,15 @@ function App() {
   const [gallerySort, setGallerySort] = useState('month');
   const [galleryF, setGalleryF] = useState({ region:'all', starred:false, visited:false, year:'', tag:'' });
   const [lightbox, setLightbox] = useState(null);
+  // Lightbox with the caption bar hidden — just the photo. A per-viewer
+  // preference, remembered on this device.
+  const [lbBare, setLbBare] = useState(() => { try { return localStorage.getItem('calendar:lbBare') === '1'; } catch (_) { return false; } });
+  useEffect(() => { try { localStorage.setItem('calendar:lbBare', lbBare ? '1' : '0'); } catch (_) {} }, [lbBare]);
+  // Warm the browser cache with the neighbours of the open photo, so ‹ › don't wait.
+  useEffect(() => {
+    if (!lightbox || lightbox.items.length < 2) return;
+    [1, -1].forEach(d => { const n = lightbox.items[(lightbox.idx + d + lightbox.items.length) % lightbox.items.length]; if (n) { const im = new Image(); im.src = Storage.photoUrl(n.base, imgEpoch || undefined); } });
+  }, [lightbox && lightbox.idx, lightbox && lightbox.items.length]);
   const [geocoding, setGeocoding] = useState(null);   // { done, total } while areas are being looked up
   const [visitDate, setVisitDate] = useState(todayYmd());
   const [visitNote, setVisitNote] = useState('');
@@ -3409,6 +3418,7 @@ function App() {
       if (typing) return;
       if (ev.key === 'ArrowLeft') setLightbox(lb => lb && ({ ...lb, idx: (lb.idx - 1 + lb.items.length) % lb.items.length }));
       if (ev.key === 'ArrowRight') setLightbox(lb => lb && ({ ...lb, idx: (lb.idx + 1) % lb.items.length }));
+      if (ev.key === 'i' || ev.key === 'I') setLbBare(b => !b); // info bar on/off
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -4983,14 +4993,19 @@ function App() {
     const many = lightbox.items.length > 1;
     const roundBtn = (extra) => ({ width:40, height:40, borderRadius:'50%', background:'rgba(251,247,236,0.12)', border:'1px solid rgba(251,247,236,0.4)', color:'#FBF7EC', lineHeight:1, cursor:'pointer', zIndex:2, display:'flex', alignItems:'center', justifyContent:'center', padding:0, ...extra });
     const meta = [it.month.name + (it.year ? " '" + it.year : ''), [(it.loc.area || '').trim(), (it.loc.country || '').trim()].filter(Boolean).join(', '), (it.loc.tag || '').trim()].filter(Boolean).join(' · ');
+    // The image box keeps a fixed height, so the caption bar never jumps
+    // while the next photo is still loading; "bare" drops the bar and gives
+    // the photo the height instead.
+    const boxH = lbBare ? (isMobile ? '84vh' : '88vh') : (isMobile ? '58vh' : '72vh');
     return e('div', { onClick:close, role:'dialog', 'aria-modal':'true', 'aria-label': it.caption, style:{ position:'fixed', inset:0, background:'rgba(20,18,14,0.88)', zIndex:60, display:'flex', alignItems:'center', justifyContent:'center', padding: isMobile ? '48px 8px 10px' : '24px 72px' } },
       many && e('button', { className:'lb-btn', onClick:(ev)=>{ ev.stopPropagation(); go(-1); }, 'aria-label':'Previous photo', style:roundBtn({ position:'absolute', left:isMobile?6:16, top:'50%', transform:'translateY(-50%)', fontSize:26 }) }, '‹'),
       many && e('button', { className:'lb-btn', onClick:(ev)=>{ ev.stopPropagation(); go(1); }, 'aria-label':'Next photo', style:roundBtn({ position:'absolute', right:isMobile?6:16, top:'50%', transform:'translateY(-50%)', fontSize:26 }) }, '›'),
       e('button', { className:'lb-btn', onClick:close, 'aria-label':'Close', style:roundBtn({ position:'absolute', top:12, right:12, width:36, height:36, fontSize:20 }) }, '×'),
+      e('button', { className:'lb-btn', onClick:(ev)=>{ ev.stopPropagation(); setLbBare(b => !b); }, 'aria-label': lbBare ? 'Show the caption bar' : 'Hide the caption bar', 'aria-pressed': lbBare ? 'true' : 'false', title: (lbBare ? 'Show the caption bar' : 'Hide the caption bar — just the photo') + ' (i)', style:roundBtn({ position:'absolute', top:12, right:56, width:36, height:36, fontSize:13, fontFamily:"'IBM Plex Mono',monospace", fontWeight:600, opacity: lbBare ? .75 : 1 }) }, 'i'),
       e('div', { onClick:(ev)=>ev.stopPropagation(), style:{ width:'100%', maxWidth:1200, display:'flex', flexDirection:'column' } },
-        e('div', { style:{ background:'#000', display:'flex', alignItems:'center', justifyContent:'center' } },
-          e('img', { key:it.base, src: Storage.photoUrl(it.base, imgEpoch || undefined), alt: it.caption, style:{ maxWidth:'100%', maxHeight: isMobile ? '58vh' : '72vh', objectFit:'contain', display:'block' } })),
-        e('div', { style:{ background:'#FBF7EC', border:'1px solid #2A251E', borderTop:'none', padding:'10px 14px', display:'flex', flexWrap:'wrap', alignItems:'center', gap:'8px 16px' } },
+        e('div', { style:{ background:'#000', height:boxH, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' } },
+          e('img', { key:it.base, src: Storage.photoUrl(it.base, imgEpoch || undefined), alt: it.caption, style:{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain', display:'block' } })),
+        !lbBare && e('div', { style:{ background:'#FBF7EC', border:'1px solid #2A251E', borderTop:'none', padding:'10px 14px', display:'flex', flexWrap:'wrap', alignItems:'center', gap:'8px 16px' } },
           e('div', { style:{ minWidth:0, flex:'1 1 260px' } },
             e('div', { style:{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' } },
               e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:17, color:'#2A251E' } }, it.loc.name),

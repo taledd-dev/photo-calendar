@@ -348,7 +348,11 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   caption + meta (month 'YY · area, country · subject), counter, "Open brief
   →", owner: a comma-separated **Tags** input (saves on blur/Enter) and the
   **★ Star** toggle; reads the live item from `galleryItems` so edits show
-  at once.
+  at once. The image box has a **fixed height** (72vh / 58vh phone) so the
+  bar never jumps while the next photo loads, and the neighbours are
+  preloaded (an effect on `lightbox.idx`). The round **i** button (or the
+  `i` key) toggles `lbBare` — bar hidden, box 88vh / 84vh — remembered per
+  device in `localStorage['calendar:lbBare']`.
 - **`LinksField` / `parseLinks`** — per-location links (`loc.links`, text, one
   per line, `Label | url` or a bare address) shown as chips in a "Links" row
   under Parking; owner edits via an "edit" button → textarea. **`NotesField`**
