@@ -1773,11 +1773,11 @@ function ukBankHolidays(y) {
 function holidayEvents(year, monthIdx) {
   return ukBankHolidays(year).filter(h => h.month === monthIdx).map(h => ({ id: 'bh-' + year + '-' + monthIdx + '-' + h.day, type: 'day', day: h.day, kind: 'holiday', label: h.label }));
 }
-// Other named days (print, the "Named days" switch): the saints' days,
-// Shrove Tuesday, Mothering Sunday and Easter Sunday (from Easter), Father's
-// Day and Remembrance Sunday (from the weekday), Burns Night, Valentine's,
-// Halloween, Bonfire Night, Remembrance Day, Christmas Eve/Day, Boxing Day
-// and New Year's Eve. Two names on one date both show (the corner text wraps
+// Other named days (print, the "Named days" switch): the saints' days (St
+// Dwynwen's included), Shrove Tuesday, Mothering Sunday and Easter Sunday
+// (from Easter), Father's Day and Remembrance Sunday (from the weekday),
+// Valentine's, Halloween, Bonfire Night, Accounting Day (10 Nov),
+// Remembrance Day, Christmas Eve/Day, Boxing Day and New Year's Eve. Two names on one date both show (the corner text wraps
 // to a second line) — except Remembrance Day, which gives way to Remembrance
 // Sunday when the 11th is a Sunday.
 function namedDays(y) {
@@ -1788,12 +1788,12 @@ function namedDays(y) {
   const all = [
     fromEaster(0, 'Easter Sunday'), fromEaster(-21, 'Mothering Sunday'), fromEaster(-47, 'Shrove Tuesday'),
     { month: 10, day: nthSunday(10, 2), label: 'Remembrance Sunday' }, { month: 5, day: nthSunday(5, 3), label: "Father's Day" },
-    { month: 0, day: 1, label: "New Year's Day" }, { month: 0, day: 25, label: 'Burns Night' }, { month: 0, day: 25, label: "St Dwynwen's Day" },
+    { month: 0, day: 1, label: "New Year's Day" }, { month: 0, day: 25, label: "St Dwynwen's Day" },
     { month: 1, day: 14, label: "Valentine's Day" },
     { month: 2, day: 1, label: "St David's Day" }, { month: 2, day: 17, label: "St Patrick's Day" },
     { month: 3, day: 23, label: "St George's Day" },
     { month: 9, day: 31, label: 'Halloween' },
-    { month: 10, day: 5, label: 'Bonfire Night' }, { month: 10, day: 11, label: 'Remembrance Day' }, { month: 10, day: 30, label: "St Andrew's Day" },
+    { month: 10, day: 5, label: 'Bonfire Night' }, { month: 10, day: 10, label: 'Accounting Day' }, { month: 10, day: 11, label: 'Remembrance Day' }, { month: 10, day: 30, label: "St Andrew's Day" },
     { month: 11, day: 24, label: 'Christmas Eve' }, { month: 11, day: 25, label: 'Christmas Day' }, { month: 11, day: 26, label: 'Boxing Day' }, { month: 11, day: 31, label: "New Year's Eve" },
   ];
   const remembranceSunday = nthSunday(10, 2);

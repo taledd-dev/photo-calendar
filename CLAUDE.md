@@ -219,9 +219,9 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   holidays, Christmas/Boxing substitutes; kind `holiday`, "Bank holidays"
   switch) and **named days** (`namedDays(year)` / `namedDayEvents`: saints'
   days, Shrove Tuesday / Mothering Sunday / Easter Sunday from Easter,
-  Father's Day and Remembrance Sunday by weekday, Burns Night + St
-  Dwynwen's Day (both 25 Jan — print corner text wraps), Valentine's,
-  Halloween, Bonfire Night, Remembrance Day, Christmas Eve/Day, Boxing Day,
+  Father's Day and Remembrance Sunday by weekday, St Dwynwen's Day (25 Jan;
+  no Burns Night — owner's choice), Valentine's, Halloween, Bonfire Night,
+  Accounting Day (10 Nov), Remembrance Day, Christmas Eve/Day, Boxing Day,
   New Year's Eve; kind `named`, "Named days" switch) are print-only, always
   offered, merged per page by `printDayNames(year, i, holidays, named)` —
   a name beats a coinciding bank holiday and substitutes become plain "Bank
