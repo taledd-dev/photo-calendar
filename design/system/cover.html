@@ -1,0 +1,57 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Photoplan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@700&family=Spectral:wght@400&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; height:100%; }
+  body { background:var(--page); color:var(--ink); overflow:hidden; }
+  .cover { position:relative; height:288px; overflow:hidden; background:var(--page); }
+  /* the composition: a 480-wide box on the right half of the 960 layout, clear of the name */
+  .art { position:absolute; top:0; left:480px; width:480px; height:288px; overflow:hidden; }
+  .art svg { display:block; width:480px; height:288px; }
+  .blk { rx:var(--radius-none); }
+  .green { fill:var(--green); }
+  .terra { fill:var(--terra); }
+  .gold { fill:var(--gold); }
+  .deep { fill:var(--ink); }
+  .dot { fill:var(--page); }
+  /* name and tagline in flow, pinned by the block's bottom edge */
+  .words { position:absolute; left:var(--page-x); bottom:var(--card-pad); max-width:440px; }
+  .name { margin:0; font-family:var(--font-slab); font-weight:700; font-size:88px; line-height:.9; letter-spacing:-0.01em; color:var(--ink); }
+  .tag { margin:var(--gap-lg) 0 0 3px; font-family:var(--font-serif); font-weight:400; font-size:14px; line-height:20px; color:var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 480 288" width="480" height="288">
+<!--
+  blocks      green 154×288 bled off the top (the action colour, the largest) · ink 298×176 bleeding off the right edge (the deep) · terra 110×98 bled off the top (International) · gold 44×44 once (it only ever marks a star or a photo op) — about 37% of 960×288
+  arrangement a flush modular grid like the calendar's own cells: every side a multiple of card-pad (22px), gutters of grid-gap (14px), bottoms on one line card-pad above the edge
+  pattern     a dot grid, from “The page is `page` with a dot pattern”: the page's own dots cut out of the ink block in `page`, 7 × 4 at twice the 22px pitch
+  scales      module card-pad 22px · gutter grid-gap 14px · pitch 2 × card-pad · corners radius-none (the system is square)
+-->
+<rect class="green blk" x="14" y="-22" width="154" height="288"/>
+<rect class="terra blk" x="182" y="-22" width="110" height="98"/>
+<rect class="gold blk" x="306" y="32" width="44" height="44"/>
+<rect class="deep blk" x="182" y="90" width="320" height="176"/>
+<g class="dot">
+<circle cx="204" cy="112" r="2"/><circle cx="248" cy="112" r="2"/><circle cx="292" cy="112" r="2"/><circle cx="336" cy="112" r="2"/><circle cx="380" cy="112" r="2"/><circle cx="424" cy="112" r="2"/><circle cx="468" cy="112" r="2"/>
+<circle cx="204" cy="156" r="2"/><circle cx="248" cy="156" r="2"/><circle cx="292" cy="156" r="2"/><circle cx="336" cy="156" r="2"/><circle cx="380" cy="156" r="2"/><circle cx="424" cy="156" r="2"/><circle cx="468" cy="156" r="2"/>
+<circle cx="204" cy="200" r="2"/><circle cx="248" cy="200" r="2"/><circle cx="292" cy="200" r="2"/><circle cx="336" cy="200" r="2"/><circle cx="380" cy="200" r="2"/><circle cx="424" cy="200" r="2"/><circle cx="468" cy="200" r="2"/>
+<circle cx="204" cy="244" r="2"/><circle cx="248" cy="244" r="2"/><circle cx="292" cy="244" r="2"/><circle cx="336" cy="244" r="2"/><circle cx="380" cy="244" r="2"/><circle cx="424" cy="244" r="2"/><circle cx="468" cy="244" r="2"/>
+</g>
+</svg>
+</div>
+<div class="words">
+<h1 class="name">Photoplan</h1>
+<p class="tag">A year of places to point a camera.</p>
+</div>
+</div>
+</body>
+</html>

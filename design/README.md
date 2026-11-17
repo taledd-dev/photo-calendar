@@ -4,8 +4,35 @@ This folder is the hand-over for design work. It reproduces what
 photoplan.studio looks like **today**, without the app, so a design session
 can start from the real thing and iterate.
 
-Everything here except this file and `build-reference.js` is generated from
-`../index.html`. Don't edit the generated files by hand — re-run the generator.
+Everything here except this file, the two build scripts and the `system/`
+folder is generated from `../index.html`. Don't edit the generated files by
+hand — re-run the generator.
+
+## The Photoplan design system in Claude
+
+The same material is also set up as a **design system in the owner's Claude
+account** (an artifact called “Photoplan”), which is what Claude's design
+sessions build on:
+
+- 118 colours with their day and night values and a note on where each is
+  used; 28 type styles; the spacing, corner, shadow and size values the site
+  actually uses.
+- A brand guide: voice, colour, type, shape, layout, iconography.
+- 22 components with live previews taken from the running site — buttons,
+  chips, fields, checklist, the headers, tiles, the location brief, the
+  calendar grid, trip card, gallery, forecast day, guide card and the dialogs.
+- The logos, the wordmark font and the twenty window icons.
+
+**To use it:** in a design session, say “use my Photoplan design system”.
+It is private to the owner until shared from its page.
+
+Its address and the ids of its uploaded assets are in
+`system/published.json`. Its hand-written half lives in `system/` (the brand
+guide, the component notes, the type, spacing, corner, shadow and size tokens
+and the cover); the rest is taken from the app. `node design/build-reference.js
+--system` rebuilds its files into `design/system-out/` (not committed) and
+checks every preview in both themes; a Claude Code session then publishes the
+changed files to the artifact.
 
 ## What's here
 
@@ -15,6 +42,7 @@ Everything here except this file and `build-reference.js` is generated from
 | `tokens.css` | The colour tokens on their own — `:root` (day) and `:root[data-theme="night"]` — as CSS custom properties with a note on what each is used for. |
 | `pages/*.html` | Whole-page static snapshots: `home`, `month` (brief open, owner view), `month-visitor` (view-only), `month-phone` (390px wide), `trips`, `gallery`, `gallery-review`, `weather`, `map`. |
 | `build-reference.js` | The generator. |
+| `build-system.js`, `system/` | The Claude design system: its builder and its hand-written sources (see above). |
 
 Each HTML file stands alone: the app's stylesheet, the logo and the wordmark
 font are embedded, and the photographs are drawn stand-ins. The only outside
@@ -22,7 +50,10 @@ request is Google Fonts (Zilla Slab, Spectral, IBM Plex Mono). The data shown
 is the app's built-in sample content plus invented examples — nothing from the
 real calendar.
 
-## Giving it to Claude Design
+## Handing the files over by hand
+
+The design system above is the easier route. The files below remain for a
+tool or a person that wants plain files.
 
 1. Upload `style-reference.html` and `tokens.css`. Add one or two files from
    `pages/` if the session is about a particular page (the page snapshots are

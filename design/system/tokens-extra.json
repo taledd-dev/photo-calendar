@@ -1,0 +1,666 @@
+{
+  "_about": "Hand-written half of the Photoplan design system's tokens. Colours are NOT here: they are read from the token block in index.html (the source of truth). This file adds usage notes for colours that have none in that block, the grounds each text colour is read on (for the contrast check), and the type, spacing, radius, shadow and size values — every one measured from the running app, none invented. design/build-reference.js --system merges the two into tokens.json.",
+  "colorUsage": {
+    "plum-wash": "Custom event type “plum”: the tint behind its bar and chip.",
+    "plum-ink": "Custom event type “plum”: text on plum-wash.",
+    "plum": "Custom event type “plum”: the 3px accent edge and the type dot.",
+    "teal-wash": "Custom event type “teal”: the tint behind its bar and chip.",
+    "teal-ink": "Custom event type “teal”: text on teal-wash.",
+    "teal": "Custom event type “teal”: the 3px accent edge and the type dot.",
+    "denim-wash": "Custom event type “denim”: the tint behind its bar and chip.",
+    "denim-ink": "Custom event type “denim”: text on denim-wash.",
+    "denim": "Custom event type “denim”: the 3px accent edge and the type dot.",
+    "clay-wash": "Custom event type “clay”: the tint behind its bar and chip.",
+    "clay-ink": "Custom event type “clay”: text on clay-wash.",
+    "clay": "Custom event type “clay”: the 3px accent edge and the type dot.",
+    "moss-wash": "Custom event type “moss”: the tint behind its bar and chip.",
+    "moss-ink": "Custom event type “moss”: text on moss-wash.",
+    "moss": "Custom event type “moss”: the 3px accent edge and the type dot.",
+    "stone-wash": "Custom event type “stone”: the tint behind its bar and chip.",
+    "stone-ink": "Custom event type “stone”: text on stone-wash.",
+    "stone": "Custom event type “stone”: the 3px accent edge and the type dot.",
+    "shadow-07": "Hard offset shadow tint, 7%: under the location brief (7px offset).",
+    "shadow-08": "Hard offset shadow tint, 8%: Coming-up cards, trip pills, condition chips (2px offset).",
+    "shadow-10": "Hard offset shadow tint, 10%: filter buttons (2px), the matted hero frame (7px).",
+    "shadow-12": "Hard offset shadow tint, 12%: nav buttons, selects and the search field (3px); any button while pressed (1px).",
+    "shadow-14": "Hard offset shadow tint, 14%: the map's zoom buttons (2px), dropdown lists such as search results (5px).",
+    "shadow-16": "Hard offset shadow tint, 16%: a button on hover (4px), the location card on the map (5px).",
+    "shadow-18": "Hard offset shadow tint, 18%: the toast (4px), the Save button on hover.",
+    "shadow-20": "Hard offset shadow tint, 20%: dialogs and pop-ups (9px offset).",
+    "shadow-28": "The one soft shadow: an event bar on hover (0 2px 6px).",
+    "scrim": "The veil behind dialogs and pop-ups.",
+    "focus-ring": "2px ring around a focused input.",
+    "focus-ring-strong": "2px ring around click-to-edit text while it is being edited.",
+    "focus-ring-photo": "2px ring around the hero caption while focused, over a photograph. Same day and night.",
+    "drop-tint": "Wash over a photo slot while a file is dragged over it.",
+    "paper-a92": "Translucent paper: the close button on the map's location card.",
+    "paper-a86": "Translucent paper: the zoom readout laid over the map.",
+    "photo-veil-55": "Dark veil behind the round skip and pause buttons on a slideshow. Same day and night.",
+    "photo-veil-60": "Dark veil behind the round remove and focus-point buttons on a photo. Same day and night.",
+    "photo-veil-78": "The skip and pause buttons on hover. Same day and night.",
+    "photo-veil-80": "Dark band across the foot of a photo slot (caption year, hints). Same day and night.",
+    "photo-veil-80b": "Dark badge on a print-sheet preview (“web size only”). Same day and night.",
+    "photo-glass-14": "Light glass over a photograph: fill of the small buttons shown in focus-point mode. Same day and night.",
+    "photo-glass-50": "Light glass over a photograph: border of those small buttons. Same day and night.",
+    "lb-scrim": "The photo viewer's backdrop. Dark in both themes.",
+    "lb-glass-12": "The photo viewer's round buttons: fill.",
+    "lb-glass-22": "The photo viewer's round buttons on hover.",
+    "lb-glass-40": "The photo viewer's round buttons: border.",
+    "on-photo": "Text and glyphs set on a photograph or in the photo viewer. Same day and night.",
+    "on-photo-active": "The focus-point button while its mode is on. Same day and night."
+  },
+  "textGrounds": {
+    "ink": [
+      "paper",
+      "page",
+      "sunken"
+    ],
+    "brand-ink": [
+      "page"
+    ],
+    "ink-body": [
+      "paper",
+      "page"
+    ],
+    "ink-2": [
+      "paper",
+      "sunken"
+    ],
+    "ink-3": [
+      "paper",
+      "page"
+    ],
+    "ink-4": [
+      "paper"
+    ],
+    "muted": [
+      "paper",
+      "page"
+    ],
+    "label": [
+      "paper",
+      "page"
+    ],
+    "faint": [
+      "paper",
+      "page"
+    ],
+    "ghost": [
+      "paper",
+      "field"
+    ],
+    "green": [
+      "paper",
+      "page",
+      "sunken"
+    ],
+    "green-deep": [
+      "green-wash"
+    ],
+    "terra": [
+      "paper",
+      "page"
+    ],
+    "danger": [
+      "paper"
+    ],
+    "alert-ink": [
+      "alert-bg"
+    ],
+    "amber-ink": [
+      "amber-wash"
+    ],
+    "slate-ink": [
+      "slate-wash"
+    ],
+    "slate-muted": [
+      "slate-wash"
+    ],
+    "moon-ink": [
+      "moon-wash"
+    ],
+    "newmoon-ink": [
+      "moon-wash"
+    ],
+    "plum-ink": [
+      "plum-wash"
+    ],
+    "teal-ink": [
+      "teal-wash"
+    ],
+    "denim-ink": [
+      "denim-wash"
+    ],
+    "clay-ink": [
+      "clay-wash"
+    ],
+    "moss-ink": [
+      "moss-wash"
+    ],
+    "stone-ink": [
+      "stone-wash"
+    ],
+    "paper": [
+      "green",
+      "ink"
+    ]
+  },
+  "type": {
+    "fonts": [
+      {
+        "family": "Figtree",
+        "file": "fonts/Figtree-Variable.woff2",
+        "weight": "300 900",
+        "style": "normal"
+      }
+    ],
+    "families": {
+      "slab": "\"Zilla Slab\", serif",
+      "serif": "\"Spectral\", Georgia, serif",
+      "mono": "\"IBM Plex Mono\", monospace",
+      "wordmark": "\"Figtree\", system-ui, sans-serif"
+    },
+    "groups": [
+      {
+        "name": "Titles and names",
+        "family": "slab",
+        "note": "Zilla Slab (Google Fonts, weights 600 and 700). Every title, place name and number that should feel printed.",
+        "styles": [
+          {
+            "name": "title-page",
+            "fontSize": "58px",
+            "lineHeight": 0.95,
+            "fontWeight": 700,
+            "letterSpacing": "-0.01em",
+            "sample": "November",
+            "usage": "The page title: a month name, Weather, Trips, Gallery. Scales as clamp(40px, 6vw, 58px); clamp(32px, 10vw, 40px) on phones."
+          },
+          {
+            "name": "stat",
+            "fontSize": "30px",
+            "lineHeight": 1,
+            "fontWeight": 700,
+            "sample": "12",
+            "usage": "The big number in a year-in-review stat tile."
+          },
+          {
+            "name": "title-month",
+            "fontSize": "24px",
+            "lineHeight": 1.02,
+            "fontWeight": 700,
+            "sample": "January",
+            "usage": "Month names down the home page; the location name at the head of a brief."
+          },
+          {
+            "name": "title-card",
+            "fontSize": "23px",
+            "lineHeight": 1.15,
+            "fontWeight": 700,
+            "sample": "Peaks weekend",
+            "usage": "A trip card's name (22px in the trip pop-up)."
+          },
+          {
+            "name": "heading-group",
+            "fontSize": "18px",
+            "fontWeight": 600,
+            "sample": "United Kingdom",
+            "usage": "Group headings in the gallery and section headings in the year in review, each followed by a hairline."
+          },
+          {
+            "name": "heading-card",
+            "fontSize": "17px",
+            "fontWeight": 700,
+            "sample": "Mist & inversions",
+            "usage": "Titles of the weather guide cards."
+          },
+          {
+            "name": "name-list",
+            "fontSize": "17px",
+            "fontWeight": 600,
+            "sample": "Lake District",
+            "usage": "A location's name in the home list and under a photo in the viewer."
+          },
+          {
+            "name": "heading-day",
+            "fontSize": "16px",
+            "fontWeight": 700,
+            "sample": "Tue 17 Nov",
+            "usage": "The date on a forecast day card."
+          },
+          {
+            "name": "name-tile",
+            "fontSize": "15px",
+            "lineHeight": 1.15,
+            "fontWeight": 600,
+            "sample": "Mam Tor",
+            "usage": "Names on location tiles, Coming-up cards and trip chips (14px on gallery tiles)."
+          }
+        ]
+      },
+      {
+        "name": "Prose",
+        "family": "serif",
+        "note": "Spectral (Google Fonts, weight 400 only). Everything written in sentences.",
+        "styles": [
+          {
+            "name": "prose-intro",
+            "fontSize": "17px",
+            "lineHeight": 1.5,
+            "fontWeight": 400,
+            "sample": "A year of places to point a camera — frost on the fells, bluebells and lavender.",
+            "usage": "The home page's opening paragraph, in ink-3 (16px for the intro under other page titles)."
+          },
+          {
+            "name": "prose",
+            "fontSize": "15px",
+            "lineHeight": 1.5,
+            "fontWeight": 400,
+            "sample": "The ridge rising from a sea of valley fog at sunrise.",
+            "usage": "Running text: a location's idea, the values in a brief, in ink-body."
+          },
+          {
+            "name": "prose-item",
+            "fontSize": "14.5px",
+            "lineHeight": 1.45,
+            "fontWeight": 400,
+            "sample": "A long-lens detail from the top",
+            "usage": "Checklist items and notes."
+          },
+          {
+            "name": "prose-small",
+            "fontSize": "14px",
+            "lineHeight": 1.5,
+            "fontWeight": 400,
+            "sample": "f/8–f/11, ISO 100, tripod.",
+            "usage": "Guide-card text, the Sky row's sentences, the where line beside a name."
+          },
+          {
+            "name": "prose-note",
+            "fontSize": "13.5px",
+            "lineHeight": 1.45,
+            "fontWeight": 400,
+            "sample": "Late Dec–Feb for snow on the tops.",
+            "usage": "The when line under a location in the home list, in ink-3."
+          },
+          {
+            "name": "caption",
+            "fontSize": "12px",
+            "lineHeight": 1.35,
+            "fontWeight": 400,
+            "sample": "Mostly cloudy · maybe a gap at dusk",
+            "usage": "One-line summaries on forecast day cards."
+          }
+        ]
+      },
+      {
+        "name": "Labels and data",
+        "family": "mono",
+        "note": "IBM Plex Mono (Google Fonts, weights 400, 500, 600). Labels, buttons, chips and every figure. Labels and buttons are set in capitals with wide tracking; data is not.",
+        "styles": [
+          {
+            "name": "label-section",
+            "fontSize": "11px",
+            "fontWeight": 400,
+            "letterSpacing": "0.2em",
+            "sample": "LOCATIONS THIS MONTH",
+            "usage": "A section label, in capitals, in muted, followed by a hairline that runs to the edge."
+          },
+          {
+            "name": "label-button",
+            "fontSize": "11px",
+            "fontWeight": 400,
+            "letterSpacing": "0.12em",
+            "sample": "ADD LOCATION",
+            "usage": "Text on the 40px nav buttons, in capitals (0.1em on the 31px action buttons)."
+          },
+          {
+            "name": "label-row",
+            "fontSize": "10.5px",
+            "fontWeight": 400,
+            "letterSpacing": "0.14em",
+            "sample": "WHERE",
+            "usage": "The label column of a row in a card, in capitals, in label (10px and 9.5px in tighter cards)."
+          },
+          {
+            "name": "label-link",
+            "fontSize": "10.5px",
+            "fontWeight": 400,
+            "letterSpacing": "0.1em",
+            "sample": "EDITING ON · HIDE CONTROLS",
+            "usage": "Quiet text links with a 1px underline, in capitals (0.08em for map links)."
+          },
+          {
+            "name": "label-tag",
+            "fontSize": "9.5px",
+            "fontWeight": 400,
+            "letterSpacing": "0.12em",
+            "sample": "CLOUD INVERSIONS",
+            "usage": "A location's subject tag and small status badges, in capitals."
+          },
+          {
+            "name": "data",
+            "fontSize": "12.5px",
+            "lineHeight": 1.4,
+            "fontWeight": 400,
+            "sample": "07:41 ESE · 16:04 WSW · 86% waxing gibbous",
+            "usage": "Times, bearings, percentages, coordinates."
+          },
+          {
+            "name": "data-day",
+            "fontSize": "12px",
+            "fontWeight": 500,
+            "sample": "17",
+            "usage": "Day numbers in the calendar grid."
+          },
+          {
+            "name": "chip",
+            "fontSize": "10.5px",
+            "fontWeight": 400,
+            "letterSpacing": "0.06em",
+            "sample": "Parking info ↗",
+            "usage": "Text in pills and chips, counts, dashed add-buttons (11px, no tracking, in kit chips)."
+          },
+          {
+            "name": "event-bar",
+            "fontSize": "10px",
+            "lineHeight": 1.4,
+            "fontWeight": 500,
+            "sample": "● Beaver Moon",
+            "usage": "The label on an event bar in the grid."
+          },
+          {
+            "name": "micro",
+            "fontSize": "9.5px",
+            "fontWeight": 400,
+            "letterSpacing": "0.06em",
+            "sample": "sunrise ESE · sunset WSW",
+            "usage": "Footnotes, the map legend, counts under a label."
+          },
+          {
+            "name": "caption-photo",
+            "fontSize": "13px",
+            "lineHeight": 1.4,
+            "fontWeight": 400,
+            "letterSpacing": "0.02em",
+            "sample": "Mam Tor · Nov '25",
+            "usage": "The caption box on a hero photograph: white on black, bottom-left."
+          }
+        ]
+      },
+      {
+        "name": "Wordmark",
+        "family": "wordmark",
+        "note": "Figtree 700, capitals, tracked 0.24em. Used for the word PHOTOPLAN and nothing else.",
+        "styles": [
+          {
+            "name": "wordmark",
+            "fontSize": "33px",
+            "lineHeight": 1,
+            "fontWeight": 700,
+            "letterSpacing": "0.24em",
+            "sample": "PHOTOPLAN",
+            "usage": "The wordmark beside the mark on the home page, in brand-ink (20px on phones)."
+          },
+          {
+            "name": "wordmark-small",
+            "fontSize": "12.5px",
+            "fontWeight": 700,
+            "letterSpacing": "0.24em",
+            "sample": "PHOTOPLAN",
+            "usage": "The small lockup above a page title."
+          }
+        ]
+      }
+    ]
+  },
+  "spacing": {
+    "note": "The app has no spacing scale in code: these are the values its layouts actually use, named for where they are used.",
+    "tokens": [
+      {
+        "name": "page-x",
+        "value": "26px",
+        "usage": "Left and right padding of the page (13px on phones, below 640px)."
+      },
+      {
+        "name": "page-top",
+        "value": "36px",
+        "usage": "Padding above the page header."
+      },
+      {
+        "name": "page-bottom",
+        "value": "70px",
+        "usage": "Padding below the last section."
+      },
+      {
+        "name": "section-gap",
+        "value": "40px",
+        "usage": "Space above a major section such as the calendar grid."
+      },
+      {
+        "name": "card-pad",
+        "value": "22px",
+        "usage": "Padding of the largest card, the location brief (20px 22px 22px)."
+      },
+      {
+        "name": "card-pad-sm",
+        "value": "18px",
+        "usage": "Padding of trip cards and the grid's header strip (14px 18px)."
+      },
+      {
+        "name": "panel-pad",
+        "value": "16px",
+        "usage": "Padding of small panels: forecast day cards (13px 16px) and guide cards."
+      },
+      {
+        "name": "row-y",
+        "value": "11px",
+        "usage": "Padding above and below each label-and-value row in a card; rows are parted by a 1px line-soft rule."
+      },
+      {
+        "name": "row-gap",
+        "value": "16px",
+        "usage": "Gap between a row's label column and its value."
+      },
+      {
+        "name": "grid-gap",
+        "value": "14px",
+        "usage": "Gap between tiles in a grid and between stacked blocks in a header column."
+      },
+      {
+        "name": "gap-lg",
+        "value": "12px",
+        "usage": "Gap between cards in a two-column grid and between a title and its actions."
+      },
+      {
+        "name": "gap-md",
+        "value": "10px",
+        "usage": "Gap between buttons in a footer and between controls in a row."
+      },
+      {
+        "name": "gap-sm",
+        "value": "8px",
+        "usage": "Gap between nav buttons and between a label and its field."
+      },
+      {
+        "name": "gap-icon",
+        "value": "7px",
+        "usage": "Gap between a glyph and its text inside a button — the commonest gap in the code."
+      },
+      {
+        "name": "gap-xs",
+        "value": "6px",
+        "usage": "Gap between chips and between a dot and its label."
+      },
+      {
+        "name": "button-x",
+        "value": "15px",
+        "usage": "Left and right padding of a 40px nav button (17px on the green primary)."
+      },
+      {
+        "name": "action-x",
+        "value": "14px",
+        "usage": "Left and right padding of a 31px action button (8px 14px)."
+      },
+      {
+        "name": "chip-x",
+        "value": "9px",
+        "usage": "Left and right padding of chips and pills (4px 9px)."
+      },
+      {
+        "name": "chip-y",
+        "value": "4px",
+        "usage": "Top and bottom padding of chips and pills."
+      }
+    ]
+  },
+  "radius": {
+    "note": "Photoplan is square. Corners are only softened where something is tiny or sits on a photograph.",
+    "tokens": [
+      {
+        "name": "radius-none",
+        "value": "0",
+        "usage": "The default: cards, buttons, fields, chips, dialogs and tiles all have square corners."
+      },
+      {
+        "name": "radius-2",
+        "value": "2px",
+        "usage": "Event bars in the calendar grid and the 16px tick boxes."
+      },
+      {
+        "name": "radius-3",
+        "value": "3px",
+        "usage": "The hover wash on a list row and on click-to-edit text."
+      },
+      {
+        "name": "radius-4",
+        "value": "4px",
+        "usage": "The photograph in a location brief."
+      },
+      {
+        "name": "radius-round",
+        "value": "50%",
+        "usage": "Region dots, and the round controls that sit on a photograph (skip, pause, remove, tick, star)."
+      }
+    ]
+  },
+  "shadow": {
+    "note": "Shadows are hard offsets with no blur, as if the paper were lifted; each uses one of the shadow-NN tints, which turn to black at night. Hover nudges a button up-left by 1px and lengthens the offset; pressing pushes it down-right and shortens it.",
+    "tokens": [
+      {
+        "name": "offset-pressed",
+        "value": "1px 1px 0 {shadow-12}",
+        "usage": "Any button while pressed, moved 2px down-right."
+      },
+      {
+        "name": "offset-sm",
+        "value": "2px 2px 0 {shadow-08}",
+        "usage": "Coming-up cards, trip pills, condition chips."
+      },
+      {
+        "name": "offset-chip",
+        "value": "2px 2px 0 {shadow-10}",
+        "usage": "Filter buttons (All, UK, International) and other 30px buttons."
+      },
+      {
+        "name": "offset-md",
+        "value": "3px 3px 0 {shadow-12}",
+        "usage": "Nav buttons, selects and the search field at rest."
+      },
+      {
+        "name": "offset-hover",
+        "value": "4px 4px 0 {shadow-16}",
+        "usage": "A button on hover, moved 1px up-left."
+      },
+      {
+        "name": "offset-pop",
+        "value": "5px 5px 0 {shadow-14}",
+        "usage": "Dropdown lists such as the search results."
+      },
+      {
+        "name": "offset-card",
+        "value": "7px 7px 0 {shadow-07}",
+        "usage": "The location brief; the matted hero frame uses the same offset at 10%."
+      },
+      {
+        "name": "offset-dialog",
+        "value": "9px 9px 0 {shadow-20}",
+        "usage": "Dialogs and pop-ups, over the scrim."
+      },
+      {
+        "name": "lip-under",
+        "value": "0 1px 0 {lip}",
+        "usage": "The 1px lip under flat cards: forecast days, gallery tiles, a closed trip card."
+      },
+      {
+        "name": "ring-field",
+        "value": "0 0 0 2px {focus-ring}",
+        "usage": "A focused input, with its border turned green."
+      },
+      {
+        "name": "soft-hover",
+        "value": "0 2px 6px {shadow-28}",
+        "usage": "The one blurred shadow: an event bar on hover."
+      }
+    ]
+  },
+  "size": {
+    "note": "Fixed heights and widths the layouts are built on.",
+    "tokens": [
+      {
+        "name": "column",
+        "value": "1180px",
+        "usage": "Maximum width of the page's single column."
+      },
+      {
+        "name": "breakpoint-phone",
+        "value": "640px",
+        "usage": "At or below this width the phone layout applies."
+      },
+      {
+        "name": "control-nav",
+        "value": "40px",
+        "usage": "Height of nav buttons, the month picker and the search field."
+      },
+      {
+        "name": "control-field",
+        "value": "38px",
+        "usage": "Height of selects and the buttons beside them on tool rows."
+      },
+      {
+        "name": "control-action",
+        "value": "31px",
+        "usage": "Height of a card's action buttons (Completed, Schedule photo op, Delete)."
+      },
+      {
+        "name": "control-sm",
+        "value": "30px",
+        "usage": "Height of filter buttons, small selects and date fields."
+      },
+      {
+        "name": "chip-h",
+        "value": "22px",
+        "usage": "Height of chips and pills."
+      },
+      {
+        "name": "label-col",
+        "value": "74px",
+        "usage": "Width of the label column in a brief's rows (90px in trip cards, 52px on phones)."
+      },
+      {
+        "name": "accent-bar",
+        "value": "5px",
+        "usage": "The coloured bar across the top of a brief or dialog."
+      },
+      {
+        "name": "accent-edge",
+        "value": "3px",
+        "usage": "The coloured left edge of an event bar (4px on Coming-up cards)."
+      },
+      {
+        "name": "hairline",
+        "value": "1px",
+        "usage": "Every border and rule."
+      }
+    ]
+  }
+}

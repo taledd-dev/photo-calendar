@@ -15,6 +15,8 @@
 // from the real calendar), then serialises the rendered DOM.
 //
 //   node design/build-reference.js
+//   node design/build-reference.js --system <dir>   (also builds the Claude
+//                                                    design system's files)
 //
 // Needs Node 18+ and Playwright (`require('playwright')`; pre-installed in the
 // Claude Code cloud environment). No other dependencies.
@@ -127,6 +129,7 @@ function forecast(url) {
   const boot = await newPage({ cloud: false });
   await boot.go('#/' + NOW.getFullYear());
   const seed = await boot.evaluate(() => JSON.parse(JSON.stringify(migrateYearEvents(makeData()))));
+  const eventIcons = await boot.evaluate(() => Object.keys(EVENT_ICONS).map(k => ({ key: k, label: EVENT_ICONS[k].label, svg: EVENT_ICONS[k].svg })));
   await boot.context().close();
   const Y = NOW.getFullYear(), mi = NOW.getMonth(), mk = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'][mi];
   const month = seed[mi], A = month.locations[0], B = month.locations[1] || month.locations[0];
@@ -181,6 +184,35 @@ function forecast(url) {
   add('Month page', 'Location tiles', 'Tiles carry a region bar, thumbnail, tag, name and region dot; the owner sees tick, star and drag controls. The selected tile has the ink outline.', await grab(page, () => document.querySelector('.tile').parentElement));
   add('Month page', 'Location brief', 'The shoot brief: label column in mono caps, values in Spectral, chips for kit/links, checklists, the day stepper with Light and Sky rows.', await grab(page, (c) => (new Function('el', 'return (' + c + ')(el)'))(document.querySelector('button[aria-label="Close the location brief"]')), card));
   add('Month page', 'Calendar grid', 'Seven columns; events are 19px bars with a 3px accent edge, windows are corner icons named in the legend under the grid.', await grab(page, () => { const l = Array.from(document.querySelectorAll('span')).find(s => s.textContent.trim() === 'Typical light'); let n = l; while (n && !(n.style && n.style.marginTop === '40px')) n = n.parentElement; return n; }));
+  // Small controls, gathered from the page as real nodes (cloned into a row).
+  add('Controls', 'Buttons', 'Primary (green), paper, card actions, danger, dashed “add”, quiet links and the square close button — all square-cornered, mono capitals.', await grab(page, () => {
+    const w = document.createElement('div'); w.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:16px 14px';
+    const btn = (t) => Array.from(document.querySelectorAll('.app-shell button')).find(b => b.textContent.replace(/\s+/g, ' ').trim().includes(t));
+    ['Home', 'Map', 'Add location', 'Completed', 'Schedule photo op', 'Delete location', 'Log visit', 'Add event', 'show tides here', 'Night mode', 'Editing on'].forEach(t => { const b = btn(t); if (b) { const c = b.cloneNode(true); c.style.margin = '0'; w.appendChild(c); } });
+    const x = document.querySelector('button[aria-label="Close the location brief"]'); if (x) w.appendChild(x.cloneNode(true));
+    return w;
+  }));
+  add('Controls', 'Chips and pills', 'One fact or one link each: kit, area, links, the region badge, a trip pill.', await grab(page, () => {
+    const w = document.createElement('div'); w.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:12px 12px';
+    const put = (el) => { if (el) { const c = el.cloneNode(true); c.style.margin = '0'; w.appendChild(c); } };
+    put(document.querySelector('.region-uk, .region-int'));
+    put(document.querySelector('.kit-view'));
+    put(document.querySelector('.area-input')); put(document.querySelector('.country-input'));
+    put(Array.from(document.querySelectorAll('.app-shell a')).find(a => /Parking info/.test(a.textContent)));
+    put(document.querySelector('button[title="Open this trip"]'));
+    return w;
+  }));
+  add('Controls', 'Fields', 'Search, selects, the quiet year picker, coordinates, date and text inputs.', await grab(page, () => {
+    const w = document.createElement('div'); w.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:16px 16px';
+    const put = (el) => { if (el) { const c = el.cloneNode(true); c.style.margin = '0'; w.appendChild(c); } };
+    const search = document.querySelector('input[type=search]'); put(search && search.parentElement);
+    const month = Array.from(document.querySelectorAll('.app-shell select')).find(s2 => Array.from(s2.options).some(o => o.textContent.trim() === 'January')); put(month && month.parentElement);
+    put(document.querySelector('.year-pick'));
+    put(document.querySelector('.coord-input'));
+    const visit = document.querySelector('input[aria-label="Visit date"]'); put(visit && visit.parentElement);
+    return w;
+  }));
+  add('Controls', 'Checklist', 'Tick boxes with a line each, and the dashed add row.', await grab(page, () => { const r = document.querySelector('.check-row'); return r ? r.parentElement.cloneNode(true) : null; }), { width: 620 });
   await page.click('.ev-chip[title="Printing workshop"]'); await page.waitForSelector('text=Save event');
   add('Dialogs', 'Event editor', 'Type chips use each event type’s own wash, ink and accent.', await grab(page, () => { const b = Array.from(document.querySelectorAll('button')).find(x => x.textContent.trim() === 'Save event'); let n = b; while (n && !(n.style && n.style.width === '392px')) n = n.parentElement; return n; }), { width: 392 });
   await page.click('button[aria-label="Close the event editor"]');
@@ -288,12 +320,16 @@ function forecast(url) {
   groups.forEach(g => { body += '<div style="margin-top:22px;' + mono + ';font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--label)">' + esc(g.name) + '</div><table style="border-collapse:collapse;margin-top:6px">' + g.items.map(swatch).join('') + '</table>'; });
   body += h2('Type');
   body += typeRows;
-  const ORDER = ['Navigation', 'Home', 'Month page', 'Trips', 'Gallery', 'Weather', 'Dialogs'];
+  const ORDER = ['Controls', 'Navigation', 'Home', 'Month page', 'Trips', 'Gallery', 'Weather', 'Dialogs'];
   sections.sort((a, b) => ORDER.indexOf(a.group) - ORDER.indexOf(b.group));   // stable: capture order kept within a group
   let lastGroup = '';
   sections.forEach(s => { if (s.group !== lastGroup) { body += h2(s.group); lastGroup = s.group; } body += h3(s.title, s.note) + '<div class="ref-frame"' + (s.width ? ' style="max-width:' + s.width + 'px"' : '') + '>' + s.html + '</div>'; });
   const refCss = '\n    /* reference-page chrome */\n    body { margin: 0; background: var(--page); background-image: radial-gradient(var(--page-dot) 0.8px, transparent 0.8px); background-size: 22px 22px; color: var(--ink); font-family: \'Spectral\', Georgia, serif; }\n    .ref-wrap { max-width: 1180px; margin: 0 auto; padding: 40px 26px 90px; }\n    .ref-frame { position: relative; }\n    .ref-frame [style*="position: fixed"] { position: static !important; }\n';
   fs.writeFileSync(path.join(OUT, 'style-reference.html'), head('Photoplan — style reference').replace('</style>', refCss + '</style>') + '</head>\n<body>\n<!-- ' + stamp + ' -->\n' + themeSwitch + '\n<div class="ref-wrap">\n' + body + '\n</div>\n</body>\n</html>\n');
+
+  // --system <dir>: also assemble the files of the Claude design system (see build-system.js)
+  const sysAt = process.argv.indexOf('--system');
+  if (sysAt > -1) await require('./build-system.js')({ outDir: path.resolve(process.argv[sysAt + 1] || path.join(OUT, 'system-out')), ROOT, sections, TOKENS, appCss, fontsLink, eventIcons });
 
   const kb = (f) => Math.round(fs.statSync(path.join(OUT, f)).size / 1024) + ' KB';
   console.log('tokens.css ' + kb('tokens.css') + ' · style-reference.html ' + kb('style-reference.html') + ' · ' + pages.length + ' page snapshots (' + pages.map(p => p.name + ' ' + kb('pages/' + p.name + '.html')).join(', ') + ')');

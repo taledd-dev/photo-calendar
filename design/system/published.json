@@ -1,0 +1,40 @@
+{
+  "_about": "Record of the Photoplan design system published to the owner's Claude account (an Artifact of the Design System type). Not read by any script: it is here so a later session can find the system and its uploaded assets. Refresh procedure: see CLAUDE.md.",
+  "artifact": "https://claude.ai/artifact/MhGcxBFwtMQjGtzrAHV6ud",
+  "type": "Design System",
+  "firstPublished": "2026-11-17T13:48:29Z",
+  "builtFrom": "Claude Code \u00b7 taledd-dev/photo-calendar@7931ca6",
+  "themes": [
+    "day",
+    "night"
+  ],
+  "assets": {
+    "Logos/photoplan-mark.svg": "4898a50572ee491e96f39ab5725daa6b",
+    "Logos/photoplan-mark-on-dark.svg": "fc9eb802a16ea35d3ad34f18f23b73f6",
+    "Logos/photoplan-lockup-light.svg": "9421671382d0f9b20f89627311d485af",
+    "Logos/photoplan-lockup-dark.svg": "e548d87bec30910ebc93cb33a4544a00",
+    "Logos/photoplan-app-icon.svg": "16350a23052a0601b42f2c90017d1a8e",
+    "Logos/photoplan-favicon.svg": "546532b4101e4c7be65c22913f25c95d",
+    "Logos/social-card.png": "b5126ff64dcc2a501fae91101cf35cf6",
+    "Icons/bluebell.svg": "1fca70ff8ccb9bbdd988c28006c6a9f4",
+    "Icons/daffodil.svg": "f3df9ec3acf16f414d8ee0af28c4fa6f",
+    "Icons/snowdrop.svg": "562551dff88fdbfea735c9f147e79103",
+    "Icons/blossom.svg": "8ace4cf8218d9329ace43252df5f2369",
+    "Icons/lavender.svg": "c9a470f33838f19e72707f2b7654dbb7",
+    "Icons/heather.svg": "b7e6bbf7cd9320672fada333dbc82177",
+    "Icons/leaf.svg": "28ed54966b84642e36de467c1237a016",
+    "Icons/mushroom.svg": "5496d6a5f633e7ad970c8acf0b3c441f",
+    "Icons/stars.svg": "11c93d5d26550caa250f56cf285b22ca",
+    "Icons/nlc.svg": "7bf6040252331c9abd813e78fdbe59fe",
+    "Icons/bird.svg": "1e4e42ad4bc47dd7b3d9d79947d564f7",
+    "Icons/frost.svg": "7cffcc36300858f43fc2fa6987818b7b",
+    "Icons/mist.svg": "db019238623acbee16b008624ce93b00",
+    "Icons/sun.svg": "fd1ca24b8bb4df449af74d72616ebf2f",
+    "Icons/clock.svg": "12d174a8b7fe4ce86b3d66f230e2f303",
+    "Icons/tree.svg": "208f993fc754546d44597110beb57836",
+    "Icons/wave.svg": "ec37eaf7e8d048b42325615b3177341e",
+    "Icons/mountain.svg": "5018d3a198138a43c9e4da9749e5d1cf",
+    "Icons/puffin.svg": "d39f7f82ae14c1c3a2872d29cf41b239",
+    "Icons/deer.svg": "e3ebc490ee0f218c9912169137c24f19"
+  }
+}

@@ -1,0 +1,181 @@
+{
+  "_about": "Which pieces of the running app become components in the Photoplan design system. `from` is the title of a capture in design/build-reference.js; the preview is that capture's real markup (a static rendition — there is no component library to run). `guide` becomes components/<name>/README.md: first sentence = the summary.",
+  "components": [
+    {
+      "name": "Button",
+      "group": "Controls",
+      "from": "Buttons",
+      "width": 1180,
+      "subtitle": "Primary, paper, action, danger, dashed, quiet link, round",
+      "guide": "Buttons are square, bordered in `ink`, and labelled in `label-button`: a verb and its object, shown in capitals.\n\n- **Primary** (`green` fill, `paper` text): the one thing the view is for — at most one per group of buttons. **Paper** (`paper` fill, `ink` text) for everything else in a header.\n- Header buttons are `control-nav` tall with `offset-md`; they move 1px up-left on hover and 2px down-right when pressed.\n- **Action buttons** in a card's footer are `control-action` tall and flat: filled green for the done state, outlined for the rest.\n- **Danger** is outlined in `danger-line` with `danger` text and fills with `danger` only on hover. Keep it at the far end of the footer, away from the other actions.\n- **Dashed** buttons (`line-dash`, `chip` text, lower case) add something optional: “+ show tides here”.\n- **Quiet links** (`label-link`, 1px underline) are for switches that are not part of the task: night mode, hide controls.\n- A glyph may lead the label, `gap-icon` away. Never use a glyph alone unless the button is round or a stepper, and then give it a title.\n\nStatic rendition of the site's own markup: supply the label, the glyph and the action."
+    },
+    {
+      "name": "Chip",
+      "group": "Controls",
+      "from": "Chips and pills",
+      "width": 1180,
+      "subtitle": "Kit, links, region, trip, area",
+      "guide": "Chips hold one short fact or one link, `chip-h` tall, padded `chip-y` `chip-x`, with square corners.\n\n- **Plain chips** (`sunken` fill, `line-chip` border, `ink-2` text): kit, areas, tags. They are not buttons unless they say so with a ↗ or a hover border.\n- **Link chips** take `green` text and end with ↗ when they leave the site.\n- **Trip pills** are slate (`slate-wash`, `slate-line`, `slate-ink`) with the ▲ glyph and `offset-sm`: they open the trip.\n- **The region badge** is `green` for UK and `terra` for International, outlined, and fills on hover for the owner.\n- **Condition chips** (`green-wash`, `green` border, `green-deep` text, weight 600) appear only when a day suits that kind of shoot.\n- One fact per chip. If it needs a sentence, it is not a chip.\n\nStatic rendition of the site's own markup: supply the text and, for links, the address."
+    },
+    {
+      "name": "Field",
+      "group": "Controls",
+      "from": "Fields",
+      "width": 1180,
+      "subtitle": "Search, select, date, text, click-to-edit",
+      "guide": "Fields are `field`-coloured boxes with a 1px border and square corners; text is mono for data and Spectral for sentences.\n\n- The **search field** and the **month picker** are `control-nav` tall with an `ink` border and `offset-md`, so they sit level with the nav buttons.\n- **Selects** keep the native control with the arrow restyled; the year picker is the quiet one — a dotted underline beside the title, no box.\n- **Date and text inputs** in a card are `control-sm` tall with a `line-strong` border. On focus the border turns `green` with `ring-field`.\n- **Click-to-edit text** looks like plain text until hovered; while editing it takes a `field` background, `radius-3` and a 2px `focus-ring-strong` ring, and saves when focus leaves.\n- Placeholders are in `ghost` and say what to type: “paste latitude, longitude”.\n- Labels sit to the left in `label-row`, never inside the box as its only label.\n\nStatic rendition of the site's own markup: supply the value, the placeholder and the label."
+    },
+    {
+      "name": "Checklist",
+      "group": "Controls",
+      "from": "Checklist",
+      "width": 760,
+      "subtitle": "Ticked, open, add row",
+      "guide": "A checklist is a column of 16px tick boxes with a line of `prose-item` each: shots to get, things to pack.\n\n- A ticked item turns its box `green` with a `paper` tick and strikes its text through in `label`.\n- The last row is a dashed box and a field with a dashed underline; it adds an item on Enter.\n- A × appears at the end of a row on hover to remove it.\n- Without edit rights the list shows only the items — no add row, no ×.\n- A count (“1 of 2”) sits under the row's label in `micro`.\n\nStatic rendition of the site's own markup: supply the items and whether each is done."
+    },
+    {
+      "name": "Masthead",
+      "group": "Navigation",
+      "from": "Masthead, tools and the home nav column",
+      "width": 1180,
+      "subtitle": "Home page header",
+      "guide": "The home page's header: the mark and wordmark, a one-paragraph intro, the tool buttons under it, and to the right the way into the first month, the year, the legend and the quiet switches.\n\n- The mark and `wordmark` sit top-left and are the only large branding on the site.\n- The intro is `prose-intro` in `ink-3`, at most about 70 characters a line.\n- Tool buttons are paper buttons in one wrapping row, ending with the search field.\n- The right column is right-aligned and stacked `grid-gap` apart; on phones it moves under the intro and aligns left.\n\nStatic rendition of the site's own markup: supply the intro text and the year."
+    },
+    {
+      "name": "PageHeader",
+      "group": "Navigation",
+      "from": "Month page header",
+      "width": 1180,
+      "subtitle": "Title, year, nav row, tool row",
+      "guide": "Every page below the home page opens the same way: the small lockup, the `title-page`, a line of intro, the nav row to the right, then a hairline and a row holding search and the quiet switches.\n\n- The lockup above the title links home.\n- On a month page the year sits beside the title as a quiet picker with a dotted underline.\n- The nav row runs: page-specific controls, a thin divider, the other pages as paper buttons, a divider, then the green Home button last.\n- Keep to one green button in the row.\n\nStatic rendition of the site's own markup: supply the title, the intro and which pages to link."
+    },
+    {
+      "name": "SyncBanner",
+      "group": "Navigation",
+      "from": "Sync banner",
+      "width": 1180,
+      "subtitle": "Offline, or a save pending",
+      "guide": "A full-width notice above the header, shown only while the shared calendar cannot be reached or a save has not gone through.\n\n- `alert-bg` ground, `alert-ink` text in mono, a `danger-line` border.\n- One or two sentences saying what is wrong and what is paused, then a small paper button outlined in `danger` to retry.\n- It is the only place a warning colour fills a strip of the page. Do not use it for success or for news.\n\nStatic rendition of the site's own markup: supply the sentence."
+    },
+    {
+      "name": "ComingUp",
+      "group": "Home",
+      "from": "Coming up",
+      "width": 1180,
+      "subtitle": "The next events from today",
+      "guide": "A strip of small cards for the next events, soonest first, under a section label.\n\n- Each card is `paper` with a 4px left edge in the event type's accent, `offset-sm`, a date line in `label-tag` style and the event's name in `name-tile` after its glyph.\n- Something already under way reads “Now · until …” and comes first, in `green`.\n- The strip scrolls sideways rather than wrapping; the section label's right end says how far ahead it looks.\n- A card opens the month, the location or the trip it belongs to.\n\nStatic rendition of the site's own markup: supply the events (date, name, type)."
+    },
+    {
+      "name": "MonthList",
+      "group": "Home",
+      "from": "A month in the year list",
+      "width": 1180,
+      "subtitle": "One month of “The year, month by month”",
+      "guide": "One month in the home page's list: on the left its number, name, one-line character and sunrise and sunset; on the right its locations.\n\n- The month name is `title-month`; its line is `prose-note`-sized Spectral in `ink-3`; the light times are mono in `green`.\n- Each location row has a region dot (`green` UK, `terra` International), its `name-list`, its subject tag in capitals, where it is, the idea in `prose`, and a “When” line.\n- Rows are parted by `line-faint` rules and take a `paper-shade` wash with `radius-3` on hover; the whole row opens the location.\n\nStatic rendition of the site's own markup: supply the month and its locations."
+    },
+    {
+      "name": "LocationTile",
+      "group": "Month page",
+      "from": "Location tiles",
+      "width": 760,
+      "subtitle": "With photo, selected, empty",
+      "guide": "A location as a 170px tile: a 4px region bar, a 76px photo slot, then the subject tag, the name and the region.\n\n- The bar and the dot are `green` for UK and `terra` for International.\n- With no photo the slot shows diagonal stripes in `stripe` on `sunken` — never a grey box or an icon.\n- The selected tile takes a 2px `ink` outline; on hover a tile lifts 3px.\n- For the owner the photo carries round controls: a drag handle top-left, a tick (done) top-right and a star (this photo fronts the printed month) under it. Visitors see only a static tick on done tiles.\n\nStatic rendition of the site's own markup: supply the name, tag, region and whether there is a photo."
+    },
+    {
+      "name": "LocationBrief",
+      "group": "Month page",
+      "from": "Location brief",
+      "width": 1180,
+      "subtitle": "The shoot brief card",
+      "guide": "The card that opens when a location is chosen: everything needed to go and shoot it.\n\n- A 5px bar across the top in the region's colour, then the subject tag, the name in `title-month` and the region badge; a square close button top-right.\n- Left column: the photograph (3:2, `radius-4`), its year, further photos, the map coordinates and the map links.\n- Right column: label-and-value rows in a fixed order — Where, Area, Idea, When, Shots, Visits, Trips, Light, Sky, Tides, Kit, Parking, Links, Notes — each `row-y` padded and parted by `line-soft`.\n- Light and Sky are mono data with a day stepper; everything written is Spectral.\n- The footer holds the actions: Completed (green when done), Schedule photo op, Move to…, and Delete at the far right.\n- Visitors see the same card without the footer, the empty rows or the add fields.\n\nStatic rendition of the site's own markup: supply the location's fields; rows with nothing to show are left out for visitors."
+    },
+    {
+      "name": "CalendarGrid",
+      "group": "Month page",
+      "from": "Calendar grid",
+      "width": 1180,
+      "subtitle": "Month grid with bars, icons and legend",
+      "guide": "The month as a seven-column grid, Monday first, under a header strip with the month's typical light.\n\n- The header strip is `paper-shade`; weekday initials are mono in `faint`; columns are parted by `grid-line` and weeks by `rule-week`.\n- Day numbers are `data-day`, top-left of each cell.\n- **Events are bars**: 19px tall, `radius-2`, the type's wash with a 3px accent edge, its glyph and its name in `event-bar`. A bar spans the days it covers and stacks in lanes.\n- **Nature and season windows are icons**, not bars: one small picture in the top-right corner of every day they cover, in the accent colour, with no label.\n- The legend under the grid names each type and each window with its dates; the owner's green “+ Add event” sits at its right end.\n\nStatic rendition of the site's own markup: supply the month, the year and the events."
+    },
+    {
+      "name": "TripCard",
+      "group": "Trips",
+      "from": "Trip card (open)",
+      "width": 1180,
+      "subtitle": "Open, with dates, locations, shots, packing",
+      "guide": "A planned outing as a card: closed it is a header; open it shows the plan.\n\n- The header has the ▲ glyph in `slate`, the name in `title-card`, a slate badge for when (“tomorrow”, “in 12 days”, “past”), the dates in mono, and at the right a summary of locations, shots and packing.\n- Open, the card takes an `ink` border and a 6px offset shadow, and shows rows: Dates, Locations, Shots, Packing, Notes — with a 90px label column.\n- Locations are bordered blocks with the name and the first day's sunrise and sunset; they open the location.\n- Shots and Packing are checklists. Under Packing sit dashed helpers: “+ kit from these locations”, “untick all”, “reset to the usual list”.\n- Delete trip is alone at the bottom right, in the danger style.\n\nStatic rendition of the site's own markup: supply the trip's name, dates, locations, packing list and notes."
+    },
+    {
+      "name": "GalleryGrid",
+      "group": "Gallery",
+      "from": "Controls and tiles",
+      "width": 1180,
+      "subtitle": "Tabs, group/filter/sort row, tiles",
+      "guide": "Every photograph in the calendar, grouped and filterable.\n\n- Two tabs in `label-row`-sized capitals; the current one is `ink` with a 2px `green` underline.\n- One tool row: a Group by select, the region filter as three joined buttons (the chosen one filled `green`), toggle buttons for Starred and Visited, then Year, Tag and Sort selects. All are `control-sm` tall. A count sits at the right.\n- Each group opens with a `heading-group`, a hairline and its count.\n- Tiles are 3:2 photographs in a `paper` frame with a `line` border and `lip-under`, the name in Zilla Slab 14px and a line of mono underneath (month, year, area, tags); a gold star badge marks the printed pick.\n- A tile opens the photo viewer, which is dark in both themes.\n\nStatic rendition of the site's own markup: supply the photographs and their locations."
+    },
+    {
+      "name": "YearInReview",
+      "group": "Gallery",
+      "from": "Year in review",
+      "width": 1180,
+      "subtitle": "Stat tiles, month strip, visit log",
+      "guide": "A summary of one year: what was visited and photographed.\n\n- A row of stat tiles: a `stat` number over a `label-tag` caption, on `paper` with a `line` border.\n- A twelve-column strip with two thin bars a month — visits in `green`, photos in `gold` — and the month's initial; a column opens that month.\n- Then lists under `heading-group` headings: Most visited, Trips, the Visit log.\n- Use `gold` and `green` here only as those two series; the pair differs in lightness as well as hue.\n\nStatic rendition of the site's own markup: supply the year's counts and lists."
+    },
+    {
+      "name": "ForecastDay",
+      "group": "Weather",
+      "from": "Outlook days with condition flags",
+      "width": 1180,
+      "subtitle": "Day card with “Promising for” chips",
+      "guide": "One day of the seven-day outlook, read the way a photographer needs it.\n\n- A flat `paper` card with a `line-strong` border and `lip-under`, padded 13px 16px.\n- Left: the weather symbol, the date in `heading-day` and a `caption` line with the outlook and the temperature range.\n- Then four columns — Dawn, Dusk, Night, and Rain · wind · vis — each a small capital heading (with the time of sunrise or sunset), one mono `data` reading, and a `caption` verdict in `muted`. A verdict that promises colour turns `terra`.\n- **Promising for** ends the card only when the day suits a kind of shoot: one condition chip per kind (“≋ Mist & inversions · dawn”). No suitable kind, no row.\n\nStatic rendition of the site's own markup: supply the day's readings and its flags."
+    },
+    {
+      "name": "GuideCard",
+      "group": "Weather",
+      "from": "Guide card",
+      "width": 580,
+      "subtitle": "Conditions, settings, tips",
+      "guide": "A reference card for one kind of shoot: what conditions to look for and how to set the camera.\n\n- `paper`, `line-strong` border, `lip-under`; a `terra` glyph and the title in `heading-card`.\n- Three short blocks — Conditions, Settings, Tips — each a `label-row` heading over `prose-small`.\n- When the forecast suits it, a line of mono in `green-deep` under the title lists the promising days (“Promising at Mam Tor: Thu 19 Nov (sunset)”).\n- Cards sit two across (`gap-lg` apart) and one across on phones.\n\nStatic rendition of the site's own markup: supply the title, glyph and the three blocks of text."
+    },
+    {
+      "name": "Dialog",
+      "group": "Dialogs",
+      "from": "Text prompt",
+      "width": 420,
+      "subtitle": "One question, one field",
+      "guide": "A small dialog for one question with one text field: a name, or the edit password.\n\n- 380px wide, `paper`, an `ink` border, `offset-dialog`, and a 5px `green` bar across the top; it sits over the `scrim`.\n- A `label-section` title, a sentence in Spectral, the field, then a rule and the buttons right-aligned: Cancel (quiet outline) and the action (green), in that order.\n- Enter confirms; Escape cancels.\n- Never use the browser's own prompt or confirm boxes.\n\nStatic rendition of the site's own markup: supply the title, the sentence, the field's value and the action's label."
+    },
+    {
+      "name": "ConfirmDialog",
+      "group": "Dialogs",
+      "from": "Confirmation (danger)",
+      "width": 420,
+      "subtitle": "Irreversible action",
+      "guide": "The same dialog as a yes-or-no, for anything that cannot be undone.\n\n- The top bar and the confirm button are `danger`; everything else is unchanged.\n- The sentence names the thing and says plainly what is lost: “Its photos will be removed from the cloud as well. This cannot be undone.”\n- The confirm button repeats the verb and the object (“Delete location”), never “OK” or “Yes”.\n\nStatic rendition of the site's own markup: supply the title, the sentence and the action's label."
+    },
+    {
+      "name": "EventEditor",
+      "group": "Dialogs",
+      "from": "Event editor",
+      "width": 432,
+      "subtitle": "Title, days, type, shown as",
+      "guide": "The dialog for adding or changing a calendar event.\n\n- 392px wide, with the top bar in the chosen type's accent and a live preview of the event's bar under the title.\n- Fields in order: Title, Start day and End day side by side, Type, Shown as, then two checkboxes (printed; repeats every year).\n- **Type** is a wrapping row of chips, each in its type's own wash, text colour and accent dot; the chosen one carries a small round tick. A dashed “+ New type” ends the row.\n- **Shown as** offers Auto, Bar, or one of the window icons, as 30px buttons with `radius-2`; the chosen one is filled `green`.\n- Footer: Delete (danger outline) at the left, Save event (green) at the right. Nothing is saved until Save.\n\nStatic rendition of the site's own markup: supply the event's title, days and type."
+    },
+    {
+      "name": "TripPopup",
+      "group": "Dialogs",
+      "from": "Trip pop-up",
+      "width": 560,
+      "subtitle": "A trip at a glance",
+      "guide": "A read-first pop-up for a trip, opened from its bar in the grid, a pill in a brief or a Coming-up card, so the reader stays on the page.\n\n- 520px wide with a `slate` top bar; the same dialog frame as the others.\n- Shows the name, the when badge, dates, the locations as chips, the shot list (tickable), a packing progress bar with what is still unpacked, and the notes.\n- Footer: Close at the left, “Edit on the Trips page →” (green) at the right.\n\nStatic rendition of the site's own markup: supply the trip."
+    },
+    {
+      "name": "BackupsList",
+      "group": "Dialogs",
+      "from": "Backups list",
+      "width": 600,
+      "subtitle": "List rows with paired actions",
+      "guide": "A dialog holding a list of saved copies, each with two actions.\n\n- 560px wide; a paragraph of explanation, one paper button, then rows.\n- Each row: the date in Zilla Slab, size in `micro`, and at the right Download (quiet outline) and Restore (danger outline). Rows take `paper-shade` on hover.\n- Use this pattern for any list where each item has a safe action and a risky one: the safe one first, the risky one last and in the danger style.\n\nStatic rendition of the site's own markup: supply the rows (date, size)."
+    }
+  ]
+}
