@@ -381,7 +381,9 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   route `#/<year>/gallery[/review]`, "▦ Gallery" on home/month/weather/trips
   navs, `renderGalleryPage` in `App`): `galleryItems` memo = one entry per
   photo slot present in the photo index (`{ key, base, i, month, loc, slot,
-  year, tags, starred, caption }`). Photos tab: **Group by** (`galleryGroup`:
+  year, tags, starred, caption }`). Photos tab: **Group by** (`galleryGroup`,
+  **opens on country — the owner's choice**; locations without one fall
+  under "No country yet", last:
   place / area / country / month / year taken / subject (= `loc.tag`) / tag /
   trip / none — tag and trip can file a photo under several groups), filters
   (`galleryF`: region all/uk/int, ★ starred = the month's print pick,

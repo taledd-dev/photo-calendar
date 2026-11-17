@@ -3910,7 +3910,7 @@ function App() {
   // review tab; `lightbox` = { items, idx } while a photo is open full-size.
   const [galleryView, setGalleryView] = useState(false);
   const [galleryTab, setGalleryTab] = useState('photos');
-  const [galleryGroup, setGalleryGroup] = useState('place');
+  const [galleryGroup, setGalleryGroup] = useState('country'); // the owner's chosen default grouping
   const [gallerySort, setGallerySort] = useState('month');
   const [galleryF, setGalleryF] = useState({ region:'all', starred:false, visited:false, year:'', tag:'' });
   const [lightbox, setLightbox] = useState(null);
