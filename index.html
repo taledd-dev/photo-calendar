@@ -2246,10 +2246,31 @@ function printDayNames(year, monthIdx, showHolidays, showNamed) {
 // time the owner edits that year (see saveEvent/deleteEvent).
 const MONTH_KEYS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const FULL_MOON_NAMES = ['Wolf Moon','Snow Moon','Worm Moon','Pink Moon','Flower Moon','Strawberry Moon','Buck Moon','Sturgeon Moon','Corn Moon',"Hunter's Moon",'Beaver Moon','Cold Moon'];
-const ECLIPSES = { // month index, day (UK date), label — the notable ones only
+// Eclipses by year: month index, day (UK date), label — the notable ones only:
+// every total, annular and hybrid solar eclipse (with where it runs, and how
+// much of the Sun is covered from southern England when the UK sees a partial),
+// partial solar eclipses the UK sees, and total or partial lunar eclipses
+// (flagged when the Moon is below the UK horizon throughout). 2031–2040 were
+// computed with PyEphem (scratch eclipses.py: shadow geometry, the central
+// line sampled over the globe, local circumstances at Hindhead) after the
+// same script reproduced the known 2026–2030 eclipses. Extend past 2040 the
+// same way. ECLIPSE_PATCH_FROM marks the years added after launch, which
+// also go into already-stored years as seed patches (see SEED_PATCHES).
+const ECLIPSES = {
   2029: [{ m: 5, d: 26, label: 'Total lunar eclipse' }, { m: 11, d: 20, label: 'Total lunar eclipse' }],
   2030: [{ m: 5, d: 1, label: 'Annular solar eclipse — partial from the UK' }, { m: 5, d: 15, label: 'Partial lunar eclipse' }, { m: 10, d: 25, label: 'Total solar eclipse — southern Africa & Australia' }],
+  2031: [{ m: 4, d: 21, label: 'Annular solar eclipse — east Africa, southern India & Malaysia' }, { m: 10, d: 14, label: 'Hybrid solar eclipse — Pacific & Panama' }],
+  2032: [{ m: 3, d: 25, label: 'Total lunar eclipse — not visible from the UK' }, { m: 4, d: 9, label: 'Annular solar eclipse — South Atlantic' }, { m: 9, d: 18, label: 'Total lunar eclipse — evening, totality 19:39–20:25' }],
+  2033: [{ m: 2, d: 30, label: 'Total solar eclipse — Alaska & far-eastern Russia' }, { m: 3, d: 14, label: 'Total lunar eclipse — rising in totality, to 20:36' }, { m: 9, d: 8, label: 'Total lunar eclipse — not visible from the UK' }],
+  2034: [{ m: 2, d: 20, label: 'Total solar eclipse — central Africa, Arabia & south Asia' }, { m: 8, d: 12, label: 'Annular solar eclipse — South America' }],
+  2035: [{ m: 2, d: 9, label: 'Annular solar eclipse — New Zealand & the South Pacific' }, { m: 7, d: 19, label: 'Partial lunar eclipse — slight, 01:33–02:49' }, { m: 8, d: 2, label: 'Total solar eclipse — China, Korea & Japan' }],
+  2036: [{ m: 1, d: 11, label: 'Total lunar eclipse — evening, totality 21:35–22:47' }, { m: 7, d: 7, label: 'Total lunar eclipse — before dawn, totality 03:04–04:38' }, { m: 7, d: 21, label: 'Partial solar eclipse — 59% from the UK, about 19:10' }],
+  2037: [{ m: 0, d: 16, label: 'Partial solar eclipse — 46% from the UK, about 09:05' }, { m: 0, d: 31, label: 'Total lunar eclipse — not visible from the UK' }, { m: 6, d: 13, label: 'Total solar eclipse — Australia & New Zealand' }, { m: 6, d: 27, label: 'Partial lunar eclipse — before dawn, setting eclipsed' }],
+  2038: [{ m: 0, d: 5, label: 'Annular solar eclipse — Caribbean & west Africa (5% from the UK)' }, { m: 6, d: 2, label: 'Annular solar eclipse — Caribbean & north-west Africa (8% from the UK)' }, { m: 11, d: 26, label: 'Total solar eclipse — Australia & New Zealand' }],
+  2039: [{ m: 5, d: 6, label: 'Partial lunar eclipse — over before UK moonrise' }, { m: 5, d: 21, label: 'Annular solar eclipse — Alaska, Greenland & Scandinavia (62% from the UK, about 19:35)' }, { m: 10, d: 30, label: 'Partial lunar eclipse — deep, at moonrise to 18:37' }, { m: 11, d: 15, label: 'Total solar eclipse — Antarctica' }],
+  2040: [{ m: 4, d: 26, label: 'Total lunar eclipse — not visible from the UK' }, { m: 10, d: 18, label: 'Total lunar eclipse — evening, totality 18:20–19:46' }],
 };
+const ECLIPSE_PATCH_FROM = 2031;
 const ANNUAL_TEMPLATE = Object.fromEntries(Object.entries(YEAR_EVENTS[2028]).map(([mk, evs]) => [mk, evs.filter(ev => ev.kind === 'meteor' || ev.kind === 'nature')]));
 const generatedCache = {};
 function generatedEvents(year) {
@@ -2314,6 +2335,11 @@ const SEED_PATCHES = [
   { id: 'deer-rut', month: 'oct', event: { type: 'range', start: 1, end: 31, kind: 'nature', label: 'Red deer rut' } },
   { id: 'fungi', month: 'oct', event: { type: 'range', start: 1, end: 31, kind: 'nature', label: 'Peak fungi season' } },
   { id: 'puffins', month: 'jun', event: { type: 'range', start: 1, end: 30, kind: 'nature', label: 'Peak puffin season' } },
+  // The eclipses added to the table after launch (2031 on): one patch per
+  // eclipse, for that year only — a year the owner had already edited (and so
+  // stored) before the table reached it still gets them.
+  ...Object.keys(ECLIPSES).filter(y => Number(y) >= ECLIPSE_PATCH_FROM).flatMap(y => ECLIPSES[y].map(ec =>
+    ({ id: 'ecl-' + y + '-' + (ec.m + 1) + '-' + ec.d, year: Number(y), month: MONTH_KEYS[ec.m], event: { type: 'day', day: ec.d, kind: 'eclipse', label: ec.label } }))),
 ];
 function applySeedPatches(arr) {
   if (!Array.isArray(arr) || !arr.length) return arr;
@@ -2325,7 +2351,10 @@ function applySeedPatches(arr) {
     if (!mine.length) return m;
     const by = { ...(m.eventsByYear || {}) };
     Object.keys(by).forEach(y => {
-      mine.forEach(p => { if (!by[y].some(ev => ev.label === p.event.label)) by[y] = by[y].concat([{ id: 'p-' + p.id + '-' + y, ...p.event }]); });
+      mine.forEach(p => {
+        if (p.year && String(p.year) !== y) return; // a one-year patch
+        if (!by[y].some(ev => ev.label === p.event.label || (p.event.kind === 'eclipse' && ev.kind === 'eclipse' && ev.day === p.event.day))) by[y] = by[y].concat([{ id: 'p-' + p.id + '-' + y, ...p.event }]);
+      });
     });
     return { ...m, eventsByYear: by };
   });
@@ -2846,6 +2875,163 @@ const WEATHER_GUIDE = [
   { glyph:'☁', title:'Noctilucent clouds', conditions:'Late May to early August, 90–120 min after sunset or before sunrise, low in the north-west (evening) or north-east (morning). A clear sky with the Sun 6–16° below the horizon — civil dusk onwards.', settings:'24–50 mm, f/2.8–f/4, 1–5 s, ISO 400–800. They are brighter than you expect; check the histogram.', tips:'Electric-blue ripples high in the twilight that don’t darken as the sky does — ordinary cloud goes black, NLC stays lit.' },
 ];
 
+// ─── Condition flags ─────────────────────────────────────────────────────────
+// Each forecast day is read against the guide above and flagged with the
+// kinds of shoot it looks promising for ("Mist & inversions · dawn"). A kind
+// that isn't promising on any day simply never appears. Everything here is
+// pure, so it can be unit-tested (scratch flags_test.js).
+// The forecast request: the long-standing variables, plus the extra ones the
+// flags read (tried first; the page falls back to the base set if refused).
+const FC_HOURLY = 'temperature_2m,precipitation_probability,weather_code,cloud_cover,cloud_cover_low,visibility,wind_speed_10m,wind_gusts_10m';
+const FC_HOURLY_EXTRA = ',cloud_cover_mid,cloud_cover_high,relative_humidity_2m,dew_point_2m';
+const FC_DAILY = 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max';
+const FC_DAILY_EXTRA = ',snowfall_sum';
+// One entry per daily row: the summary the outlook has always shown, plus
+// `cx`, the readings the flags need — at the sunrise and sunset hours, over a
+// dawn window (two hours before sunrise to one after), the daytime (09–16)
+// and the night (22:00–03:00). Missing data stays null and switches the
+// rules that need it off.
+function forecastDays(H, D) {
+  const idx = {}; H.time.forEach((t, i) => { idx[t.slice(0, 13)] = i; });
+  const keyAt = (dateStr, hour) => new Date(new Date(dateStr + 'T00:00:00Z').getTime() + hour * 3600000).toISOString().slice(0, 13);
+  const nearest = (iso) => { if (!iso) return null; const h = parseInt(iso.slice(11, 13), 10) + (parseInt(iso.slice(14, 16), 10) >= 30 ? 1 : 0); const k = keyAt(iso.slice(0, 10), h); return idx[k] != null ? idx[k] : null; };
+  const pick = (arr, i) => (arr && i != null && arr[i] != null) ? arr[i] : null;
+  const vals = (arr, is) => arr ? is.map(i => arr[i]).filter(v => v != null) : [];
+  const mean = (a) => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+  const lo = (a) => a.length ? Math.min(...a) : null, hi = (a) => a.length ? Math.max(...a) : null;
+  const dval = (arr, di) => (arr && di >= 0 && arr[di] != null) ? arr[di] : null;
+  return D.time.map((date, di) => {
+    const hrs = []; H.time.forEach((t, i) => { if (t.slice(0, 10) === date) hrs.push(i); });
+    const riseI = nearest(D.sunrise[di]), setI = nearest(D.sunset[di]);
+    let nightI = idx[keyAt(date, 25)]; if (nightI == null) nightI = idx[keyAt(date, 23)];
+    const vis = vals(H.visibility, hrs);
+    const at = (i) => ({ cloud: pick(H.cloud_cover, i), low: pick(H.cloud_cover_low, i), mid: pick(H.cloud_cover_mid, i), high: pick(H.cloud_cover_high, i), rainP: pick(H.precipitation_probability, i), wind: pick(H.wind_speed_10m, i), vis: pick(H.visibility, i), temp: pick(H.temperature_2m, i) });
+    const dawnIs = riseI == null ? [] : [-2, -1, 0, 1].map(k => riseI + k).filter(i => i >= 0 && i < H.time.length);
+    const dayIs = [9, 10, 11, 12, 13, 14, 15, 16].map(h => idx[keyAt(date, h)]).filter(i => i != null);
+    const nightIs = [22, 23, 24, 25, 26, 27].map(h => idx[keyAt(date, h)]).filter(i => i != null);
+    const spread = dawnIs.map(i => (pick(H.temperature_2m, i) != null && pick(H.dew_point_2m, i) != null) ? H.temperature_2m[i] - H.dew_point_2m[i] : null).filter(v => v != null);
+    const codes = vals(H.weather_code, dawnIs);
+    const prior = [1, 2, 3].map(k => dval(D.precipitation_sum, di - k)).filter(v => v != null);
+    return {
+      date, code: dval(D.weather_code, di),
+      tmax: D.temperature_2m_max[di], tmin: D.temperature_2m_min[di],
+      rainP: dval(D.precipitation_probability_max, di), rain: dval(D.precipitation_sum, di),
+      wind: dval(D.wind_speed_10m_max, di), gust: dval(D.wind_gusts_10m_max, di),
+      sunrise: (D.sunrise[di] || '').slice(11, 16), sunset: (D.sunset[di] || '').slice(11, 16),
+      cloudDawn: pick(H.cloud_cover, riseI), lowDawn: pick(H.cloud_cover_low, riseI),
+      cloudDusk: pick(H.cloud_cover, setI), lowDusk: pick(H.cloud_cover_low, setI),
+      cloudNight: pick(H.cloud_cover, nightI == null ? null : nightI),
+      visMin: vis.length ? Math.min(...vis) / 1000 : null,
+      moon: moonIllumination(new Date(date + 'T12:00:00Z')),
+      cx: {
+        date, rise: at(riseI), set: at(setI),
+        dawn: { visMin: lo(vals(H.visibility, dawnIs)), rhMax: hi(vals(H.relative_humidity_2m, dawnIs)), spreadMin: lo(spread), wind: mean(vals(H.wind_speed_10m, dawnIs)), tempMin: lo(vals(H.temperature_2m, dawnIs)), rainP: hi(vals(H.precipitation_probability, dawnIs)), fog: codes.some(c => c === 45 || c === 48), wet: codes.some(c => c >= 51) },
+        day: { cloud: mean(vals(H.cloud_cover, dayIs)), windMax: dval(D.wind_speed_10m_max, di), rainP: dval(D.precipitation_probability_max, di), rain: dval(D.precipitation_sum, di), prevRain: dval(D.precipitation_sum, di - 1), rain3: prior.length ? prior.reduce((s, v) => s + v, 0) : null, snow: dval(D.snowfall_sum, di), tmin: D.temperature_2m_min[di], tmax: D.temperature_2m_max[di] },
+        night: { cloud: mean(vals(H.cloud_cover, nightIs)) },
+        moon: moonIllumination(new Date(date + 'T22:00:00Z')),
+      },
+    };
+  });
+}
+// The Kp a place needs before aurora is worth a look: the auroral oval's
+// equatorward edge sits near geomagnetic latitude 66.5° − 2·Kp (dipole pole
+// 80.7° N, 72.7° W). Gives 7 for southern England, 5 for central Scotland,
+// 1 for Abisko — the figures in the guide.
+function auroraKpNeeded(lat, lng) {
+  const p = 80.7 * RAD, lp = -72.7 * RAD, f = lat * RAD, l = lng * RAD;
+  const mag = Math.asin(Math.sin(f) * Math.sin(p) + Math.cos(f) * Math.cos(p) * Math.cos(l - lp)) / RAD;
+  return Math.max(1, Math.min(9, Math.ceil((66.5 - mag) / 2)));
+}
+// The flags for one day. `c` is a forecastDays() `cx` plus, from the page:
+// `windows` (lower-cased labels of the calendar's nature/season windows open
+// that day), `meteor` and `eclipse` (labels of events that day), `kpNight`
+// (NOAA's highest predicted Kp for the night) with `kpNeeded`, `nightDark`
+// (the Sun gets well below the horizon), `sky` (skyAt for the night) and
+// `lat`. Returns [{ title (the guide card's), when, why }].
+function conditionFlags(c) {
+  const out = [];
+  const has = (v) => v != null && !isNaN(v);
+  const r0 = (v) => Math.round(v);
+  const add = (title, when, why) => out.push({ title, when, why });
+  const win = (re) => (c.windows || []).find(w => re.test(w));
+  const D = c.day || {}, N = c.night || {}, A = c.dawn || {}, moonPct = c.moon ? r0(c.moon.frac * 100) : null;
+
+  // Colour at the ends of the day: broken cloud with mid/high cloud to light up, the low cloud and rain out of the way.
+  const colour = (s) => s && has(s.cloud) && s.cloud >= 25 && s.cloud <= 75 && (!has(s.low) || s.low <= 50) && (!(has(s.mid) || has(s.high)) || Math.max(s.mid || 0, s.high || 0) >= 20) && (!has(s.rainP) || s.rainP < 40) && (!has(s.vis) || s.vis >= 5000);
+  const ends = [colour(c.rise) && 'sunrise', colour(c.set) && 'sunset'].filter(Boolean);
+  if (ends.length) add('Golden hour & sunsets', ends.join(' & '), ends.map(k => r0((k === 'sunrise' ? c.rise : c.set).cloud) + '% broken cloud at ' + k).join(', '));
+
+  const still = (s) => s && has(s.cloud) && s.cloud <= 25 && has(s.wind) && s.wind <= 7 && (!has(s.rainP) || s.rainP < 25);
+  const blue = [still(c.rise) && 'dawn', still(c.set) && 'dusk'].filter(Boolean);
+  if (blue.length) add('Blue hour & twilight', blue.join(' & '), 'clear and still at ' + blue.join(' and '));
+
+  const misty = (has(A.visMin) && A.visMin < 1500) || A.fog || (has(A.rhMax) && A.rhMax >= 96 && has(A.spreadMin) && A.spreadMin <= 1);
+  if (misty && has(A.wind) && A.wind <= 6 && !A.wet && (!has(A.rainP) || A.rainP < 50)) {
+    add('Mist & inversions', 'dawn', [has(A.visMin) && A.visMin < 5000 ? 'visibility down to ' + (A.visMin < 1000 ? r0(A.visMin / 10) * 10 + ' m' : (A.visMin / 1000).toFixed(1) + ' km') : 'air at the dew point', 'wind ' + r0(A.wind) + ' mph'].join(', '));
+  }
+
+  const frost = has(A.tempMin) && A.tempMin <= -1 && has(A.wind) && A.wind <= 8 && (!has(c.rise && c.rise.cloud) || c.rise.cloud <= 60);
+  const snow = has(D.snow) && D.snow >= 1;
+  if (frost || snow) add('Frost & snow', snow ? (frost ? 'snow & frost' : 'fresh snow') : 'dawn frost', [snow && (Math.round(D.snow * 10) / 10) + ' cm of snow', frost && 'down to ' + r0(A.tempMin) + ' °C with light wind'].filter(Boolean).join(', '));
+
+  if (c.moon && c.moon.frac >= 0.96 && c.set && has(c.set.cloud) && c.set.cloud <= 50) add('Full moon & moonrise', 'evening', 'moon ' + moonPct + '% lit, ' + r0(c.set.cloud) + '% cloud at dusk');
+
+  const clearNight = has(N.cloud) && N.cloud <= 20;
+  if (clearNight && c.nightDark !== false && c.moon) {
+    const core = c.sky && c.sky.core;
+    if (core && (core.moonUpFrac < 0.5 || c.moon.frac <= 0.25)) add('Milky Way & dark skies', 'night', 'core up for ' + core.hours + ' h in a dark sky, ' + r0(N.cloud) + '% cloud');
+    else if (!core && c.moon.frac <= 0.25) add('Milky Way & dark skies', 'night', 'dark and clear — moon ' + moonPct + '%, ' + r0(N.cloud) + '% cloud');
+  }
+
+  if (c.meteor && has(N.cloud) && N.cloud <= 30 && c.nightDark !== false) add('Meteor showers', 'night', c.meteor + ' · ' + r0(N.cloud) + '% cloud, moon ' + moonPct + '%');
+
+  if (has(c.kpNight) && has(c.kpNeeded) && c.kpNight >= c.kpNeeded && has(N.cloud) && N.cloud <= 40 && c.nightDark !== false) add('Aurora', 'night', 'Kp ' + (Math.round(c.kpNight * 10) / 10) + ' forecast (about ' + c.kpNeeded + ' needed here), ' + r0(N.cloud) + '% cloud');
+
+  if (c.eclipse) {
+    const lunar = /lunar/i.test(c.eclipse), cl = lunar ? N.cloud : D.cloud;
+    if (has(cl) && cl <= 60 && !/not visible|before uk moonrise/i.test(c.eclipse)) add('Eclipses', lunar ? 'night' : 'daytime', c.eclipse + ' · ' + r0(cl) + '% cloud');
+  }
+
+  const calm = has(D.windMax) && D.windMax <= 12;
+  const flowers = win(/bluebell|daffodil|snowdrop|blossom|wild garlic|woodland/);
+  if (flowers && calm && (!has(D.rainP) || D.rainP < 60) && ((has(D.cloud) && D.cloud >= 75) || (has(D.prevRain) && D.prevRain >= 2))) add('Bluebells, daffodils & woodland', 'daytime', flowers + ' · ' + (has(D.cloud) && D.cloud >= 75 ? 'soft overcast light' : 'fresh after rain') + ', wind to ' + r0(D.windMax) + ' mph');
+
+  const autumn = win(/autumn|heather/);
+  if (autumn && calm && (!has(D.rainP) || D.rainP < 50)) add('Autumn colour & heather', 'daytime', autumn + ' · dry and calm, wind to ' + r0(D.windMax) + ' mph');
+
+  if (has(D.prevRain) && D.prevRain >= 8 && has(D.cloud) && D.cloud >= 60 && (!has(D.rain) || D.rain < 6)) add('Waterfalls & rivers', 'daytime', r0(D.prevRain) + ' mm of rain the day before, bright overcast');
+
+  const fungi = win(/fungi|mushroom/);
+  if (fungi && has(D.rain3) && D.rain3 >= 4 && has(D.tmin) && D.tmin >= 4 && has(D.windMax) && D.windMax <= 14 && (!has(D.rainP) || D.rainP < 70)) add('Fungi & the woodland floor', 'morning', r0(D.rain3) + ' mm of rain in the days before, mild and calm');
+
+  const rut = win(/deer|rut/);
+  if (rut && has(A.tempMin) && A.tempMin <= 6 && has(A.wind) && A.wind <= 6 && (!has(A.rainP) || A.rainP < 40)) add('Red deer rut', 'dawn', 'cold, still dawn — ' + r0(A.tempMin) + ' °C, wind ' + r0(A.wind) + ' mph' + (misty ? ', mist likely' : ''));
+
+  const puffin = win(/puffin|seabird/);
+  if (puffin && has(D.cloud) && D.cloud >= 50 && (!has(D.rainP) || D.rainP < 40)) add('Puffins & seabird cliffs', 'daytime', 'bright overcast, ' + (has(D.windMax) ? 'wind to ' + r0(D.windMax) + ' mph' : 'dry'));
+
+  const starlings = win(/starling|murmuration/);
+  if (starlings && c.set && has(c.set.cloud) && c.set.cloud <= 60 && has(c.set.wind) && c.set.wind <= 10 && (!has(c.set.rainP) || c.set.rainP < 30)) add('Starlings & wildlife at dusk', 'dusk', 'calm evening, ' + r0(c.set.cloud) + '% cloud at sunset');
+
+  const md = c.date ? parseInt(c.date.slice(5, 7), 10) * 100 + parseInt(c.date.slice(8, 10), 10) : 0;
+  if (md >= 525 && md <= 805 && has(c.lat) && c.lat >= 50 && c.lat <= 62 && has(N.cloud) && N.cloud <= 30) add('Noctilucent clouds', 'late dusk', 'in season and ' + r0(N.cloud) + '% cloud overnight — look low to the north');
+
+  return out;
+}
+// NOAA's 3-day planetary-K forecast → [{ t (ms UTC, start of the 3-h bin), kp }]
+// for the predicted bins. Tolerates both the header-row table and object rows.
+function parseKpForecast(rows) {
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  rows.forEach(r => {
+    const time = Array.isArray(r) ? r[0] : r && r.time_tag, kp = Array.isArray(r) ? r[1] : r && r.kp, state = Array.isArray(r) ? r[2] : r && r.observed;
+    const v = parseFloat(kp), t = Date.parse(String(time || '').replace(' ', 'T') + (/Z$/.test(String(time)) ? '' : 'Z'));
+    if (isNaN(v) || isNaN(t) || state === 'observed') return;
+    out.push({ t, kp: v });
+  });
+  return out;
+}
+
 // `defaultLocId` is the owner's saved default (data[0].weatherDefault) — the
 // page opens on it unless arriving from a location's own "Forecast" link —
 // and `onSetDefault` (owner only) changes it; everyone can view another spot.
@@ -2871,11 +3057,14 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
     setFc({ status: 'loading' });
     (async () => {
       const [lat, lng] = sel.coords;
-      const base = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lng
-        + '&hourly=temperature_2m,precipitation_probability,weather_code,cloud_cover,cloud_cover_low,visibility,wind_speed_10m,wind_gusts_10m'
-        + '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max'
-        + '&wind_speed_unit=mph&timezone=auto&forecast_days=7';
-      const tries = coordsInUK(lat, lng) ? [base + '&models=ukmo_seamless', base] : [base];
+      const root = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lng;
+      const tail = '&wind_speed_unit=mph&timezone=auto&forecast_days=7';
+      // Fuller request first (the extra readings and yesterday, for the
+      // condition flags); the long-standing one if the service refuses it.
+      const full = root + '&hourly=' + FC_HOURLY + FC_HOURLY_EXTRA + '&daily=' + FC_DAILY + FC_DAILY_EXTRA + tail + '&past_days=1';
+      const base = root + '&hourly=' + FC_HOURLY + '&daily=' + FC_DAILY + tail;
+      const uk = coordsInUK(lat, lng);
+      const tries = uk ? [full + '&models=ukmo_seamless', full, base + '&models=ukmo_seamless', base] : [full, base];
       for (const url of tries) {
         try {
           const res = await fetch(url, { signal: ctrl.signal });
@@ -2883,6 +3072,7 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
           const json = await res.json();
           if (!json || !json.daily || !json.hourly || !json.daily.time) continue;
           json._model = url.indexOf('ukmo') !== -1 ? 'Met Office (UKMO) model' : 'best-match model';
+          json._past = url.indexOf('past_days=1') !== -1 ? 1 : 0; // leading days that are history, not shown
           if (cancelled) return;
           cacheRef.current[coordKey] = json; setFc({ status: 'ok', data: json }); return;
         } catch (_) { if (cancelled) return; }
@@ -2903,34 +3093,52 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
     return () => { c = true; };
   }, []);
 
-  // Per-day summaries from the hourly series: cloud at the sunrise and sunset
-  // hours and at 01:00 that night, the day's worst visibility, the Moon.
+  // NOAA's three-day Kp forecast, for the Aurora flag; quietly absent if it fails.
+  const [kpFc, setKpFc] = useState([]);
+  useEffect(() => {
+    let c = false;
+    fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json').then(r => r.json()).then(rows => { if (!c) setKpFc(parseKpForecast(rows)); }).catch(() => {});
+    return () => { c = true; };
+  }, []);
+
+  // Per-day summaries from the hourly series (forecastDays): cloud at the
+  // sunrise and sunset hours and at 01:00 that night, the day's worst
+  // visibility, the Moon — and `flags`, the kinds of shoot each day looks
+  // promising for (conditionFlags), read against the forecast, the calendar's
+  // own windows/meteors/eclipses for that date, the sky, and the Kp forecast.
   const days = useMemo(() => {
-    if (fc.status !== 'ok') return [];
-    const H = fc.data.hourly, D = fc.data.daily;
-    const idx = {}; H.time.forEach((t, i) => { idx[t.slice(0, 13)] = i; });
-    const keyAt = (dateStr, hour) => new Date(new Date(dateStr + 'T00:00:00Z').getTime() + hour * 3600000).toISOString().slice(0, 13);
-    const nearest = (iso) => { if (!iso) return null; const h = parseInt(iso.slice(11, 13), 10) + (parseInt(iso.slice(14, 16), 10) >= 30 ? 1 : 0); const k = keyAt(iso.slice(0, 10), h); return idx[k] != null ? idx[k] : null; };
-    const pick = (arr, i) => (arr && i != null && arr[i] != null) ? arr[i] : null;
-    return D.time.map((date, di) => {
-      const hrs = []; H.time.forEach((t, i) => { if (t.slice(0, 10) === date) hrs.push(i); });
-      const riseI = nearest(D.sunrise[di]), setI = nearest(D.sunset[di]);
-      let nightI = idx[keyAt(date, 25)]; if (nightI == null) nightI = idx[keyAt(date, 23)];
-      const vis = hrs.map(i => H.visibility ? H.visibility[i] : null).filter(v => v != null);
-      return {
-        date, code: D.weather_code ? D.weather_code[di] : null,
-        tmax: D.temperature_2m_max[di], tmin: D.temperature_2m_min[di],
-        rainP: D.precipitation_probability_max ? D.precipitation_probability_max[di] : null, rain: D.precipitation_sum ? D.precipitation_sum[di] : null,
-        wind: D.wind_speed_10m_max ? D.wind_speed_10m_max[di] : null, gust: D.wind_gusts_10m_max ? D.wind_gusts_10m_max[di] : null,
-        sunrise: (D.sunrise[di] || '').slice(11, 16), sunset: (D.sunset[di] || '').slice(11, 16),
-        cloudDawn: pick(H.cloud_cover, riseI), lowDawn: pick(H.cloud_cover_low, riseI),
-        cloudDusk: pick(H.cloud_cover, setI), lowDusk: pick(H.cloud_cover_low, setI),
-        cloudNight: pick(H.cloud_cover, nightI == null ? null : nightI),
-        visMin: vis.length ? Math.min(...vis) / 1000 : null,
-        moon: moonIllumination(new Date(date + 'T12:00:00Z')),
-      };
+    if (fc.status !== 'ok' || !sel) return [];
+    const [lat, lng] = sel.coords;
+    const offMs = (fc.data.utc_offset_seconds || 0) * 1000;
+    const kpNeeded = auroraKpNeeded(lat, lng);
+    return forecastDays(fc.data.hourly, fc.data.daily).slice(fc.data._past || 0).map(d => {
+      const p = parseYmd(d.date);
+      let windows = [], meteor = null, eclipse = null, sky = null, nightDark = null, kpNight = null;
+      if (p) {
+        const m2 = data[p.m];
+        (m2 ? eventsFor(m2, p.y) : []).forEach(ev => {
+          const s = ev.start != null ? ev.start : ev.day, en = ev.end != null ? ev.end : s;
+          if (p.d < s || p.d > en) return;
+          if (ev.kind === 'nature' || ev.kind === 'season') windows.push(String(ev.label || '').toLowerCase());
+          if (ev.kind === 'meteor') meteor = ev.label;
+          if (ev.kind === 'eclipse') eclipse = ev.label;
+        });
+        try { sky = skyAt(lat, lng, p.y, p.m, p.d); } catch (_) {}
+        // local midnight at the end of the day, as a UTC instant
+        const midnight = Date.UTC(p.y, p.m, p.d + 1) - offMs;
+        const s = sunEquatorial(jdFromDate(new Date(midnight)));
+        nightDark = altAz(s.ra, s.dec, jdFromDate(new Date(midnight)), lat, lng).alt < -9;
+        const from = midnight - 4 * 3600000, to = midnight + 4 * 3600000; // 20:00–04:00 local
+        const bins = kpFc.filter(k => k.t + 3 * 3600000 > from && k.t < to);
+        if (bins.length) kpNight = Math.max(...bins.map(k => k.kp));
+      }
+      return { ...d, flags: conditionFlags({ ...d.cx, windows, meteor, eclipse, sky, nightDark, kpNight, kpNeeded, lat }) };
     });
-  }, [fc]);
+  }, [fc, kpFc, data]);
+  // Which days each kind is flagged on (for the guide cards), and a scroll to a card.
+  const flaggedDays = useMemo(() => { const o = {}; days.forEach(d => (d.flags || []).forEach(f => { (o[f.title] = o[f.title] || []).push({ date: d.date, when: f.when }); })); return o; }, [days]);
+  const guideId = (title) => 'guide-' + slugify(title);
+  const goToGuide = (title) => { const el = document.getElementById(guideId(title)); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
 
   const label = (t, extra) => e('div', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'#9C8F71', ...(extra || {}) } }, t);
   const pct = (v) => v == null ? '—' : Math.round(v) + '%';
@@ -2964,19 +3172,29 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
     const cell = (k, v, sub) => e('div', { style:{ minWidth: isMobile ? 'calc(50% - 6px)' : 0, flex: isMobile ? '1 1 calc(50% - 6px)' : '1 1 0' } },
       label(k), e('div', { style:{ fontFamily:mono, fontSize:12.5, color:'#2A251E', marginTop:3, lineHeight:1.4 } }, v),
       sub && e('div', { style:{ fontSize:12, color:'#8A7D63', marginTop:2, lineHeight:1.35 } }, sub));
-    return e('div', { key:d.date, style:{ ...card, padding: isMobile ? '12px 13px' : '13px 16px', display:'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 10 : 18, alignItems: isMobile ? 'stretch' : 'flex-start' } },
-      e('div', { style:{ flex: isMobile ? 'none' : '0 0 150px', display:'flex', gap:12, alignItems:'center' } },
-        e('span', { style:{ fontSize:26, lineHeight:1 } }, w[1]),
-        e('div', null,
-          e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:16, color:'#2A251E' } }, fmtDay(d.date)),
-          e('div', { style:{ fontSize:12.5, color:'#6E6450', marginTop:2 } }, w[0] + (d.tmax != null ? ' · ' + Math.round(d.tmin) + '–' + Math.round(d.tmax) + ' °C' : '')))),
-      e('div', { style:{ flex:1, display:'flex', flexWrap:'wrap', gap: isMobile ? '10px 12px' : 14 } },
-        cell('Dawn ' + d.sunrise, pct(d.cloudDawn) + ' cloud', dawn && e('span', { style:{ color:dawn.tone } }, dawn.text)),
-        cell('Dusk ' + d.sunset, pct(d.cloudDusk) + ' cloud', dusk && e('span', { style:{ color:dusk.tone } }, dusk.text)),
-        cell('Night', pct(d.cloudNight) + ' cloud', (night || '') + ' · moon ' + Math.round(d.moon.frac * 100) + '%' + (d.moon.waxing ? ' waxing' : ' waning')),
-        cell('Rain · wind · vis', (d.rainP != null ? Math.round(d.rainP) + '%' : '—') + ' · ' + (d.wind != null ? Math.round(d.wind) + (d.gust != null ? '/' + Math.round(d.gust) : '') + ' mph' : '—') + ' · ' + (d.visMin != null ? (d.visMin < 1 ? Math.round(d.visMin * 1000) + ' m' : Math.round(d.visMin) + ' km') : '—'),
-          d.rain != null ? Math.round(d.rain * 10) / 10 + ' mm' : null)
-      )
+    const flags = d.flags || [];
+    return e('div', { key:d.date, 'data-day':d.date, style:{ ...card, padding: isMobile ? '12px 13px' : '13px 16px' } },
+      e('div', { style:{ display:'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 10 : 18, alignItems: isMobile ? 'stretch' : 'flex-start' } },
+        e('div', { style:{ flex: isMobile ? 'none' : '0 0 150px', display:'flex', gap:12, alignItems:'center' } },
+          e('span', { style:{ fontSize:26, lineHeight:1 } }, w[1]),
+          e('div', null,
+            e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:16, color:'#2A251E' } }, fmtDay(d.date)),
+            e('div', { style:{ fontSize:12.5, color:'#6E6450', marginTop:2 } }, w[0] + (d.tmax != null ? ' · ' + Math.round(d.tmin) + '–' + Math.round(d.tmax) + ' °C' : '')))),
+        e('div', { style:{ flex:1, display:'flex', flexWrap:'wrap', gap: isMobile ? '10px 12px' : 14 } },
+          cell('Dawn ' + d.sunrise, pct(d.cloudDawn) + ' cloud', dawn && e('span', { style:{ color:dawn.tone } }, dawn.text)),
+          cell('Dusk ' + d.sunset, pct(d.cloudDusk) + ' cloud', dusk && e('span', { style:{ color:dusk.tone } }, dusk.text)),
+          cell('Night', pct(d.cloudNight) + ' cloud', (night || '') + ' · moon ' + Math.round(d.moon.frac * 100) + '%' + (d.moon.waxing ? ' waxing' : ' waning')),
+          cell('Rain · wind · vis', (d.rainP != null ? Math.round(d.rainP) + '%' : '—') + ' · ' + (d.wind != null ? Math.round(d.wind) + (d.gust != null ? '/' + Math.round(d.gust) : '') + ' mph' : '—') + ' · ' + (d.visMin != null ? (d.visMin < 1 ? Math.round(d.visMin * 1000) + ' m' : Math.round(d.visMin) + ' km') : '—'),
+            d.rain != null ? Math.round(d.rain * 10) / 10 + ' mm' : null)
+        )
+      ),
+      // What the day looks promising for — one chip per kind of shoot, each
+      // leading to its card in the guide below. Days with none show nothing.
+      flags.length > 0 && e('div', { style:{ marginTop:10, paddingTop:9, borderTop:'1px solid #E6DECA', display:'flex', flexWrap:'wrap', alignItems:'center', gap:'6px 8px' } },
+        label('Promising for', { marginRight:4 }),
+        flags.map(f => { const g = WEATHER_GUIDE.find(x => x.title === f.title) || {}; return e('button', { key:f.title, className:'map-chip', onClick:()=>goToGuide(f.title), title: f.why + ' — see the guide below', 'data-flag':f.title,
+          style:{ display:'inline-flex', alignItems:'baseline', gap:6, padding:'4px 9px', background:'#E4E8D0', border:'1px solid #54632F', color:'#46562E', fontFamily:mono, fontSize:10.5, letterSpacing:'.05em', cursor:'pointer', boxShadow:'2px 2px 0 rgba(42,37,30,0.08)', textAlign:'left' } },
+          e('span', { style:{ color:'#9E4B26' } }, g.glyph || '◉'), e('span', { style:{ fontWeight:600 } }, f.title), e('span', { style:{ color:'#6E6450' } }, '· ' + f.when)); }))
     );
   };
 
@@ -3036,7 +3254,7 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
             fc.status === 'error' && e('div', { style:{ ...card, padding:16, fontSize:14, color:'#6E6450', lineHeight:1.5 } }, 'No live forecast right now — the links above open the same spot on the forecast sites.'),
             days.map(dayRow)
           ),
-          fc.status === 'ok' && e('div', { style:{ marginTop:10, fontFamily:mono, fontSize:10.5, color:'#A89A7C', letterSpacing:'.03em', lineHeight:1.6 } }, 'Cloud figures are total cover at the hour nearest sunrise, sunset and 01:00. Treat days four to seven as a trend, not a plan. Data: Open-Meteo.com (CC BY 4.0).')
+          fc.status === 'ok' && e('div', { style:{ marginTop:10, fontFamily:mono, fontSize:10.5, color:'#A89A7C', letterSpacing:'.03em', lineHeight:1.6 } }, 'Cloud figures are total cover at the hour nearest sunrise, sunset and 01:00. “Promising for” reads each day against the guide below — a prompt to look closer, not a promise; a kind that suits none of the seven days is not shown. Treat days four to seven as a trend, not a plan. Data: Open-Meteo.com (CC BY 4.0).')
         ),
 
     // Guide
@@ -3046,10 +3264,12 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
       e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.06em', color:'#A89A7C', whiteSpace:'nowrap' } }, WEATHER_GUIDE.length + ' kinds of shoot')
     ),
     e('div', { style:{ marginTop:16, display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap:12 } },
-      WEATHER_GUIDE.map(g => e('div', { key:g.title, style:{ ...card, padding: isMobile ? '14px 14px 15px' : '16px 18px 17px' } },
+      WEATHER_GUIDE.map(g => e('div', { key:g.title, id:guideId(g.title), style:{ ...card, padding: isMobile ? '14px 14px 15px' : '16px 18px 17px', scrollMarginTop:20 } },
         e('div', { style:{ display:'flex', alignItems:'baseline', gap:9 } },
           e('span', { style:{ fontFamily:mono, color:'#9E4B26', fontSize:13 } }, g.glyph),
           e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:17, color:'#2A251E' } }, g.title)),
+        // the days in the outlook above that look promising for this kind
+        flaggedDays[g.title] && e('div', { style:{ marginTop:6, fontFamily:mono, fontSize:10.5, letterSpacing:'.04em', color:'#46562E' } }, 'Promising at ' + (sel ? sel.loc.name : 'this spot') + ': ' + flaggedDays[g.title].map(x => fmtDay(x.date) + ' (' + x.when + ')').join(' · ')),
         [['Conditions', g.conditions], ['Settings', g.settings], ['Tips', g.tips]].map(([k, v]) =>
           e('div', { key:k, style:{ marginTop:10 } }, label(k), e('div', { style:{ fontSize:14, color:'#3B3528', lineHeight:1.5, marginTop:3 } }, v)))
       ))

@@ -16,8 +16,10 @@ iterating the Sun's longitude, UK clock changes, NOAA sunrise/sunset/golden/
 civil-twilight times at any coordinates (`lightAt`; UK coords in GMT/BST,
 elsewhere UTC; `HOME_REF` = Hindhead is the fixed reference for the month-
 level sunrise/sunset). `generatedEvents(year)` builds a year's events from these
-(named full moons incl. Harvest/Blue, the `ECLIPSES` table for 2029–30 —
-extend it, and the annual meteor/nature windows taken from the 2028 seed);
+(named full moons incl. Harvest/Blue, the `ECLIPSES` table for 2029–2040 —
+computed and checked with PyEphem, see its comment; extend it the same way
+(scratch `eclipses.py` + `eclipse_test.js`) — and the annual meteor/nature
+windows taken from the 2028 seed);
 `storedOrGenerated(m, year)` returns the stored list **or** the generated
 one; `eventsFor(m, year)` prepends the month's **yearly repeaters**
 (`month.annualEvents`, events flagged `annual: true` — birthdays etc., set
@@ -31,7 +33,10 @@ checkbox is toggled (`mutateData`'s deep copy clones `annualEvents` too). `migra
 additions to already-stored years (e.g. the October "Red deer rut" window),
 each applied once per dataset and recorded in `data[0].seedPatches` so an
 owner's deletion sticks; add new annual windows to the 2028 seed (the
-template for generated years) **and** as a patch. The seeded `sunrise`/`sunset` month fields are **unused**: the
+template for generated years) **and** as a patch. A patch with a `year`
+applies to that stored year only: the eclipses from `ECLIPSE_PATCH_FROM`
+(2031) on are generated as such patches, so a year the owner had already
+edited still receives them. The seeded `sunrise`/`sunset` month fields are **unused**: the
 home rows, month header and print grid show `monthLight(m2, i)` (15th of the
 month at `HOME_REF`, Hindhead — labelled on screen, unnamed in print), and
 the brief has a per-location "Light" row. `daylightNote` stays editorial.
@@ -370,7 +375,8 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   calendar for the selected year, page order: cover photo → per month a
   full-bleed photo page then a grid page → three photo-index pages (4 month
   photos each as **3:2 tiles**, two across at 130mm wide — the most two rows
-  plus a small month label fit in the height — no caption, block centred)
+  plus a small month label fit in the height — no caption, block centred;
+  **four per page is the owner's decision**, Nov 2026, over six)
   → back-cover photo. `.print-sheet` CSS keeps sheets at
   281×193mm (aspect-ratio preview on screen; exact one-page height in
   `@media print`; `.pad` adds the grid page's padding; `.print-label` is the
@@ -428,6 +434,28 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   meteoblue, light-pollution map, MWIS/Met Office mountain, tide times,
   AuroraWatch); and the `WEATHER_GUIDE` cards (conditions / settings / tips
   per kind of shoot — editorial, edit the array). All fetches fail quietly.
+  **Condition flags** (the owner chose these over a single "best evening"
+  badge): each day card ends with a "Promising for" row of chips, one per
+  guide card whose conditions that day meets ("≋ Mist & inversions · dawn";
+  the chip's `title` says why, a click scrolls to the card, `guideId`), and
+  each flagged guide card lists its days ("Promising at Mam Tor: Thu 19 Nov
+  (sunset)", `flaggedDays`). A kind that suits no day never appears. Pure,
+  module-level pieces: `forecastDays(H, D)` (the day summaries + `cx`, the
+  readings at the sunrise/sunset hours, a dawn window −2..+1 h, 09–16 and
+  22:00–03:00), `conditionFlags(c)` (the rules — thresholds live here, one
+  block per guide title; rules that lack data stay off; "Coast & long
+  exposure" has no rule), `auroraKpNeeded(lat, lng)` (dipole geomagnetic
+  latitude → Kp: 7 southern England, 5 central Scotland, 1 Abisko) and
+  `parseKpForecast` (NOAA `noaa-planetary-k-index-forecast.json`, table or
+  object rows). `WeatherView` adds per day: the calendar's nature/season
+  windows, meteor and eclipse events on that date (`eventsFor`), `skyAt`
+  (core window), `nightDark` (Sun below −9° at local midnight) and the
+  night's highest predicted Kp. The request asks first for the extra
+  variables (`FC_HOURLY_EXTRA`: mid/high cloud, humidity, dew point;
+  `snowfall_sum`) and `past_days=1` (yesterday's rain, for "the day after";
+  `json._past` days are sliced off the display), falling back to the old
+  request if refused. Tests: scratch `flags_test.js` (rules) and `weather.js`
+  (page, faked Open-Meteo + NOAA).
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView` / `weatherView`
   / `tripsView` / `galleryView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `goToTrips(id)`,
