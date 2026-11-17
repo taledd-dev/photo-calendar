@@ -463,11 +463,17 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   LOCATION on photo ops) to `photoplan-<year>.ics` via a Blob download.
 - **Weather page** (`WeatherView`, "☁ Weather" button on the home and month
   nav rows for everyone; `goToWeather(locId)` also from the brief's Light row
-  "Forecast & conditions →"): a **Default** location (owner-set via a
-  `<select>`, saved as `data[0].weatherDefault`, cloud-synced; the page opens
-  on it unless arriving from a brief; visitors see it as text) "or" a
-  **View** `<select>` (grouped by month, only locations with coordinates;
-  falls back to the current month's first spot), a seven-day outlook from
+  "Forecast & conditions →"): **one Location `<select>`** (grouped by month,
+  only locations with coordinates) and, for the owner, a green **"Set
+  default"** button beside it — the owner asked for this in place of the old
+  Default + View pair. It saves the spot on show as
+  `data[0].weatherDefault` (cloud-synced; the page opens on it unless
+  arriving from a brief, else on the current month's first spot); on the
+  default itself the button reads "✓ Default" (outlined; a click clears it)
+  and the list marks it "· default" for everyone. `pickedRef`: until the
+  reader picks a spot, the view follows the saved default, so a first visit
+  straight onto the page still gets it once the calendar loads. Then a
+  seven-day outlook from
   **Open-Meteo** (`api.open-meteo.com`,
   `timezone=auto`; `models=ukmo_seamless` tried first for UK coords, then the
   default model; cached per coordinates for the session) summarised per day
@@ -498,8 +504,8 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   variables (`FC_HOURLY_EXTRA`: mid/high cloud, humidity, dew point;
   `snowfall_sum`) and `past_days=1` (yesterday's rain, for "the day after";
   `json._past` days are sliced off the display), falling back to the old
-  request if refused. Tests: scratch `flags_test.js` (rules) and `weather.js`
-  (page, faked Open-Meteo + NOAA).
+  request if refused. Tests: scratch `flags_test.js` (rules), `weather.js`
+  (page, faked Open-Meteo + NOAA) and `weather_default.js` (picker + default).
 - **Views:** `App` holds `yearView` / `monthIdx` / `mapView` / `weatherView`
   / `tripsView` / `galleryView`. Navigation:
   `goToYear`, `goToMonth(idx, locId)`, `goToMap`, `goToTrips(id)`,
@@ -634,7 +640,11 @@ the brief has a per-location "Light" row. `daylightNote` stays editorial.
   copy via the route handler (see `sky.js`) so the mini map does. Setting
   `localStorage['calendar:uploadKey']` makes the page the owner's. NB a
   `page.goto` that only changes the hash is a same-document navigation —
-  go via `about:blank` for a real reload. Still have the owner test live.
+  go via `about:blank` for a real reload. And the inline `<script>` sits in
+  `<body>`, so `body.textContent` contains the app's **source** — a text
+  check or wait against `body` can match a string literal in the code and
+  pass (or stop waiting) before anything is drawn; read `.app-shell` or use
+  a selector instead. Still have the owner test live.
 
 ## Next up: mobile / phone layout pass (not started)
 

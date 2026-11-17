@@ -3327,8 +3327,9 @@ function parseKpForecast(rows) {
 }
 
 // `defaultLocId` is the owner's saved default (data[0].weatherDefault) — the
-// page opens on it unless arriving from a location's own "Forecast" link —
-// and `onSetDefault` (owner only) changes it; everyone can view another spot.
+// page opens on it unless arriving from a location's own "Forecast" link.
+// One picker chooses the spot to view; beside it the owner's green "Set
+// default" button (`onSetDefault`) makes the spot on show the default.
 function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, onOpenMonth, isMobile, navControl }) {
   const mono = "'IBM Plex Mono',monospace";
   const places = useMemo(() => data.flatMap((m, i) => m.locations.map(l => ({ loc: l, m, i, coords: coordsOf(l) })).filter(p => p.coords)), [data]);
@@ -3336,6 +3337,11 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
   const savedDefault = defaultLocId && places.some(p => p.loc.id === defaultLocId) ? defaultLocId : null;
   const defaultId = initialLocId || savedDefault || (places.find(p => p.i === todayMonth) || places[0] || { loc: {} }).loc.id;
   const [selId, setSelId] = useState(defaultId);
+  // Until the reader picks a spot themselves, follow the saved default — it
+  // can arrive after the page does (a first visit straight onto this page,
+  // before the shared calendar has loaded).
+  const pickedRef = useRef(!!initialLocId);
+  useEffect(() => { if (!pickedRef.current && savedDefault) setSelId(savedDefault); }, [savedDefault]);
   const sel = places.find(p => p.loc.id === selId) || places[0] || null;
   const [fc, setFc] = useState({ status: 'idle' });
   const [kp, setKp] = useState(null);
@@ -3510,24 +3516,20 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
     places.length === 0
       ? e('div', { style:{ ...card, padding:18, fontSize:14, color:'var(--ink-3)' } }, 'Add map coordinates to a location to see its forecast here.')
       : e('div', null,
-          // Default spot (owner sets it; it's what the page opens on) — or view any other.
+          // One picker for the spot on show. The owner's "Set default" makes it the
+          // spot the page opens on (marked "· default" in the list for everyone).
           (() => {
             const selStyle = { height:38, padding:'0 12px', background:'var(--field)', border:'1px solid var(--line-dark)', color:'var(--ink)', fontFamily:mono, fontSize:12, letterSpacing:'.04em', cursor:'pointer', borderRadius:0, maxWidth:'100%' };
-            const groups = (placeholder) => [
-              placeholder ? e('option', { key:'_', value:'' }, placeholder) : null,
-              ...data.map((m, i) => { const ps = places.filter(p => p.i === i); return ps.length ? e('optgroup', { key:m.key, label:m.name }, ps.map(p => e('option', { key:p.loc.id, value:p.loc.id }, p.loc.name))) : null; })
-            ];
-            const defPlace = savedDefault ? places.find(p => p.loc.id === savedDefault) : null;
-            return e('div', { style:{ display:'flex', alignItems:'center', gap:'10px 14px', flexWrap:'wrap' } },
-              label('Default'),
-              onSetDefault
-                ? e('select', { value: savedDefault || '', onChange:(ev)=>{ const id = ev.target.value || null; onSetDefault(id); if (id) setSelId(id); }, 'aria-label':'Default location for the Weather page', title:'The location this page opens on', style:{ ...selStyle, borderColor: savedDefault ? 'var(--green)' : 'var(--line-dark)' } },
-                    groups('Not set — first spot of the current month'))
-                : e('span', { style:{ fontFamily:mono, fontSize:12, color:'var(--ink)', letterSpacing:'.04em' } }, defPlace ? defPlace.loc.name : 'the current month’s first spot'),
-              e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--ghost)' } }, 'or'),
-              label('View'),
-              e('select', { value: sel ? sel.loc.id : '', onChange:(ev)=>setSelId(ev.target.value), 'aria-label':'Location for the forecast', style:selStyle }, groups(null)),
-              sel && e('button', { className:'btn-hover', onClick:()=>onOpenMonth(sel.i, sel.loc.id), style:{ height:38, padding:'0 14px', background:'var(--paper)', border:'1px solid var(--ink)', color:'var(--ink)', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'3px 3px 0 var(--shadow-12)' } }, 'Open ' + sel.m.name + ' →')
+            const btn = { height:38, padding:'0 14px', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', borderRadius:0 };
+            const isDefault = !!(sel && savedDefault === sel.loc.id);
+            return e('div', { style:{ display:'flex', alignItems:'center', gap:'10px 12px', flexWrap:'wrap' } },
+              label('Location'),
+              e('select', { value: sel ? sel.loc.id : '', onChange:(ev)=>{ pickedRef.current = true; setSelId(ev.target.value); }, 'aria-label':'Location for the forecast', style:selStyle },
+                data.map((m, i) => { const ps = places.filter(p => p.i === i); return ps.length ? e('optgroup', { key:m.key, label:m.name }, ps.map(p => e('option', { key:p.loc.id, value:p.loc.id }, p.loc.name + (p.loc.id === savedDefault ? ' · default' : '')))) : null; })),
+              onSetDefault && sel && (isDefault
+                ? e('button', { onClick:()=>onSetDefault(null), 'aria-pressed':'true', title:'The Weather page opens on ' + sel.loc.name + '. Click to clear — it then opens on the current month’s first spot.', style:{ ...btn, background:'none', border:'1px solid var(--green)', color:'var(--green)' } }, '✓ Default')
+                : e('button', { className:'btn-hover', onClick:()=>onSetDefault(sel.loc.id), 'aria-pressed':'false', title:'Open the Weather page on ' + sel.loc.name + ' from now on', style:{ ...btn, background:'var(--green)', border:'1px solid var(--ink)', color:'var(--paper)', boxShadow:'3px 3px 0 var(--shadow-12)' } }, 'Set default')),
+              sel && e('button', { className:'btn-hover', onClick:()=>onOpenMonth(sel.i, sel.loc.id), style:{ ...btn, background:'var(--paper)', border:'1px solid var(--ink)', color:'var(--ink)', boxShadow:'3px 3px 0 var(--shadow-12)' } }, 'Open ' + sel.m.name + ' →')
             );
           })(),
           sel && e('div', { style:{ marginTop:14, display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:'6px 18px', flexWrap:'wrap' } },
