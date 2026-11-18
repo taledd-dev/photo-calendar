@@ -41,7 +41,7 @@ home rows, month header and print grid show `monthLight(m2, i)` (15th of the
 month at `HOME_REF`, Hindhead — labelled on screen, unnamed in print), and
 the brief has a per-location "Light" row. `daylightNote` stays editorial.
 
-## The redesign — "option D" (in progress; preview at `/next/`)
+## The look — "option D" (live since 18 Nov 2026)
 
 The owner chose a new look in a design session (18 Nov 2026): warm cream
 paper, olive-green actions, rounded corners, **two typefaces** (Zilla Slab
@@ -53,12 +53,20 @@ the boards titled **"D · …"** on the design canvas
 "Today" are not to be built); the written brief was the hand-over document
 the owner attached. **Where the brief and a board disagree, ask the owner.**
 
-- **It is being built in `next/index.html`**, a full copy of the app
-  published at `photoplan.studio/next/` (`noindex`; same data, password and
-  photos as the live site — an edit there is a real edit). **The live
-  `index.html` keeps the old look until the owner approves**, then
-  `next/index.html` replaces it. A fix that should reach visitors now goes
-  into both files. Asset paths in `next/` are absolute (`/assets/…`).
+- **It is the live site.** It was built step by step in `next/index.html`
+  (a preview at `photoplan.studio/next/`), the owner reviewed it over three
+  rounds of feedback, and on 18 Nov 2026 he approved it: that file became
+  **`index.html`**, where all work happens again. `next/index.html` is now
+  only a forwarding page (`location.replace('/' + search + hash)`,
+  `noindex`) so old preview bookmarks land on the same page of the site.
+  The last old-look page is `index.html` at commit `bb1608f` — restoring
+  that one file puts the old look back (it ignores the new data fields
+  `indexLarge`, `watermark` and the photos' `caption`). **This section is
+  the truth about how the site looks and is laid out; the sections further
+  down predate it** — where they describe a layout, a label or where a
+  control sits and differ from here, this section wins (their notes on
+  data, storage, sync and the maths still hold). Asset paths are absolute
+  (`/assets/…`).
 - **Build order (the brief's), one step at a time for the owner to review:**
   1 shared look ✔ · 2 top bar + Settings menu ✔ · 3 month page ✔ ·
   4 Home ✔ · 5 Weather, Trips, Gallery, Map ✔ · 6 pop-ups + photo viewer ✔ ·
@@ -67,11 +75,16 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   default January and July — this supersedes "four per page") · 8 phone,
   then night, across the pages ✔ · 9 **link-only access** (propose the
   approach in plain language and get agreement before building — proposed,
-  awaiting the owner's answer; nothing built).
-  Every page is now in the new look; `.old-page` survives only for the
-  stored-away Home list (`renderMonthIndexList`). The old components'
-  non-`d` branches and `…Old` helpers are dead code to clear out when
-  `next/` replaces the live page.
+  awaiting the owner's answer; nothing built) · moved onto the live site ✔.
+  Every page is in the new look; `.old-page` survives only for the
+  stored-away Home list (`renderMonthIndexList`). **Still to clear out, as
+  its own tested step:** the old components' non-`d` branches, the `…Old`
+  helpers, and with them the Google Fonts link (it now serves only
+  Spectral and Plex Mono for that dead code — Zilla Slab and Figtree are
+  self-hosted). **Also still old:** the `design/` hand-over folder and the
+  Claude design system both show the previous look; `design/
+  build-reference.js` captures components by the old page's selectors and
+  needs reworking for this one. The owner has been asked when to do both.
 - **Shared pieces** (module scope, after `const e`): `sx('css text')` turns
   CSS text into a cached style object (so a board's styles paste in with the
   colour literals swapped for tokens); `SLAB`; `D_ICONS` + `DIcon` (2px line
@@ -300,7 +313,10 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   and a phone, photo captions, the watermark and its switch, the viewer at
   844 × 390).
   `dshots.js` also scans every text for contrast under 4.5:1 (3:1 for
-  large type) against its real background, day and night.
+  large type) against its real background, day and night. All of these now
+  run against the root page (`index.html`, `http://127.0.0.1:8123/`);
+  `golive_test.js` (8) checks that the root is this look with no
+  `noindex` and that `/next/…#/…` forwards to the same page of the site.
   The brief's own checks per step: matches the board at 1280
   and 390, nothing spills at 390, taps ≥ 44px, no photo tinted at night,
   print stays 28 day-coloured pages, nothing stored changes, and the owner
@@ -877,7 +893,8 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   them from the data (`styleOf` resolves any event's colours). A type vanishes
   when no event uses it. "＋ Add event" / "Schedule photo op" only open a
   **draft** — nothing is written to the data until "Save event" is clicked.
-- **(Live site; in the preview the watermark above supersedes this.)**
+- **(Superseded by the watermark — see "The look" above; `photoCredit`
+  is no longer read.)**
   **Photo credit is an overlay, off by default.** `data[0].photoCredit`
   (owner switch "@llandscapist on photos" on the Gallery controls, cloud-
   synced so visitors see it) → `FocusCtx.credit` → `PhotoCredit` (`.photo-
@@ -947,21 +964,10 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   pass (or stop waiting) before anything is drawn; read `.app-shell` or use
   a selector instead. Still have the owner test live.
 
-## Next up: mobile / phone layout pass (not started)
+## Phones
 
-The app was built desktop-first. Goal: make it read well on phones **without a
-separate mobile site** (responsive, one codebase). Key points for whoever picks
-this up:
-
-- **Inline styles can't use `@media`.** Use a JS breakpoint — e.g. a
-  `useIsMobile()` hook around `window.matchMedia('(max-width: 640px)')` that
-  re-renders on change — then apply mobile style overrides conditionally. Scope
-  changes to the small breakpoint so **desktop is untouched**.
-- **Likely pain points:** the month **day-grid** (7 columns with absolutely-
-  positioned event bars) is the hardest on a narrow screen — may need to scroll
-  sideways or simplify; then location tiles, the detail panel two-column layout,
-  nav-row wrapping, page margins/padding, and font sizes.
-- **The map is already touch-optimised** (pinch/pan) — leave it.
-- **Testing is iterative:** this environment can't render a phone, so make a
-  change, publish, and have the owner check on their phone and report back.
-  Ask the owner up front which single thing annoys them most and start there.
+Done as part of option D: every page has its phone form (`useIsMobile()`,
+640px and under; `useMedia(query)` for anything else, e.g. the photo viewer
+held sideways), checked at 390px for sideways spill, 44px tap targets and
+contrast (`dshots.js`). This environment cannot render a real phone, so the
+owner checks on his own and reports back.
