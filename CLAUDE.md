@@ -205,6 +205,21 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `expand` button on a small photo; the "Large photo · <Month>" tag and the
   buttons are `.no-print`. `printSizeBadge(text, foot)` is the "web size
   only" pill (top-left; foot-left and shorter on an index tile).
+- **Link-only access (step 9) — proposed, not built; wait for the owner's
+  answer.** The proposal and its drawn screens:
+  `https://claude.ai/artifact/522af196pjvpoYbtEkf4JW`. Recommended:
+  **private share links** — the Worker refuses `calendar-data.json`,
+  `/list` and every `/photo/*` without a valid view key (a header on
+  fetches, `?k=` on photo addresses through `Storage.photoUrl`) or the
+  owner password; the links (name, key, made, last opened, off) live in a
+  private R2 object managed from Settings → "Sharing links"; a "Private
+  viewing" switch turns it all on; a visitor without a key sees "This
+  calendar is private" (a paste-your-link field and an owner link); the key
+  arrives as `?k=` (the hash belongs to the router), is kept in
+  `localStorage` and stripped from the address bar. Also offered: a
+  Cloudflare Access sign-in, or one viewing password. Asked of the owner:
+  which option, the private page's wording, whether the starter data in
+  the page's code moves behind the lock too, and when to build.
 - **Parked by the brief:** starring stays exactly as it is (the starred
   location is **shared across years** — `month.printLoc`); the Home page's
   Cards/List toggle is dropped but the list should stay easy to restore; the
