@@ -173,6 +173,11 @@
       --lb-glass-12: rgba(251,247,236,0.12);
       --lb-glass-22: rgba(251,247,236,0.22);
       --lb-glass-40: rgba(251,247,236,0.4);
+      --lb-ground: #16140F; /* the photo viewer's ground (fixed) */
+      --lb-ink-2: #D6CFBD; /* quiet text in the viewer (fixed) */
+      --lb-field: rgba(251,247,236,0.08); /* the viewer's field (fixed) */
+      --lb-veil: rgba(22,20,15,0.7); /* the credit pill over a photo (fixed) */
+      --lb-link: #BCCB91; /* a link in the viewer (fixed) */
       --on-photo: #FBF7EC; /* text and glyphs set on a photograph or the lightbox */
       --on-photo-active: #54632F; /* the focus-point button while active */
       --on-photo-ink: #2A251E; /* glyphs on the round light buttons that sit on a photograph */
@@ -344,6 +349,10 @@
     .d-primary:hover { background: var(--green-deep) !important; }
     :root[data-theme="night"] .d-primary:hover { background: var(--green-2) !important; }
     .d-danger:hover { background: var(--danger) !important; border-color: var(--danger) !important; color: var(--paper) !important; }
+    .d-reddanger:hover { filter: brightness(0.92); }
+    .lb-btn:hover { border-color: var(--on-photo) !important; }
+    .lb-field::placeholder { color: var(--lb-ink-2); opacity: .8; }
+    .lb-field:focus { outline: none; border-color: var(--on-photo) !important; }
     .d-round:hover { filter: brightness(0.94); }
     .d-menurow:hover > span:first-child { color: var(--green); }
     .d-field::placeholder { color: var(--ink-2); opacity: .85; }
@@ -493,6 +502,7 @@ const D_ICONS = {
   plus: [['path', { d: 'M12 5v14M5 12h14' }]],
   minus: [['path', { d: 'M5 12h14' }]],
   fit: [['path', { d: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5' }]],
+  check: [['path', { d: 'M5 12.5l4.5 4.5L19 7.5' }]],
   up: [['path', { d: 'M12 20V5M5.5 11.5L12 5l6.5 6.5' }]],
   pause: [['path', { d: 'M9 5.5v13M15 5.5v13' }]],
   play: [['path', { d: 'M8 5.5l11 6.5-11 6.5z' }]],
@@ -577,9 +587,11 @@ const FocusCtx = React.createContext({ map: {}, set: null, credit: false });
 // The owner's handle in a corner of a large photo — hero slideshows and the
 // lightbox — when the "credit on photos" switch (Gallery page) is on. Nothing
 // is burnt into the stored images: it is an overlay, so the switch is instant.
-function PhotoCredit({ style }) {
+function PhotoCredit({ style, pill }) {
   const { credit } = React.useContext(FocusCtx);
-  return credit ? e('span', { className: 'photo-credit', 'aria-hidden': 'true', style }, '@' + IG_HANDLE) : null;
+  if (!credit) return null;
+  if (pill) return e('span', { 'aria-hidden': 'true', style: { position: 'absolute', zIndex: 5, padding: '2px 10px', borderRadius: 999, background: 'var(--lb-veil)', color: 'var(--on-photo)', fontSize: 14, lineHeight: 1.5, pointerEvents: 'none', ...style } }, '@' + IG_HANDLE);
+  return e('span', { className: 'photo-credit', 'aria-hidden': 'true', style }, '@' + IG_HANDLE);
 }
 function focusStyle(map, base) {
   const f = map && map[base];
@@ -1020,7 +1032,7 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0, photoI
     return e('figure', { style: { margin: 0, position: 'relative', background: 'var(--ink)', overflow: 'hidden' } },
       under && e('img', { key: 'u-' + under, src: Storage.photoUrl(under, epoch || undefined), alt: '', style: { ...img, position: 'absolute', left: 0, top: 0, height: '100%', ...focusStyle(focus.map, under) } }),
       e('img', { key: curD.base, className: 'slide-fade', src: Storage.photoUrl(curD.base, epoch || undefined), alt: curD.caption || '', style: { ...img, position: 'relative', ...focusStyle(focus.map, curD.base) } }),
-      e(PhotoCredit, { style: { right: 24, top: 18 } }),
+      e(PhotoCredit, { pill: true, style: { right: 24, top: 18 } }),
       keys.length > 1 && e('div', { style: sx('position: absolute; right: 24px; bottom: 20px; display: flex; gap: 8px; z-index: 6') },
         e('button', { type: 'button', className: 'd-round', onClick: skip, title: 'Next photo', 'aria-label': 'Next photo', style: D.round }, e(DIcon, { name: 'chevR', size: 20 })),
         e('button', { type: 'button', className: 'd-round', onClick: () => setPaused(p => !p), title: paused ? 'Resume slideshow' : 'Pause slideshow', 'aria-label': paused ? 'Resume slideshow' : 'Pause slideshow', style: D.round }, e(DIcon, { name: paused ? 'play' : 'pause', size: 20 }))));
@@ -5498,43 +5510,38 @@ function App() {
   const backupsLink = () => null;
   const backupsLinkOld = () => e('button', { className:'quiet-link', onClick:openBackups, title:'List the automatic backups of the shared calendar — restore or download one',
     style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', color:'var(--muted)', textDecoration:'underline', textUnderlineOffset:3 } }, '⟲ Backups');
+  // Pop-ups (option D): a cream card with 16px corners and a soft shadow — the
+  // only shadow on the site besides the Settings menu. No coloured bar across
+  // the top; a pop-up that deletes is marked by its red confirm button alone.
+  const popScrim = (z) => ({ position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, zIndex: z, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? 12 : 22, background: 'var(--scrim)' });
+  const popCard = (width, gap) => ({ width, maxWidth: '100%', maxHeight: 'calc(100vh - 24px)', boxSizing: 'border-box', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: gap || 14, padding: isMobile ? '20px 18px' : '24px 26px', background: 'var(--paper)', border: '1px solid var(--line-strong)', borderRadius: 16, boxShadow: '0 10px 28px var(--shadow-18)' });
+  const popTitle = { margin: 0, fontFamily: SLAB, fontWeight: 700, fontSize: 26, lineHeight: 1.15 };
+  const popClose = (run, label, focus) => e('button', { type: 'button', className: 'd-iconbtn', onClick: run, title: 'Close', 'aria-label': label || 'Close', autoFocus: !!focus, style: D.iconBtn }, e(DIcon, { name: 'close', size: 20 }));
+
   const renderBackups = () => {
     if (!backupsOpen) return null;
-    const mono = "'IBM Plex Mono',monospace";
-    const small = { background:'none', border:'1px solid var(--line)', color:'var(--ink-2)', fontFamily:mono, fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', padding:'6px 10px', cursor:'pointer', whiteSpace:'nowrap' };
-    return e('div', { onClick:()=>setBackupsOpen(false), style:{ position:'fixed', inset:0, background:'var(--scrim)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:60 } },
-      e('div', { role:'dialog', 'aria-modal':'true', 'aria-labelledby':'pp-backups-title', onClick:(ev)=>ev.stopPropagation(), onKeyDown:(ev)=>{ if (ev.key === 'Escape') setBackupsOpen(false); }, style:{ width:560, maxWidth:'100%', maxHeight:'88vh', display:'flex', flexDirection:'column', background:'var(--paper)', border:'1px solid var(--ink)', boxShadow:'9px 9px 0 var(--shadow-20)' } },
-        e('div', { style:{ height:5, background:'var(--green)', flex:'none' } }),
-        e('div', { style:{ padding:'17px 20px 14px', flex:'none' } },
-          e('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 } },
-            e('div', { id:'pp-backups-title', style:{ fontFamily:mono, fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', color:'var(--muted)' } }, 'Calendar backups'),
-            e('button', { className:'close-btn', onClick:()=>setBackupsOpen(false), title:'Close', 'aria-label':'Close', autoFocus:true, style:{ width:30, height:30, background:'none', border:'1px solid var(--line)', color:'var(--muted)', fontSize:17, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
-          ),
-          e('div', { style:{ marginTop:10, fontSize:14.5, color:'var(--ink-body)', lineHeight:1.5 } }, 'A copy of the shared calendar is kept before each save — one per quarter-hour, the newest sixty. Each entry is the calendar as it was just before that save. Restoring replaces the calendar on every device; photos are not affected.'),
-          e('div', { style:{ marginTop:12, display:'flex', gap:10, flexWrap:'wrap' } },
-            e('button', { className:'btn-hover', onClick:downloadCurrent, title:'Save the calendar as it is now to a file on this device', style:{ ...small, background:'var(--paper)', border:'1px solid var(--ink)', color:'var(--ink)', padding:'8px 13px', boxShadow:'3px 3px 0 var(--shadow-12)' } }, '⤓ Download the current calendar')
-          )
-        ),
-        e('div', { style:{ overflowY:'auto', borderTop:'1px solid var(--line-soft)', flex:'1 1 auto' } },
+    const close = () => setBackupsOpen(false);
+    const small = { ...D.btn, padding: '0 14px', fontSize: 15 };
+    return e('div', { onClick: close, style: popScrim(60) },
+      e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'pp-backups-title', onClick: (ev) => ev.stopPropagation(), onKeyDown: (ev) => { if (ev.key === 'Escape') close(); }, style: { ...popCard(640, 16), paddingBottom: 12 } },
+        e('div', { style: sx('display: flex; align-items: center; justify-content: space-between; gap: 12px') },
+          e('h2', { id: 'pp-backups-title', style: popTitle }, 'Calendar backups'), popClose(close, 'Close', true)),
+        e('p', { style: { margin: 0 } }, 'A copy of the shared calendar is kept before each save — one per quarter-hour, the newest sixty. Each entry is the calendar as it was just before that save. Restoring replaces the calendar on every device; photos are not affected.'),
+        e('button', { type: 'button', className: 'd-btn', onClick: downloadCurrent, title: 'Save the calendar as it is now to a file on this device', style: { ...D.btn, alignSelf: 'flex-start' } }, 'Download the current calendar'),
+        e('div', null,
           backups === undefined
-            ? e('div', { style:{ padding:'18px 20px', fontFamily:mono, fontSize:11, color:'var(--faint)', letterSpacing:'.06em' } }, 'Loading the list…')
+            ? e('p', { style: sx('margin: 0; padding: 14px 0; border-top: 1px solid var(--line-soft); color: var(--ink-2)') }, 'Loading the list…')
             : backups === null
-            ? e('div', { style:{ padding:'18px 20px', fontSize:14, color:'var(--ink-3)', lineHeight:1.5 } }, 'The backups could not be listed — the storage Worker may be unreachable, or it predates automatic backups.')
+            ? e('p', { style: sx('margin: 0; padding: 14px 0; border-top: 1px solid var(--line-soft); color: var(--ink-2)') }, 'The backups could not be listed — the storage may be unreachable, or it predates automatic backups.')
             : !backups.length
-            ? e('div', { style:{ padding:'18px 20px', fontSize:14, color:'var(--ink-3)', lineHeight:1.5 } }, 'No backups yet — the first is made the next time the calendar is saved.')
-            : backups.map((b, i) => e('div', { key:b.key, className:'backup-row', style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, padding:'10px 20px', borderTop: i ? '1px solid var(--line-faint)' : 'none', flexWrap:'wrap' } },
-                e('div', null,
-                  e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'var(--ink)' } }, backupDate(b)),
-                  e('div', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.08em', color:'var(--faint)', marginTop:2 } }, (i === 0 ? 'Newest · ' : '') + fmtSize(b.size || 0))
-                ),
-                e('div', { style:{ display:'flex', gap:8 } },
-                  e('button', { className:'close-btn', onClick:()=>downloadBackup(b), title:'Save this backup to a file on this device', style:small }, '⤓ Download'),
-                  e('button', { className:'del-btn', disabled: !!restoring, onClick:()=>restoreBackup(b), title:'Make this the shared calendar again', style:{ ...small, color:'var(--danger)', borderColor:'var(--danger)', opacity: restoring && restoring !== b.key ? .5 : 1 } }, restoring === b.key ? 'Restoring…' : '⟲ Restore')
-                )
-              ))
-        )
-      )
-    );
+            ? e('p', { style: sx('margin: 0; padding: 14px 0; border-top: 1px solid var(--line-soft); color: var(--ink-2)') }, 'No backups yet — the first is made the next time the calendar is saved.')
+            : backups.map((b, i) => e('div', { key: b.key, className: 'backup-row', style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 16px 0; border-top: 1px solid var(--line-soft)') },
+                e('div', { style: sx('display: flex; flex-direction: column') },
+                  e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: 19 } }, backupDate(b)),
+                  e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, (i === 0 ? 'Newest · ' : '') + fmtSize(b.size || 0))),
+                e('div', { style: sx('display: flex; gap: 8px') },
+                  e('button', { type: 'button', className: 'd-btn', onClick: () => downloadBackup(b), title: 'Save this backup to a file on this device', style: small }, 'Download'),
+                  e('button', { type: 'button', className: 'd-danger', disabled: !!restoring, onClick: () => restoreBackup(b), title: 'Make this the shared calendar again', style: { ...D.danger, padding: '0 14px', fontSize: 15, opacity: restoring && restoring !== b.key ? .5 : 1 } }, restoring === b.key ? 'Restoring…' : 'Restore')))))));
   };
 
   // ─── Top bar and Settings menu (option D) ──────────────────────────────────
@@ -5929,43 +5936,48 @@ function App() {
     const stale = lightbox.items[lightbox.idx];
     if (!stale) return null;
     const it = galleryItems.find(x => x.key === stale.key) || stale; // live tags / star
-    const mono = "'IBM Plex Mono',monospace";
     const close = () => setLightbox(null);
     const go = (d) => setLightbox(lb => lb && ({ ...lb, idx: (lb.idx + d + lb.items.length) % lb.items.length }));
     const many = lightbox.items.length > 1;
-    const roundBtn = (extra) => ({ width:40, height:40, borderRadius:'50%', background:'var(--lb-glass-12)', border:'1px solid var(--lb-glass-40)', color:'var(--on-photo)', lineHeight:1, cursor:'pointer', zIndex:2, display:'flex', alignItems:'center', justifyContent:'center', padding:0, ...extra });
-    const meta = [it.month.name + (it.year ? " '" + it.year : ''), [(it.loc.area || '').trim(), (it.loc.country || '').trim()].filter(Boolean).join(', '), (it.loc.tag || '').trim()].filter(Boolean).join(' · ');
-    // The image box keeps a fixed height, so the caption bar never jumps
-    // while the next photo is still loading; "bare" drops the bar and gives
-    // the photo the height instead.
-    const boxH = lbBare ? (isMobile ? '84vh' : '88vh') : (isMobile ? '58vh' : '72vh');
-    return e('div', { onClick:close, role:'dialog', 'aria-modal':'true', 'aria-label': it.caption, style:{ position:'fixed', inset:0, background:'var(--lb-scrim)', zIndex:60, display:'flex', alignItems:'center', justifyContent:'center', padding: isMobile ? '48px 8px 10px' : '24px 72px' } },
-      many && e('button', { className:'lb-btn', onClick:(ev)=>{ ev.stopPropagation(); go(-1); }, 'aria-label':'Previous photo', style:roundBtn({ position:'absolute', left:isMobile?6:16, top:'50%', transform:'translateY(-50%)', fontSize:26 }) }, '‹'),
-      many && e('button', { className:'lb-btn', onClick:(ev)=>{ ev.stopPropagation(); go(1); }, 'aria-label':'Next photo', style:roundBtn({ position:'absolute', right:isMobile?6:16, top:'50%', transform:'translateY(-50%)', fontSize:26 }) }, '›'),
-      e('button', { className:'lb-btn', onClick:close, 'aria-label':'Close', style:roundBtn({ position:'absolute', top:12, right:12, width:36, height:36, fontSize:20 }) }, '×'),
-      e('button', { className:'lb-btn', onClick:(ev)=>{ ev.stopPropagation(); setLbBare(b => !b); }, 'aria-label': lbBare ? 'Show the caption bar' : 'Hide the caption bar', 'aria-pressed': lbBare ? 'true' : 'false', title: (lbBare ? 'Show the caption bar' : 'Hide the caption bar — just the photo') + ' (i)', style:roundBtn({ position:'absolute', top:12, right:56, width:36, height:36, fontSize:13, fontFamily:"'IBM Plex Mono',monospace", fontWeight:600, opacity: lbBare ? .75 : 1 }) }, 'i'),
-      e('div', { onClick:(ev)=>ev.stopPropagation(), style:{ width:'100%', maxWidth:1200, display:'flex', flexDirection:'column' } },
-        e('div', { style:{ background:'#000', height:boxH, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' } },
-          e('div', { style:{ position:'relative', display:'flex', maxWidth:'100%', maxHeight:'100%' } },
-            e('img', { key:it.base, src: Storage.photoUrl(it.base, imgEpoch || undefined), alt: it.caption, style:{ maxWidth:'100%', maxHeight:boxH, objectFit:'contain', display:'block' } }),
-            e(PhotoCredit, { style:{ right:10, bottom:9 } }))),
-        !lbBare && e('div', { style:{ background:'var(--paper)', border:'1px solid var(--ink)', borderTop:'none', padding:'10px 14px', display:'flex', flexWrap:'wrap', alignItems:'center', gap:'8px 16px' } },
-          e('div', { style:{ minWidth:0, flex:'1 1 260px' } },
-            e('div', { style:{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' } },
-              e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:17, color:'var(--ink)' } }, it.loc.name),
-              e('span', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color: it.loc.region === 'UK' ? 'var(--green)' : 'var(--terra)' } }, meta),
-              many && e('span', { style:{ fontFamily:mono, fontSize:10, color:'var(--faint)' } }, (lightbox.idx + 1) + ' / ' + lightbox.items.length)),
-            editMode
-              ? e('div', { style:{ marginTop:6, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' } },
-                  e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'var(--label)' } }, 'Tags'),
-                  e('input', { key:'tags-' + it.key, defaultValue: it.tags.join(', '), placeholder:'portfolio, long exposure, print candidate…', 'aria-label':'Photo tags, comma-separated',
-                    onBlur:(ev)=>{ const next = parseTags(ev.target.value); if (next.join('|') !== it.tags.join('|')) setPhotoTags(it.loc.id, it.slot, next); },
-                    onKeyDown:(ev)=>{ if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); } },
-                    style:{ flex:'1 1 220px', minWidth:0, height:28, padding:'0 9px', background:'var(--field)', border:'1px solid var(--line-strong)', color:'var(--ink)', fontFamily:mono, fontSize:11.5, outline:'none', borderRadius:0 } }))
-              : it.tags.length > 0 && e('div', { style:{ marginTop:5, display:'flex', gap:6, flexWrap:'wrap' } }, it.tags.map(t => e('span', { key:t, style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.06em', padding:'2px 7px', background:'var(--sunken)', border:'1px solid var(--line-chip)', color:'var(--ink-2)' } }, t)))),
-          e('div', { style:{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' } },
-            editMode && e('button', { onClick:()=>togglePrintStarIn(it.i, it.loc.id), 'aria-pressed': it.starred ? 'true' : 'false', title: it.starred ? 'Starred — this location fronts the printed month (click to unstar)' : 'Star — use this location on the printed month', style:{ height:30, padding:'0 10px', background: it.starred ? 'var(--gold)' : 'none', border:'1px solid ' + (it.starred ? 'var(--gold-deep)' : 'var(--line-strong)'), color: it.starred ? 'var(--field)' : 'var(--muted)', fontFamily:mono, fontSize:10.5, letterSpacing:'.08em', textTransform:'uppercase', cursor:'pointer' } }, '★ ' + (it.starred ? 'Starred' : 'Star')),
-            e('button', { className:'btn-hover', onClick:()=>{ close(); goToMonth(it.i, it.loc.id); }, style:{ height:30, padding:'0 12px', background:'var(--green)', border:'1px solid var(--ink)', color:'var(--paper)', fontFamily:mono, fontSize:10.5, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 var(--shadow-14)' } }, 'Open brief →')))));
+    const glass = (size, extra) => ({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 ' + size + 'px', width: size, height: size, padding: 0, borderRadius: '50%', background: 'var(--lb-glass-12)', border: '1px solid var(--lb-glass-40)', color: 'var(--on-photo)', fontFamily: 'inherit', cursor: 'pointer', ...(extra || {}) });
+    const stop = (fn) => (ev) => { ev.stopPropagation(); fn(); };
+    const meta = [it.month.name.slice(0, 3) + (it.year ? " '" + it.year : ''), [(it.loc.area || '').trim(), (it.loc.country || '').trim()].filter(Boolean).join(', '), (it.loc.tag || '').trim()].filter(Boolean).join(' · ');
+    // The image box keeps a fixed height, so the caption never jumps while the
+    // next photo is still loading; "bare" (the i button) drops the caption and
+    // gives the photo the height instead.
+    const boxH = lbBare ? (isMobile ? '78vh' : '82vh') : (isMobile ? '52vh' : '64vh');
+    const arrow = (dir, label) => many && e('button', { type: 'button', className: 'lb-btn', onClick: stop(() => go(dir)), 'aria-label': label, title: label, style: isMobile ? glass(44, { position: 'absolute', top: '50%', marginTop: -22, zIndex: 2, ...(dir < 0 ? { left: 6 } : { right: 6 }), background: 'var(--lb-veil)' }) : glass(48) }, e(DIcon, { name: dir < 0 ? 'chevL' : 'chevR', size: 22 }));
+    return e('div', { onClick: close, role: 'dialog', 'aria-modal': 'true', 'aria-label': it.caption, style: { position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, zIndex: 60, overflowY: 'auto', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 16, padding: isMobile ? '12px 12px 24px' : '20px 24px 36px', background: 'var(--lb-ground)', color: 'var(--on-photo)', fontSize: 17, lineHeight: 1.5 } },
+      // counter, then the details switch and close
+      e('div', { style: sx('display: flex; align-items: center; justify-content: space-between; gap: 12px') },
+        e('span', { style: sx('font-size: 16px; color: var(--lb-ink-2)') }, many ? (lightbox.idx + 1) + ' of ' + lightbox.items.length : ''),
+        e('div', { style: sx('display: flex; gap: 8px') },
+          e('button', { type: 'button', className: 'lb-btn', onClick: stop(() => setLbBare(b => !b)), 'aria-label': lbBare ? 'Show the details' : 'Hide the details', 'aria-pressed': lbBare ? 'true' : 'false', title: (lbBare ? 'Show the details' : 'Hide the details — just the photo') + ' (i)', style: glass(44, { fontWeight: 600, fontSize: 17, opacity: lbBare ? .7 : 1 }) }, 'i'),
+          e('button', { type: 'button', className: 'lb-btn', onClick: close, 'aria-label': 'Close the photo viewer', title: 'Close', style: glass(44) }, e(DIcon, { name: 'close', size: 20 })))),
+      // the photo between its arrows
+      e('div', { style: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 } },
+        arrow(-1, 'Previous photo'),
+        e('div', { onClick: (ev) => ev.stopPropagation(), style: { flex: '0 1 calc(' + boxH + ' * 1.5)', minWidth: 0, height: boxH, display: 'flex', alignItems: 'center', justifyContent: 'center' } }, // as wide as a 3:2 photo at this height, so the arrows sit beside it and never move
+          e('div', { style: { position: 'relative', display: 'flex', maxWidth: '100%', maxHeight: '100%' } },
+            e('img', { key: it.base, src: Storage.photoUrl(it.base, imgEpoch || undefined), alt: it.caption, style: { display: 'block', maxWidth: '100%', maxHeight: boxH, objectFit: 'contain', borderRadius: 10 } }),
+            e(PhotoCredit, { pill: true, style: { right: 12, bottom: 10 } }))),
+        arrow(1, 'Next photo')),
+      // caption: the place, its details, then tags, the star and the way to its brief
+      !lbBare && e('div', { onClick: (ev) => ev.stopPropagation(), style: sx('width: 100%; max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px') },
+        e('div', { style: sx('display: flex; flex-direction: column; gap: 2px; min-width: 0') },
+          e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 26 : 30, lineHeight: 1.15 } }, it.loc.name),
+          e('span', { style: sx('font-size: 16px; color: var(--lb-ink-2)') }, meta),
+          !editMode && it.tags.length > 0 && e('span', { style: sx('display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px') }, it.tags.map(t => e('span', { key: t, style: sx('padding: 2px 10px; border-radius: 999px; background: var(--lb-glass-12); font-size: 15px') }, t)))),
+        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px') },
+          editMode && e('label', { style: sx('display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--lb-ink-2)') }, 'Tags',
+            e('input', { key: 'tags-' + it.key, type: 'text', className: 'lb-field', defaultValue: it.tags.join(', '), placeholder: 'portfolio, dawn…', 'aria-label': 'Photo tags, comma-separated',
+              onBlur: (ev) => { const next = parseTags(ev.target.value); if (next.join('|') !== it.tags.join('|')) setPhotoTags(it.loc.id, it.slot, next); },
+              onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); } ev.stopPropagation(); },
+              style: { width: isMobile ? 160 : 200, height: 44, boxSizing: 'border-box', padding: '0 12px', background: 'var(--lb-field)', border: '1px solid var(--lb-glass-40)', borderRadius: 10, color: 'var(--on-photo)', fontFamily: 'inherit', fontSize: 16 } })),
+          editMode && e('button', { type: 'button', className: 'lb-btn', onClick: () => togglePrintStarIn(it.i, it.loc.id), 'aria-pressed': it.starred ? 'true' : 'false', title: it.starred ? 'Starred — this location fronts the printed month (click to unstar)' : 'Star — use this location on the printed month',
+            style: { display: 'inline-flex', alignItems: 'center', gap: 8, height: 44, padding: '0 16px', borderRadius: 10, fontFamily: 'inherit', fontWeight: 600, fontSize: 16, cursor: 'pointer', ...(it.starred ? { background: 'var(--gold)', border: '1px solid var(--gold)', color: 'var(--lb-ground)' } : { background: 'var(--lb-glass-12)', border: '1px solid var(--lb-glass-40)', color: 'var(--on-photo)' }) } },
+            e(DIcon, { name: 'star', size: 18, style: it.starred ? { fill: 'currentColor' } : null }), it.starred ? 'Starred' : 'Star'),
+          e('a', { href: '#/' + viewYear + '/' + it.month.key + '/' + it.loc.id, onClick: (ev) => { ev.preventDefault(); close(); goToMonth(it.i, it.loc.id); }, style: { display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600, fontSize: 16, color: 'var(--lb-link)' } }, 'Open brief →'))));
   };
 
   // ─── Trip pop-up ──────────────────────────────────────────────────────────
@@ -5975,58 +5987,45 @@ function App() {
     if (!tripPeek) return null;
     const t = trips.find(x => x.id === tripPeek);
     if (!t) return null;
-    const mono = "'IBM Plex Mono',monospace";
     const locs = (t.locIds || []).map(id => locIndex[id]).filter(Boolean);
     const packing = t.packing || [], packed = packing.filter(p => p.done).length;
     const shotsTotal = locs.reduce((n2, h) => n2 + (h.loc.shots || []).length, 0), shotsDone = locs.reduce((n2, h) => n2 + (h.loc.shots || []).filter(s => s.done).length, 0);
-    const nights = tripNights(t), first = parseYmd(t.start);
-    const rowStyle = { display:'grid', gridTemplateColumns:'76px 1fr', gap:14, padding:'10px 0', borderTop:'1px solid var(--line-soft)' };
-    const rowLabel = (txt, sub) => e('div', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', paddingTop:3 } }, txt, sub && e('div', { style:{ marginTop:3, fontSize:9.5, letterSpacing:'.06em', textTransform:'none', color:'var(--ghost)' } }, sub));
+    const nights = tripNights(t), first = parseYmd(t.start), w = tripWhen(t);
     const close = () => setTripPeek(null);
-    return e('div', { onClick:close, style:{ position:'fixed', inset:0, background:'var(--scrim)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:60 } },
-      e('div', { role:'dialog', 'aria-modal':'true', 'aria-labelledby':'pp-trip-title', onClick:(ev)=>ev.stopPropagation(), style:{ width:520, maxWidth:'100%', maxHeight:'88vh', display:'flex', flexDirection:'column', background:'var(--paper)', border:'1px solid var(--ink)', boxShadow:'9px 9px 0 var(--shadow-20)' } },
-        e('div', { style:{ height:5, background:'var(--slate)', flex:'none' } }),
-        e('div', { style:{ padding:'15px 20px 0', flex:'none' } },
-          e('div', { style:{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 } },
-            e('div', { style:{ minWidth:0 } },
-              e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'var(--muted)' } }, 'Trip'),
-              e('div', { id:'pp-trip-title', style:{ marginTop:4, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' } },
-                e('span', { style:{ color:'var(--slate)', fontSize:12 } }, '▲'),
-                e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:22, color:'var(--ink)', lineHeight:1.15 } }, t.name),
-                whenBadge(tripWhen(t))),
-              e('div', { style:{ marginTop:5, fontFamily:mono, fontSize:11.5, color:'var(--ink-2)', letterSpacing:'.03em' } }, fmtTripDates(t) + (nights ? ' · ' + nights + (nights === 1 ? ' night' : ' nights') : ''))),
-            e('button', { className:'close-btn', onClick:close, title:'Close', 'aria-label':'Close', autoFocus:true, style:{ flex:'none', width:30, height:30, background:'none', border:'1px solid var(--line)', color:'var(--muted)', fontSize:17, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×'))
-        ),
-        e('div', { style:{ overflowY:'auto', padding:'8px 20px 16px', flex:'1 1 auto' } },
-          e('div', { style:rowStyle }, rowLabel('Locations'),
-            locs.length
-              ? e('div', { style:{ display:'flex', flexWrap:'wrap', gap:7 } }, locs.map(h => {
-                  const c = coordsOf(h.loc), L = (c && first) ? lightAt(c[0], c[1], first.y, first.m, first.d) : null;
-                  return e('button', { key:h.loc.id, className:'loc-pick', onClick:()=>{ close(); if (first) setViewYear(YEARS.indexOf(first.y) !== -1 ? first.y : viewYear); goToMonth(h.i, h.loc.id); }, title:'Open the location brief', style:{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, padding:'6px 10px', background:'var(--field)', border:'1px solid var(--line)', cursor:'pointer', textAlign:'left' } },
-                    e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:14.5, color:'var(--ink)', lineHeight:1.2 } }, h.loc.name),
-                    e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.1em', textTransform:'uppercase', color: h.loc.region === 'UK' ? 'var(--green)' : 'var(--terra)' } }, h.month.name + (L && !L.polar ? ' · ↑ ' + L.rise + ' ↓ ' + L.set : '')));
-                }))
-              : e('div', { style:{ fontSize:13.5, color:'var(--faint)' } }, 'No locations yet.')),
-          shotsTotal > 0 && e('div', { style:rowStyle }, rowLabel('Shots', shotsDone + ' of ' + shotsTotal),
-            e('div', { style:{ display:'flex', flexDirection:'column', gap:6 } }, locs.filter(h => (h.loc.shots || []).length).map(h => e('div', { key:h.loc.id },
-              locs.length > 1 && e('div', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'var(--label)', marginBottom:2 } }, h.loc.name),
-              e(Checklist, { items: h.loc.shots || [], onToggle:(id)=>toggleShot(h.loc.id, id), compact:true }))))),
-          packing.length > 0 && e('div', { style:rowStyle }, rowLabel('Packing', packed + ' of ' + packing.length),
-            e('div', null,
-              e('div', { style:{ height:5, background:'var(--sunken)', border:'1px solid var(--line-soft)', marginTop:6, marginBottom:8 } }, e('div', { style:{ height:'100%', width: Math.round(100 * packed / packing.length) + '%', background:'var(--green)' } })),
-              // keep the pop-up short: the first few unpacked items, the rest on the page
-              packed < packing.length
-                ? e('div', null,
-                    e(Checklist, { items: packing.filter(p => !p.done).slice(0, 8), onToggle:(id)=>togglePacking(t.id, id), compact:true }),
-                    packing.length - packed > 8 && e('div', { style:{ marginTop:4, fontFamily:mono, fontSize:10, letterSpacing:'.06em', color:'var(--faint)' } }, '+ ' + (packing.length - packed - 8) + ' more still to pack — see the Trips page'))
-                : e('div', { style:{ fontSize:13.5, color:'var(--green)' } }, 'All packed.'))),
-          (t.notes || '').trim() && e('div', { style:rowStyle }, rowLabel('Notes'), e('div', { style:{ fontSize:14, color:'var(--ink-body)', lineHeight:1.55, whiteSpace:'pre-wrap' } }, t.notes))
-        ),
-        e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, padding:'12px 20px 16px', borderTop:'1px solid var(--line-soft)', flex:'none' } },
-          e('button', { type:'button', className:'close-btn', onClick:close, style:{ background:'none', border:'1px solid var(--line)', color:'var(--muted)', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 13px', cursor:'pointer' } }, 'Close'),
-          e('button', { type:'button', className:'save-btn', onClick:()=>{ close(); goToTrips(t.id); }, style:{ background:'var(--green)', border:'1px solid var(--ink)', color:'var(--paper)', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'9px 17px', cursor:'pointer', boxShadow:'3px 3px 0 var(--shadow-14)' } }, (editMode ? 'Edit on the Trips page' : 'Open the Trips page') + ' →'))
-      )
-    );
+    const col = (gap) => ({ display: 'flex', flexDirection: 'column', gap });
+    const openLoc = (h) => (ev) => { ev.preventDefault(); close(); if (first) setViewYear(YEARS.indexOf(first.y) !== -1 ? first.y : viewYear); goToMonth(h.i, h.loc.id); };
+    return e('div', { onClick: close, style: popScrim(60) },
+      e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'pp-trip-title', onClick: (ev) => ev.stopPropagation(), style: popCard(480, 16) },
+        e('div', { style: sx('display: flex; align-items: flex-start; justify-content: space-between; gap: 12px') },
+          e('div', { style: { ...col(6), minWidth: 0 } },
+            e('h2', { id: 'pp-trip-title', style: { ...popTitle, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 12px' } }, t.name,
+              w && e('span', { style: { padding: '2px 10px', borderRadius: 999, fontFamily: "'Figtree', system-ui, sans-serif", fontWeight: 600, fontSize: 14, lineHeight: 1.4, ...(w === 'now' ? { background: 'var(--green-wash)', color: 'var(--green-wash-ink)' } : w === 'past' ? { background: 'var(--line-soft)', color: 'var(--ink-body)' } : { background: 'var(--slate-wash)', color: 'var(--slate-ink)' }) } }, w[0].toUpperCase() + w.slice(1))),
+            e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, fmtTripDates(t) + (nights ? ' · ' + nights + (nights === 1 ? ' night' : ' nights') : ''))),
+          popClose(close, 'Close', true)),
+        e('div', { style: col(6) },
+          e('span', { style: D.label }, 'Locations'),
+          locs.length
+            ? locs.map(h => { const c = coordsOf(h.loc), L = (c && first) ? lightAt(c[0], c[1], first.y, first.m, first.d) : null;
+                return e('div', { key: h.loc.id, style: sx('display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 12px') },
+                  e('a', { className: 'd-namelink', href: '#/' + viewYear + '/' + h.month.key + '/' + h.loc.id, onClick: openLoc(h), title: 'Open the location brief', style: { display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : 30, fontFamily: SLAB, fontWeight: 700, fontSize: 19, color: 'var(--ink)', textDecoration: 'none' } }, h.loc.name),
+                  e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, h.month.name + (L && !L.polar ? ' · ↑ ' + L.rise + ' ↓ ' + L.set : ''))); })
+            : e('span', { style: sx('font-size: 16px; color: var(--ink-2)') }, 'No locations yet.')),
+        shotsTotal > 0 && e('div', { style: col(6) },
+          e('span', { style: D.label }, 'Shots · ' + shotsDone + ' of ' + shotsTotal),
+          locs.filter(h => (h.loc.shots || []).length).map(h => e('div', { key: h.loc.id, style: col(4) },
+            locs.length > 1 && e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, h.loc.name),
+            e(Checklist, { d: true, items: h.loc.shots || [], onToggle: (id) => toggleShot(h.loc.id, id) })))),
+        packing.length > 0 && e('div', { style: col(6) },
+          e('span', { style: D.label }, 'Packing · ' + packed + ' of ' + packing.length + (packed < packing.length ? ' · still to pack' : '')),
+          // keep the pop-up short: the first few unpacked items, the rest on the page
+          packed < packing.length
+            ? [e(Checklist, { key: 'l', d: true, items: packing.filter(p => !p.done).slice(0, 8), onToggle: (id) => togglePacking(t.id, id) }),
+               packing.length - packed > 8 && e('span', { key: 'm', style: sx('font-size: 15px; color: var(--ink-2)') }, (packing.length - packed - 8) + ' more still to pack — see the Trips page')]
+            : e('span', { style: { fontSize: 16, color: 'var(--green-wash-ink)' } }, 'All packed.')),
+        (t.notes || '').trim() && e('div', { style: col(6) }, e('span', { style: D.label }, 'Notes'), e('p', { style: { margin: 0, whiteSpace: 'pre-wrap' } }, t.notes)),
+        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding-top: 16px; border-top: 1px solid var(--line-soft)') },
+          e('button', { type: 'button', className: 'd-btn', onClick: close, style: D.btn }, 'Close'),
+          e('a', { href: '#/' + viewYear + '/trips/' + t.id, onClick: (ev) => { ev.preventDefault(); close(); goToTrips(t.id); }, style: sx('display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; font-size: 16px') }, (editMode ? 'Edit on the Trips page' : 'Open the Trips page') + ' →'))));
   };
 
   const regionLegend = () => e('div', { style:{ display:'flex', gap:16, alignItems:'center', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.08em', color:'var(--ink-3)' } },
@@ -6548,9 +6547,9 @@ function App() {
     if (!tideAbout) return null;
     const a = tideAbout, close = () => setTideAbout(null), p = { margin: 0 };
     const out = (href, label) => e('a', { href, target: '_blank', rel: 'noopener noreferrer' }, label);
-    return e('div', { onClick: close, style: { position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'var(--scrim)' } },
-      e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'About the tide data', onClick: (ev) => ev.stopPropagation(), style: sx('width: 100%; max-width: 520px; max-height: calc(100vh - 32px); overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 28px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 18px 48px var(--pop-shadow)') },
-        e('h2', { style: { margin: 0, fontFamily: SLAB, fontWeight: 700, fontSize: 26, lineHeight: 1.15 } }, 'About the tide data'),
+    return e('div', { onClick: close, style: popScrim(60) },
+      e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'About the tide data', onClick: (ev) => ev.stopPropagation(), style: popCard(520, 14) },
+        e('h2', { style: popTitle }, 'About the tide data'),
         e('p', { style: p }, 'The tide times and heights are worked out from the sea-level forecast by ', out('https://open-meteo.com/', 'Open-Meteo'), ', used under the ', out('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0'), ' licence.'),
         e('p', { style: p }, a.source === 'forecast'
           ? 'This day is inside the eight-day forecast, so the curve includes the weather’s push on the sea (surge) as well as the tide itself.'
@@ -6791,99 +6790,73 @@ function App() {
     }));
     const locOpts = month.locations.map(l => ({ ...l, sel: draft.locId===l.id }));
 
-    return e('div', { onClick:()=>setEditingEvent(null), style:{ position:'fixed', inset:0, background:'var(--scrim)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:60 } },
-      e('div', { onClick:(ev)=>ev.stopPropagation(), style:{ width:392, maxWidth:'100%', background:'var(--paper)', border:'1px solid var(--ink)', boxShadow:'9px 9px 0 var(--shadow-20)' } },
-        e('div', { style:{ height:5, background:draftView.accent } }),
-        e('div', { style:{ padding:'17px 20px 20px' } },
-          e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 } },
-            e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', color:'var(--muted)' } }, draftView.heading),
-            e('button', { className:'close-btn', onClick:()=>setEditingEvent(null), title:'Close', 'aria-label':'Close the event editor', style:{ width:28, height:28, background:'none', border:'1px solid var(--line)', color:'var(--muted)', fontSize:16, lineHeight:1, cursor:'pointer', fontFamily:"'Spectral',serif" } }, '×')
-          ),
-          // Preview chip
-          e('div', { style:{ marginTop:15, display:'flex', alignItems:'center', gap:8, padding:'9px 11px', background:draftView.bg, color:draftView.fg, borderLeft:'3px solid '+draftView.accent, borderRadius:2, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:500 } },
-            eventIconKey(draft) ? e(EventIcon, { name:eventIconKey(draft), size:15, color:draftView.accent }) : (draftView.glyph && e('span', null, draftView.glyph)),
-            e('span', { style:{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, draftView.previewLabel)
-          ),
-          // Title or location picker
-          draftView.isNormal
-            ? e('div', { style:{ marginTop:16 } },
-                e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', marginBottom:6 } }, 'Title'),
-                e('input', { value:draft.label || '', onChange:(ev)=>setEditingEvent(p=>({...p,label:ev.target.value})), placeholder:'Event name', style:{ width:'100%', background:'var(--field)', border:'1px solid var(--line-strong)', color:'var(--ink)', fontFamily:"'Spectral',serif", fontSize:15, padding:'9px 11px', outline:'none' } })
-              )
-            : e('div', { style:{ marginTop:16 } },
-                e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', marginBottom:6 } }, 'Location card'),
-                e('div', { style:{ display:'flex', flexWrap:'wrap', gap:7 } },
-                  locOpts.map(lo =>
-                    e('button', { key:lo.id, className:'loc-pick', onClick:()=>setEditingEvent(p=>({...p,locId:lo.id})), style:{ position:'relative', display:'flex', alignItems:'center', gap:7, padding:'7px 11px', background:'var(--field)', color:'var(--ink)', border:'1px solid '+(lo.sel?'var(--green)':'var(--line-strong)'), borderRadius:2, cursor:'pointer', fontFamily:"'Spectral',serif", fontSize:13 } },
-                      e('span', { style:{ width:8, height:8, borderRadius:'50%', background: lo.region==='UK' ? 'var(--green)' : 'var(--terra)', display:'inline-block', flex:'none' } }),
-                      lo.name,
-                      lo.sel && e('span', { style:{ position:'absolute', top:-6, right:-6, width:17, height:17, borderRadius:'50%', background:'var(--ink)', border:'1px solid var(--ink)', color:'var(--paper)', fontSize:10, lineHeight:'15px', textAlign:'center' } }, '✓')
-                    )
-                  )
-                )
-              ),
-          // Start / End day
-          e('div', { style:{ marginTop:14, display:'flex', gap:12 } },
-            e('div', { style:{ flex:1 } },
-              e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', marginBottom:6 } }, 'Start day'),
-              e('input', { type:'number', min:1, max:month.days, value:draft.start, onChange:(ev)=>setEditingEvent(p=>({...p,start:ev.target.value})), style:{ width:'100%', background:'var(--field)', border:'1px solid var(--line-strong)', color:'var(--ink)', fontFamily:"'IBM Plex Mono',monospace", fontSize:15, padding:'9px 11px', outline:'none' } })
-            ),
-            e('div', { style:{ flex:1 } },
-              e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', marginBottom:6 } }, 'End day'),
-              e('input', { type:'number', min:1, max:month.days, value:draft.end, onChange:(ev)=>setEditingEvent(p=>({...p,end:ev.target.value})), style:{ width:'100%', background:'var(--field)', border:'1px solid var(--line-strong)', color:'var(--ink)', fontFamily:"'IBM Plex Mono',monospace", fontSize:15, padding:'9px 11px', outline:'none' } })
-            )
-          ),
-          e('div', { style:{ marginTop:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'var(--faint)', letterSpacing:'.04em' } }, month.name + ' · days 1–' + month.days),
-          // Type
-          e('div', { style:{ marginTop:16 } },
-            e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', marginBottom:8 } }, 'Type'),
-            e('div', { style:{ display:'flex', flexWrap:'wrap', gap:8 } },
-              kindOpts.map(k =>
-                e('button', { key:k.k, className:'kind-btn', onClick:()=> k.custom ? setEditingEvent(p => p && ({ ...p, kind:k.k, kindLabel:k.custom.label, kindColor:k.custom.color })) : setDraftKind(k.k), style:{ position:'relative', display:'flex', alignItems:'center', gap:7, padding:'6px 11px 6px 9px', background:k.bg, color:k.fg, border:'1px solid '+k.accent, borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.03em' } },
-                  e('span', { style:{ width:10, height:10, borderRadius:'50%', background:k.accent, display:'inline-block', flex:'none' } }),
-                  k.label,
-                  k.sel && e('span', { style:{ position:'absolute', top:-6, right:-6, width:17, height:17, borderRadius:'50%', background:'var(--paper)', border:'1px solid var(--ink)', color:'var(--ink)', fontSize:10, lineHeight:'15px', textAlign:'center' } }, '✓')
-                )
-              ),
-              e('button', { className:'kind-btn', onClick:addCustomKind, title:'Create a new event type', style:{ display:'flex', alignItems:'center', gap:6, padding:'6px 11px', background:'var(--field)', color:'var(--ink-2)', border:'1px dashed var(--faint)', borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.03em' } }, '+ New type')
-            )
-          ),
-          // Shown as — a picture in the corner of each day (nature/season windows
-          // and custom types), or the usual bar. "Auto" picks from the title.
-          (draft.kind === 'nature' || draft.kind === 'season' || isCustomKind(draft.kind)) && (() => {
-            const autoKey = defaultIconKey(draft.label);
-            const cur = draft.icon || 'auto';
-            const opts = [{ k:'auto', label:'Auto' + (autoKey ? ' — ' + EVENT_ICONS[autoKey].label + ', from the title' : ' — a bar (no icon matches the title)') }, { k:'none', label:'A bar across the days' }]
-              .concat(ICON_ORDER.map(k => ({ k, label: EVENT_ICONS[k].label })));
-            const btn = (o, child) => { const sel = cur === o.k; return e('button', { key:o.k, className:'kind-btn', title:o.label, 'aria-label':o.label, onClick:()=>setEditingEvent(p=>p&&({ ...p, icon:o.k })), style:{ display:'inline-flex', alignItems:'center', justifyContent:'center', gap:5, minWidth:32, height:30, padding:'0 8px', background: sel ? 'var(--green)' : 'var(--field)', color: sel ? 'var(--paper)' : 'var(--ink-2)', border:'1px solid ' + (sel ? 'var(--ink)' : 'var(--line-strong)'), borderRadius:2, cursor:'pointer', fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.04em' } }, child); };
-            return e('div', { style:{ marginTop:16 } },
-              e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', marginBottom:8 } }, 'Shown as'),
-              e('div', { style:{ display:'flex', flexWrap:'wrap', gap:6 } },
-                opts.map(o => btn(o, o.k === 'auto' ? [autoKey && e(EventIcon, { key:'i', name:autoKey, size:15 }), 'Auto'] : o.k === 'none' ? '▬ Bar' : e(EventIcon, { name:o.k, size:16 })))
-              ),
-              e('div', { style:{ marginTop:6, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'var(--faint)', letterSpacing:'.04em' } }, cur === 'none' ? 'A plain bar, with no picture.' : 'The picture sits beside the name on the month page, and in the corner of each day on the printed calendar.')
-            );
-          })(),
+    const lab = sx('font-weight: 600; font-size: 15px; color: var(--ink-2)');
+    const close = () => setEditingEvent(null);
+    const field = (extra) => ({ ...D.field, padding: '0 12px', width: '100%', ...(extra || {}) });
+    const pic = eventIconKey(draft);
+    return e('div', { onClick: close, style: popScrim(60) },
+      e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'pp-event-title', onClick: (ev) => ev.stopPropagation(), style: popCard(430, 18) },
+        e('div', { style: sx('display: flex; align-items: center; justify-content: space-between; gap: 12px') },
+          e('h2', { id: 'pp-event-title', style: popTitle }, draftView.heading), popClose(close, 'Close the event editor')),
+        // how it will look on the month page
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderRadius: 999, fontWeight: 500, fontSize: 15, minWidth: 0, ...(draftView.isPhotoOp ? { background: 'var(--ink)', color: 'var(--paper)' } : { background: draftView.bg, color: draft.kind === 'nature' ? 'var(--green-wash-ink)' : draftView.fg }) } },
+          e('span', { style: { flex: '0 0 28px', height: 10, boxSizing: 'border-box', borderRadius: 5, ...(draft.kind === 'newmoon' ? { border: '2px solid var(--moon-ink)' } : { background: draftView.accent }) } }),
+          pic && e(EventIcon, { name: pic, size: 18 }),
+          e('span', { style: sx('overflow: hidden; text-overflow: ellipsis; white-space: nowrap') }, draftView.previewLabel)),
+        // Title or location picker
+        draftView.isNormal
+          ? e('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, ...lab } }, 'Title',
+              e('input', { type: 'text', className: 'd-field', value: draft.label || '', onChange: (ev) => setEditingEvent(p => ({ ...p, label: ev.target.value })), placeholder: 'Event name', style: field({ fontWeight: 400 }) }))
+          : e('div', { style: sx('display: flex; flex-direction: column; gap: 6px') }, e('span', { style: lab }, 'Location'),
+              e('div', { style: sx('display: flex; flex-wrap: wrap; gap: 6px') },
+                locOpts.map(lo => e('button', { key: lo.id, type: 'button', className: lo.sel ? undefined : 'd-chipbtn', onClick: () => setEditingEvent(p => ({ ...p, locId: lo.id })), 'aria-pressed': lo.sel ? 'true' : 'false', style: { ...(lo.sel ? D.pillOn : D.pill), padding: '0 14px' } },
+                  e('span', { style: { width: 9, height: 9, borderRadius: '50%', background: lo.region === 'UK' ? 'var(--green)' : 'var(--terra)' } }), lo.name)))),
+        // Start / End day
+        e('div', { style: sx('display: flex; flex-direction: column; gap: 6px') },
+          e('div', { style: sx('display: flex; gap: 12px') },
+            e('label', { style: { flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, ...lab } }, 'Start day',
+              e('input', { type: 'number', className: 'd-field', inputMode: 'numeric', min: 1, max: month.days, value: draft.start, onChange: (ev) => setEditingEvent(p => ({ ...p, start: ev.target.value })), style: field({ fontWeight: 400 }) })),
+            e('label', { style: { flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, ...lab } }, 'End day',
+              e('input', { type: 'number', className: 'd-field', inputMode: 'numeric', min: 1, max: month.days, value: draft.end, onChange: (ev) => setEditingEvent(p => ({ ...p, end: ev.target.value })), style: field({ fontWeight: 400 }) }))),
+          e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, month.name + ' · days 1–' + month.days)),
+        // Type — pill chips with a coloured dot; the chosen one is outlined and ticked
+        e('div', { style: sx('display: flex; flex-direction: column; gap: 8px') },
+          e('span', { style: lab }, 'Type'),
+          e('div', { style: sx('display: flex; flex-wrap: wrap; gap: 6px') },
+            kindOpts.map(k => { const op = k.k === 'photoop';
+              return e('button', { key: k.k, type: 'button', className: 'kind-btn', 'aria-pressed': k.sel ? 'true' : 'false', onClick: () => k.custom ? setEditingEvent(p => p && ({ ...p, kind: k.k, kindLabel: k.custom.label, kindColor: k.custom.color })) : setDraftKind(k.k),
+                style: { display: 'inline-flex', alignItems: 'center', gap: 8, height: 44, padding: '0 14px', borderRadius: 999, fontFamily: 'inherit', fontWeight: k.sel ? 600 : 500, fontSize: 15, cursor: 'pointer',
+                  background: op ? 'var(--ink)' : k.bg, color: op ? 'var(--paper)' : (k.k === 'nature' ? 'var(--green-wash-ink)' : k.fg), border: k.sel ? '2px solid ' + (op ? 'var(--amber)' : k.accent) : '1px solid ' + (op ? 'var(--ink)' : k.bg) } },
+                e('span', { style: { width: 9, height: 9, boxSizing: 'border-box', borderRadius: '50%', ...(k.k === 'newmoon' ? { border: '2px solid var(--moon-ink)' } : { background: k.accent }) } }),
+                k.label, k.sel && e(DIcon, { name: 'check', size: 15, style: { strokeWidth: 2.6 } })); }),
+            e('button', { type: 'button', className: 'kind-btn', onClick: addCustomKind, title: 'Create a new event type', style: sx('height: 44px; padding: 0 14px; background: transparent; border: 2px dashed var(--dash); border-radius: 999px; color: var(--ink-body); font-family: inherit; font-weight: 500; font-size: 15px; cursor: pointer') }, 'New type'))),
+        // Shown as — a picture beside the name (nature/season windows and custom
+        // types), or a plain bar. "Auto" picks from the title.
+        (draft.kind === 'nature' || draft.kind === 'season' || isCustomKind(draft.kind)) && (() => {
+          const autoKey = defaultIconKey(draft.label);
+          const cur = draft.icon || 'auto';
+          const opts = [{ k: 'auto', label: 'Auto' + (autoKey ? ' — ' + EVENT_ICONS[autoKey].label + ', from the title' : ' — a bar (no picture matches the title)') }, { k: 'none', label: 'A bar across the days' }]
+            .concat(ICON_ORDER.map(k => ({ k, label: EVENT_ICONS[k].label })));
+          const btn = (o, child, wide) => { const on = cur === o.k; return e('button', { key: o.k, type: 'button', className: on ? 'kind-btn' : 'kind-btn d-btn', title: o.label, 'aria-label': o.label, 'aria-pressed': on ? 'true' : 'false', onClick: () => setEditingEvent(p => p && ({ ...p, icon: o.k })),
+            style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, ...(wide ? { padding: '0 14px' } : { width: 44, padding: 0 }), background: on ? 'var(--ink)' : 'var(--paper)', color: on ? 'var(--paper)' : 'var(--ink)', border: '1px solid ' + (on ? 'var(--ink)' : 'var(--line-strong)'), borderRadius: 10, fontFamily: 'inherit', fontWeight: 500, fontSize: 15, cursor: 'pointer' } }, child); };
+          return e('div', { style: sx('display: flex; flex-direction: column; gap: 8px') },
+            e('span', { style: lab }, 'Shown as'),
+            e('div', { style: sx('display: flex; flex-wrap: wrap; gap: 6px') },
+              opts.map(o => o.k === 'auto' ? btn(o, [autoKey && e(EventIcon, { key: 'i', name: autoKey, size: 18 }), 'Auto'], true) : o.k === 'none' ? btn(o, 'Bar', true) : btn(o, e(EventIcon, { name: o.k, size: 20 })))),
+            e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, cur === 'none' ? 'A plain bar, with no picture.' : 'The picture sits beside the name on the month page, and in the corner of each day on the printed calendar.'));
+        })(),
+        e('div', { style: sx('display: flex; flex-direction: column; gap: 2px') },
           // Printable calendar — on by default, untick to keep this event off it
-          e('label', { style:{ marginTop:16, display:'flex', alignItems:'center', gap:9, cursor:'pointer', userSelect:'none' } },
-            e('input', { type:'checkbox', checked:!draft.noPrint, onChange:(ev)=>{ const on = ev.target.checked; setEditingEvent(p=>p&&({ ...p, noPrint:!on })); }, style:{ width:15, height:15, margin:0, accentColor:'var(--green)', cursor:'pointer' } }),
-            e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.04em', color: draft.noPrint ? 'var(--faint)' : 'var(--ink-2)' } }, draft.noPrint ? 'Hidden from the printable calendar' : 'Shown on the printable calendar')
-          ),
+          e('label', { style: sx('display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 16px; cursor: pointer') },
+            e('input', { type: 'checkbox', checked: !draft.noPrint, onChange: (ev) => { const on = ev.target.checked; setEditingEvent(p => p && ({ ...p, noPrint: !on })); }, style: { width: 20, height: 20, margin: 0, accentColor: 'var(--green)', cursor: 'pointer' } }),
+            'Shown on the printable calendar'),
           // Yearly repeater — birthdays, anniversaries: the same dates every year
-          e('label', { style:{ marginTop:10, display:'flex', alignItems:'center', gap:9, cursor:'pointer', userSelect:'none' } },
-            e('input', { type:'checkbox', checked:!!draft.annual, onChange:(ev)=>{ const on = ev.target.checked; setEditingEvent(p=>p&&({ ...p, annual:on })); }, style:{ width:15, height:15, margin:0, accentColor:'var(--green)', cursor:'pointer' } }),
-            e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.04em', color: draft.annual ? 'var(--ink-2)' : 'var(--faint)' } }, draft.annual ? 'Repeats every year (birthdays, anniversaries)' : 'Repeats every year')
-          ),
-          // Save / Delete
-          e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginTop:22, paddingTop:15, borderTop:'1px solid var(--line-soft)' } },
-            e('button', { className:'del-btn', onClick:deleteEvent, style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid var(--danger-line)', color:'var(--danger)', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 13px', cursor:'pointer' } },
-              e('span', { style:{ fontSize:13, lineHeight:1 } }, '✕'), ' Delete'
-            ),
-            e('button', { className:'save-btn', onClick:saveEvent, style:{ display:'inline-flex', alignItems:'center', gap:7, background:'var(--green)', border:'1px solid var(--ink)', color:'var(--paper)', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'9px 17px', cursor:'pointer', boxShadow:'3px 3px 0 var(--shadow-14)' } }, 'Save event')
-          )
-        )
-      )
-    );
+          e('label', { style: sx('display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 16px; cursor: pointer') },
+            e('input', { type: 'checkbox', checked: !!draft.annual, onChange: (ev) => { const on = ev.target.checked; setEditingEvent(p => p && ({ ...p, annual: on })); }, style: { width: 20, height: 20, margin: 0, accentColor: 'var(--green)', cursor: 'pointer' } }),
+            draft.annual ? 'Repeats every year (birthdays, anniversaries)' : 'Repeats every year')),
+        e('div', { style: sx('display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 18px; border-top: 1px solid var(--line-soft)') },
+          e('button', { type: 'button', className: 'del-btn d-danger', onClick: deleteEvent, style: D.danger }, 'Delete'),
+          e('button', { type: 'button', className: 'save-btn d-primary', onClick: saveEvent, style: D.primary }, 'Save event'))));
   };
 
   // ─── Cloud status banner ───────────────────────────────────────────────────
@@ -6913,45 +6886,23 @@ function App() {
   // ─── Prompt dialog (password / short names) ────────────────────────────────
   const renderDialog = () => {
     if (!dialog) return null;
-    const mono = "'IBM Plex Mono',monospace";
-    const isPw = dialog.kind === 'password';
-    const isConfirm = dialog.kind === 'confirm';
-    const eye = (slashed) => e('svg', { width:18, height:18, viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true' },
-      e('path', { d:'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z' }),
-      e('circle', { cx:12, cy:12, r:3 }),
-      slashed && e('line', { x1:4, y1:4, x2:20, y2:20 })
-    );
-    return e('div', { onClick:()=>closeDialog(null), style:{ position:'fixed', inset:0, background:'var(--scrim)', display:'flex', alignItems:'center', justifyContent:'center', padding:22, zIndex:70 } },
-      e('div', { role:'dialog', 'aria-modal':'true', 'aria-labelledby':'pp-dialog-title', onClick:(ev)=>ev.stopPropagation(), style:{ width:380, maxWidth:'100%', background:'var(--paper)', border:'1px solid var(--ink)', boxShadow:'9px 9px 0 var(--shadow-20)' } },
-        e('div', { style:{ height:5, background: (isConfirm && dialog.danger) ? 'var(--danger)' : 'var(--green)' } }),
-        e('form', { onSubmit:(ev)=>{ ev.preventDefault(); closeDialog(dialog.value); }, onKeyDown:(ev)=>{ if (ev.key === 'Escape') { ev.preventDefault(); closeDialog(null); } }, style:{ padding:'17px 20px 20px' } },
-          e('div', { id:'pp-dialog-title', style:{ fontFamily:mono, fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', color:'var(--muted)' } }, dialog.title),
-          e('div', { style:{ marginTop:10, fontSize:15, color:'var(--ink-body)', lineHeight:1.5, whiteSpace:'pre-line' } }, dialog.label),
-          !isConfirm && e('div', { style:{ marginTop:14, display:'flex', gap:8 } },
-            e('input', {
-              type: isPw && !dialog.reveal ? 'password' : 'text',
-              value: dialog.value,
-              autoFocus: true,
-              autoComplete: isPw ? 'current-password' : 'off',
-              autoCapitalize: isPw ? 'off' : 'words',
-              spellCheck: false,
-              placeholder: dialog.placeholder || '',
-              'aria-label': dialog.title,
-              onChange: (ev) => setDialog(d => d && ({ ...d, value: ev.target.value })),
-              onKeyDown: (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeDialog(null); } },
-              style:{ flex:1, minWidth:0, background:'var(--field)', border:'1px solid var(--line-strong)', color:'var(--ink)', fontFamily: isPw ? mono : "'Spectral',serif", fontSize:15, padding:'9px 11px', outline:'none', letterSpacing: (isPw && !dialog.reveal) ? '.15em' : 0 }
-            }),
-            // eye = reveal; slashed eye = hide again
-            isPw && e('button', { type:'button', className:'close-btn', onClick:()=>setDialog(d => d && ({ ...d, reveal:!d.reveal })), title: dialog.reveal ? 'Hide the password' : 'Show the password', 'aria-label': dialog.reveal ? 'Hide the password' : 'Show the password', 'aria-pressed': dialog.reveal ? 'true' : 'false', style:{ width:42, flex:'none', background:'none', border:'1px solid var(--line-strong)', color: dialog.reveal ? 'var(--green)' : 'var(--muted)', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center' } }, eye(dialog.reveal))
-          ),
-          dialog.hint && e('div', { style:{ marginTop:8, fontFamily:mono, fontSize:10, color:'var(--faint)', letterSpacing:'.04em', lineHeight:1.5 } }, dialog.hint),
-          e('div', { style:{ display:'flex', justifyContent:'flex-end', alignItems:'center', gap:10, marginTop:20, paddingTop:15, borderTop:'1px solid var(--line-soft)' } },
-            e('button', { type:'button', className:'close-btn', onClick:()=>closeDialog(null), style:{ background:'none', border:'1px solid var(--line)', color:'var(--muted)', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 13px', cursor:'pointer' } }, 'Cancel'),
-            e('button', { type:'submit', className:'save-btn', autoFocus: isConfirm, style:{ background: (isConfirm && dialog.danger) ? 'var(--danger)' : 'var(--green)', border:'1px solid var(--ink)', color:'var(--paper)', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'9px 17px', cursor:'pointer', boxShadow:'3px 3px 0 var(--shadow-14)' } }, dialog.confirm || 'OK')
-          )
-        )
-      )
-    );
+    const isPw = dialog.kind === 'password', isConfirm = dialog.kind === 'confirm', red = isConfirm && dialog.danger;
+    const eye = (slashed) => e('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
+      e('path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z' }), e('circle', { cx: 12, cy: 12, r: 3 }), slashed && e('line', { x1: 4, y1: 4, x2: 20, y2: 20 }));
+    return e('div', { onClick: () => closeDialog(null), style: popScrim(70) },
+      e('form', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'pp-dialog-title', onClick: (ev) => ev.stopPropagation(), onSubmit: (ev) => { ev.preventDefault(); closeDialog(dialog.value); }, onKeyDown: (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeDialog(null); } }, style: popCard(400, 14) },
+        e('h2', { id: 'pp-dialog-title', style: popTitle }, dialog.title),
+        e('p', { style: { margin: 0, whiteSpace: 'pre-line' } }, dialog.label),
+        !isConfirm && e('div', { style: sx('display: flex; gap: 8px') },
+          e('input', { className: 'd-field', type: isPw && !dialog.reveal ? 'password' : 'text', value: dialog.value, autoFocus: true, autoComplete: isPw ? 'current-password' : 'off', autoCapitalize: isPw ? 'off' : 'words', spellCheck: false, placeholder: dialog.placeholder || '', 'aria-label': dialog.title,
+            onChange: (ev) => setDialog(d => d && ({ ...d, value: ev.target.value })),
+            style: { ...D.field, flex: '1 1 0', padding: '0 12px', letterSpacing: (isPw && !dialog.reveal) ? '.15em' : 0 } }),
+          // eye = reveal; slashed eye = hide again
+          isPw && e('button', { type: 'button', className: 'd-iconbtn', onClick: () => setDialog(d => d && ({ ...d, reveal: !d.reveal })), title: dialog.reveal ? 'Hide the password' : 'Show the password', 'aria-label': dialog.reveal ? 'Hide the password' : 'Show the password', 'aria-pressed': dialog.reveal ? 'true' : 'false', style: { ...D.iconBtn, color: dialog.reveal ? 'var(--green)' : 'var(--ink)' } }, eye(dialog.reveal))),
+        dialog.hint && e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, dialog.hint),
+        e('div', { style: sx('display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 6px') },
+          e('button', { type: 'button', className: 'd-btn', onClick: () => closeDialog(null), style: D.btn }, 'Cancel'),
+          e('button', { type: 'submit', className: red ? 'save-btn d-reddanger' : 'save-btn d-primary', autoFocus: isConfirm, style: red ? { ...D.primary, background: 'var(--danger)' } : D.primary }, dialog.confirm || 'OK'))));
   };
 
   // Pages still in the old look render in a padded column under the new top bar.
