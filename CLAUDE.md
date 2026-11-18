@@ -101,7 +101,12 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
 - **Month page** (`renderMonthPage`, drawn on "D · Combined" / "D · Month
   night" / "D · Month phone"), top to bottom: full-width `PhotoSlideshow d`
   (caption **under** the photo via `onCurrent` → `heroCap`; only the round
-  next/pause buttons on it); month name + year (`.d-yearsel`, a select that
+  next/pause buttons on it; sized by **`heroLook`** — a phone 3:2; a laptop
+  the drawn edge-to-edge banner, `clamp(320px, 46vw, 82vh)`; a window of
+  1744px or more, `isWide`, an inset photo `min(100% − 64px, 1680px)` wide
+  with 16px corners, as tall as the whole 3:2 picture up to 82vh — the
+  owner's 32-inch monitor showed the old 600px-high banner as a sliver, and
+  the web copy of a photo is only 1600px wide); month name + year (`.d-yearsel`, a select that
   reads as text) + tagline + month picker; **"at a glance"**: typical light,
   Add event and the **month strip** — one column per day (weekends tinted,
   a photo-op day's number dark), events as rounded bars in rows by kind
@@ -142,8 +147,10 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
 - **Weather, Trips, Gallery, Map** (each: a large title and intro, its
   controls, its content; `maxWidth: 1244`, `padding: 36px 32px 80px`).
   *Weather* (`WeatherView`, props `action` = the phone's green button,
-  `hrefFor`): the picker and **Set default** (green, as the owner asked) /
-  `● Default`; the spot's name is a link to its brief; the aurora pill and
+  `hrefFor`): the picker — **one A–Z list of places, no month groups and no
+  place twice** (`spots`, keyed by `normPlaceKey(name)`; the owner's request,
+  a spot shot in several months has one forecast) — and **Set default**
+  (green, as the owner asked) / `● Default`; the spot's name is a link to its brief; the aurora pill and
   the outside links; a card per day with `WxIcon` (line drawings from the
   WMO code: clear, partly, cloud, fog, rain, snow, storm), cloud at dawn /
   dusk / night with a note that goes green for good news, rain / wind /
@@ -153,18 +160,29 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   three tiles (Locations, Shots taken, Packed), Dates / Locations (photo,
   name → brief, the first day's light, the dashed "Choose a location…"
   picker) / Notes beside Shots / Packing (`Checklist d`: 32px rows with a
-  mouse, 44px on a phone); "Edit the usual packing list" in the card's foot
-  (`tplEditing` = the trip's id, or `'page'` when no card is open) and
-  Delete trip. *Gallery* (`renderGalleryPage`): pill tabs, one filter card,
+  mouse, 44px on a phone) and Delete trip in the foot. **"Edit the usual
+  packing list" is a button on the first heading's row** (`listBtn`, beside
+  "Coming up"; the owner's request): it opens `listPanel` under the row,
+  saves when the box loses focus and stays open until the button ("Close
+  the usual packing list") or Escape. Two sections only: **Coming up** (a
+  trip under way, marked Now, the ones ahead and any without dates) and
+  **Past trips** (latest first). *Gallery* (`renderGalleryPage`): pill tabs, one filter card,
   the owner's two links ("Fill in areas and countries", "@handle on photos ·
   on/off"), 320px tiles (thumb/hero by `srcSet`) with a gold star badge;
-  the Year in review (not drawn) in the same style. *Map* (`MapView`, props
-  `photoFor`, `hrefFor`): the "Ticked off" tile with its bar, one filter
+  the Year in review (not drawn) in the same style. **A caption per photo**
+  (the owner's request): `loc.photos[i].caption`, set with
+  `setPhotoCaption(locId, slot, text)` from the viewer's "Caption" field
+  (blur/Enter; empty removes it; a legacy single photo becomes a `photos`
+  list), carried on gallery items as `text` (the automatic "Place · Mon
+  'YY" stays `caption`) and shown **only on the Gallery page**: under the
+  tile's name line and in the viewer. *Map* (`MapView`, props
+  `photoFor`, `hrefFor`): the "Visited" tile with its bar (the wording is
+  **"Visited", never "ticked off"** — the owner's choice), one filter
   card (Region, Status, When), the live map unchanged in a rounded frame
   (the 1000 × 640 drawing is centred in the box and its coastlines overflow
   to fill it — pointer maths untouched), `+ −` (and a fit button once
   zoomed), the zoom tag, and the pin's card: photo, name, month and status
-  chips, the owner's Ticked-off box, an "Open <month> →" link per month
+  chips, the owner's Visited box, an "Open <month> →" link per month
   (beside the pin on a wide screen, docked at the map's foot on a phone).
 - **Pop-ups and the photo viewer** share `popScrim(z)`, `popCard(width,
   gap)`, `popTitle` and `popClose(run, label, focus)`: `renderBackups`,
@@ -173,7 +191,11 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   picture buttons, a × that reads "Close the event editor"), `renderDialog`
   (a `form role=dialog`, `#pp-dialog-title`; the confirm button is red —
   `.d-reddanger` — when `danger`), and `renderLightbox` (the viewer: dark in
-  both themes, `.lb-btn` / `.lb-field`). The sync banner
+  both themes, `.lb-btn` / `.lb-field`; **on a phone held sideways** —
+  `isShort` = `useMedia('(max-height: 520px) and (orientation: landscape)')`
+  — the photo takes the whole height, `.lb-short-img`, and the count, place,
+  caption, fields and links sit in a 250px column beside it; "i" hides the
+  column). The sync banner
   (`renderCloudBanner`) and the toast are in the new look too.
 - **Calendar** (`renderPrintPage`, "D · Calendar"; owner only; the top
   bar's green button is "Print / Save PDF"): title + "… · 28 pages · A4
@@ -193,17 +215,24 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   page and the grid page (Zilla month + Figtree year | mark + PHOTOPLAN |
   caption, light, note; a rounded grid; day number, named-day text, window
   pictures; **bars with rounded ends** in the type's pale wash — square
-  where an event runs into another week; `{ top: 31, step: 24 }`, 22px
+  where an event runs into another week — each led by **its symbol**
+  (`GlyphIcon`, drawn from `GLYPH_ART` by the glyph in `EVENT_STYLE`: ● ○ ✦
+  ◐ ◉ ▲ ◆; the board left them out and the owner asked for them back), the
+  name set smaller, down to 10px, before it is ever cut; **a named day is
+  never cut off** (`fitName`: as large as fits beside the number and the
+  window pictures, 12.5px at most, two lines rather than under 10px); `{ top: 31, step: 24 }`, 22px
   bars, slimmer from `top: 28` when a six-week month's busiest week would
-  not fit; the key = a strong-colour pill per type, new moon outlined, then
+  not fit; the key = a strong-colour pill and the symbol per type, new moon outlined, then
   each window picture with its dates; the handle with `igGlyph`); and the
   **photo index** — two sheets (January–June, July–December), three columns
   of 3:2 tiles, the large one `span 2` × `span 2` first and the other five
   in month order, no month labels. The large month per sheet is
   **`data[0].indexLarge = { '<year>': ['<month key>', '<month key>'] }`**
   (unset = January and July; `setLarge(page, key)`), chosen with the round
-  `expand` button on a small photo; the "Large photo · <Month>" tag and the
-  buttons are `.no-print`. `printSizeBadge(text, foot)` is the "web size
+  `expand` button on a small photo (on a phone the small photo itself is
+  the button, under a 26px `.sheet-badge`, and the tag is `.sheet-tag` — a
+  44px disc smothered a 113px photo); the "Large photo · <Month>" tag and
+  the buttons are `.no-print`. `printSizeBadge(text, foot)` is the "web size
   only" pill (top-left; foot-left and shorter on an index tile).
 - **Link-only access (step 9) — proposed, not built; wait for the owner's
   answer.** The proposal and its drawn screens:
@@ -235,10 +264,12 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   faked Worker), and `home_test.js`, `weather_d_test.js` (+ the older
   `weather_next.js` flags test), `trips_d_test.js`, `gallery_d_test.js`,
   `map_d_test.js` (d3 / topojson / world-atlas served from `maplibs/`),
-  `popups_shots.js` (29 checks of the pop-ups and the viewer) and
-  `calendar_d_test.js` (42: the controls, the per-year large photo, day
-  colours at night, the 390px scale, and the PDF from `page.pdf()` — 28
-  pages of A4 landscape by `pdfinfo`, pages rendered with `pdftoppm`).
+  `popups_shots.js` (29 checks of the pop-ups and the viewer),
+  `calendar_d_test.js` (48: the controls, symbols and fitted names, the
+  per-year large photo, day colours at night, the 390px scale, and the PDF
+  from `page.pdf()` — 28 pages of A4 landscape by `pdfinfo`, pages rendered
+  with `pdftoppm`) and `fb1_test.js` (25: the hero at 1280 / 2560 / 3840
+  wide, photo captions, the viewer at 844 × 390).
   `dshots.js` also scans every text for contrast under 4.5:1 (3:1 for
   large type) against its real background, day and night.
   The brief's own checks per step: matches the board at 1280

@@ -353,6 +353,7 @@
     .d-danger:hover { background: var(--danger) !important; border-color: var(--danger) !important; color: var(--paper) !important; }
     .d-reddanger:hover { filter: brightness(0.92); }
     .lb-btn:hover { border-color: var(--on-photo) !important; }
+    .lb-short-img { max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); }  /* the viewer on a phone held sideways: the photo fills the height */
     .lb-field::placeholder { color: var(--lb-ink-2); opacity: .8; }
     .lb-field:focus { outline: none; border-color: var(--on-photo) !important; }
     .d-round:hover { filter: brightness(0.94); }
@@ -461,6 +462,8 @@
     .print-sheet.last { break-after: auto; page-break-after: auto; }
     .sheet-box { height: calc(193mm * var(--sheet-scale, 1)); }
     .sheet-fixed { transform: scale(calc(1 / var(--sheet-scale, 1))); }
+    .sheet-badge { transform: scale(max(1, calc(0.6 / var(--sheet-scale, 1)))); }  /* a phone's index photos: a badge about 26px across */
+    .sheet-tag { transform: scale(max(1, calc(0.8 / var(--sheet-scale, 1)))); }   /* …and their "Large photo" tag at about 11px */
     .sheet-fixed-bar { width: calc(100% * var(--sheet-scale, 1)); transform: scale(calc(1 / var(--sheet-scale, 1))); transform-origin: 0 100%; }
     @page { size: A4 landscape; margin: 8mm; }
     @media print {
@@ -520,6 +523,25 @@ const D_ICONS = {
 function DIcon({ name, size = 22, style }) {
   return e('svg', { 'aria-hidden': 'true', width: size, height: size, viewBox: '0 0 24 24', style: { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', flex: 'none', display: 'block', ...(style || {}) } },
     (D_ICONS[name] || []).map(([tag, props], i) => e(tag, { key: i, ...props })));
+}
+// The small symbol a bar-type event carries on the printed calendar and in
+// its key — drawn, not a font character. Keyed by the glyph in EVENT_STYLE:
+// ● full moon, ○ new moon, ✦ meteor, ◐ eclipse, ◉ photo op, ▲ trip, ◆ the
+// owner's own types.
+const GLYPH_ART = {
+  '●': [['circle', { cx: 12, cy: 12, r: 8, fill: 'currentColor', stroke: 'none' }]],
+  '○': [['circle', { cx: 12, cy: 12, r: 7 }]],
+  '✦': [['path', { d: 'M12 2.5l2.4 7.1 7.1 2.4-7.1 2.4-2.4 7.1-2.4-7.1L2.5 12l7.1-2.4z', fill: 'currentColor', stroke: 'none' }]],
+  '◐': [['circle', { cx: 12, cy: 12, r: 7 }], ['path', { d: 'M12 5a7 7 0 0 0 0 14z', fill: 'currentColor', stroke: 'none' }]],
+  '◉': [['circle', { cx: 12, cy: 12, r: 7 }], ['circle', { cx: 12, cy: 12, r: 3, fill: 'currentColor', stroke: 'none' }]],
+  '▲': [['path', { d: 'M12 4.5l8.5 15h-17z', fill: 'currentColor', stroke: 'none' }]],
+  '◆': [['path', { d: 'M12 3.5l8.5 8.5-8.5 8.5L3.5 12z', fill: 'currentColor', stroke: 'none' }]],
+};
+function GlyphIcon({ glyph, size = 12, style }) {
+  const art = GLYPH_ART[glyph];
+  if (!art) return null;
+  return e('svg', { 'aria-hidden': 'true', 'data-glyph': glyph, width: size, height: size, viewBox: '0 0 24 24', style: { flex: 'none', display: 'block', fill: 'none', stroke: 'currentColor', strokeWidth: 2.4, ...(style || {}) } },
+    art.map(([tag, props], i) => e(tag, { key: i, ...props })));
 }
 // The controls, as drawn: 44px high, 10px corners, no shadows.
 const D = {
@@ -898,10 +920,12 @@ function shuffle(arr) {
 // "are we on a phone?". It re-renders whenever the viewport crosses 640px, and
 // components sprinkle small style overrides where isMobile is true — the
 // desktop layout is untouched.
-function useIsMobile() {
-  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 640px)').matches);
+function useIsMobile() { return useMedia('(max-width: 640px)'); }
+// True while a media query matches (re-renders when that changes).
+function useMedia(query) {
+  const [mobile, setMobile] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 640px)');
+    const mq = window.matchMedia(query);
     const onChange = () => setMobile(mq.matches);
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else mq.addListener(onChange); // older Safari
@@ -976,7 +1000,7 @@ function HeroCaption({ value, onCommit }) {
 // Each item is { key (unique), base (image name), caption }. It checks which
 // photos exist using the small thumbnails (fast), then shows the hero version of
 // whichever slide is current. Used for both the 2026 cover and each month's hero.
-function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0, photoIndex, d = false, onCurrent, emptyText }) {
+function PhotoSlideshow({ items, boxStyle, figStyle, intervalMs = 15000, epoch = 0, photoIndex, d = false, onCurrent, emptyText }) {
   const focus = React.useContext(FocusCtx);
   const [keys, setKeys] = useState([]); // item keys that have a photo, in order
   const [pos, setPos] = useState(0);
@@ -1054,9 +1078,9 @@ function PhotoSlideshow({ items, boxStyle, intervalMs = 15000, epoch = 0, photoI
   useEffect(() => { underRef.current = curD ? curD.base : null; }, [curD && curD.base]);
   if (d) {
     const img = { display: 'block', width: '100%', objectFit: 'cover', ...boxStyle };
-    if (!curD) return e('figure', { style: { margin: 0, position: 'relative', background: 'var(--slot)' } },
+    if (!curD) return e('figure', { style: { margin: 0, position: 'relative', background: 'var(--slot)', overflow: 'hidden', ...figStyle } },
       e('div', { style: { ...boxStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px', textAlign: 'center', fontSize: 16, color: 'var(--ink-2)' } }, photoIndex === undefined ? '' : (emptyText || 'Photos you add will show here')));
-    return e('figure', { style: { margin: 0, position: 'relative', background: 'var(--ink)', overflow: 'hidden' } },
+    return e('figure', { style: { margin: 0, position: 'relative', background: 'var(--ink)', overflow: 'hidden', ...figStyle } },
       under && e('img', { key: 'u-' + under, src: Storage.photoUrl(under, epoch || undefined), alt: '', style: { ...img, position: 'absolute', left: 0, top: 0, height: '100%', ...focusStyle(focus.map, under) } }),
       e('img', { key: curD.base, className: 'slide-fade', src: Storage.photoUrl(curD.base, epoch || undefined), alt: curD.caption || '', style: { ...img, position: 'relative', ...focusStyle(focus.map, curD.base) } }),
       e(PhotoCredit, { pill: true, style: { right: 24, top: 18 } }),
@@ -3690,6 +3714,14 @@ function parseKpForecast(rows) {
 // default" button (`onSetDefault`) makes the spot on show the default.
 function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onOpenMonth, isMobile, action, hrefFor }) {
   const places = useMemo(() => data.flatMap((m, i) => m.locations.map(l => ({ loc: l, m, i, coords: coordsOf(l) })).filter(p => p.coords)), [data]);
+  // The picker lists each place once, A–Z: a spot that sits in several months
+  // (the same name) has one forecast, so it gets one line.
+  const spots = useMemo(() => {
+    const by = {};
+    places.forEach(p => { const k = normPlaceKey(p.loc.name) || p.loc.id; if (!by[k]) by[k] = { key: k, first: p, ids: [] }; by[k].ids.push(p.loc.id); });
+    return Object.keys(by).map(k => by[k]).sort((a, b) => a.first.loc.name.localeCompare(b.first.loc.name, 'en', { sensitivity: 'base' }));
+  }, [places]);
+  const spotOf = (id) => spots.find(sp => sp.ids.indexOf(id) !== -1) || null;
   const todayMonth = new Date().getMonth();
   const savedDefault = defaultLocId && places.some(p => p.loc.id === defaultLocId) ? defaultLocId : null;
   const defaultId = initialLocId || savedDefault || (places.find(p => p.i === todayMonth) || places[0] || { loc: {} }).loc.id;
@@ -3866,10 +3898,11 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onOpenMon
         e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'Promising for'), flags.map(chip)));
   };
 
-  const isDefault = !!(sel && savedDefault === sel.loc.id);
-  const picker = e('select', { className: 'd-field', value: sel ? sel.loc.id : '', onChange: (ev) => { pickedRef.current = true; setSelId(ev.target.value); }, 'aria-label': 'Location for the forecast',
+  const selSpot = sel ? spotOf(sel.loc.id) : null, defSpot = savedDefault ? spotOf(savedDefault) : null;
+  const isDefault = !!(selSpot && defSpot && selSpot.key === defSpot.key);
+  const picker = e('select', { className: 'd-field', value: selSpot ? selSpot.key : '', onChange: (ev) => { const sp = spots.find(x => x.key === ev.target.value); if (sp) { pickedRef.current = true; setSelId(sp.first.loc.id); } }, 'aria-label': 'Location for the forecast',
     style: { ...D.field, padding: '0 12px', cursor: 'pointer', ...(isMobile ? { width: '100%' } : { minWidth: 240, maxWidth: '100%' }) } },
-    data.map((m, i) => { const ps = places.filter(p => p.i === i); return ps.length ? e('optgroup', { key: m.key, label: m.name }, ps.map(p => e('option', { key: p.loc.id, value: p.loc.id }, p.loc.name + (p.loc.id === savedDefault ? ' · default' : '')))) : null; }));
+    spots.map(sp => e('option', { key: sp.key, value: sp.key }, sp.first.loc.name + (defSpot && defSpot.key === sp.key ? ' · default' : ''))));
   // The owner's "Set default" makes the spot on show the one the page opens on
   // (marked "· default" in the list for everyone); on the default it clears it.
   const defaultBtn = onSetDefault && sel && (isDefault
@@ -4133,7 +4166,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, introText, onEditIntro,
   const closeCard = () => { setSelectedId(null); setHoveredId(null); };
   const MAP_H = isMobile ? '540px' : 'clamp(380px, 52vw, 660px)';
   // The pin's card: the photo, the place, a chip per month it is shot in and
-  // its status, the owner's Ticked-off box and a link to each month's page.
+  // its status, the owner's Visited box and a link to each month's page.
   // Beside the pin on a wide screen; docked along the foot of the map on a phone.
   const detailCard = () => {
     if (!activeLoc) return null;
@@ -4144,7 +4177,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, introText, onEditIntro,
       activeLoc.visited ? e('span', { style: sx('padding: 3px 10px; border-radius: 999px; background: var(--green-wash); color: var(--green-wash-ink)') }, 'Visited') : e('span', { style: sx('padding: 3px 10px; border-radius: 999px; background: var(--line-soft); color: var(--ink-body)') }, 'To visit'));
     const foot = e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px') },
       editMode && e('label', { style: sx('display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 16px; cursor: pointer') },
-        e('input', { type: 'checkbox', checked: !!activeLoc.visited, onChange: () => onToggleVisited(activeLoc.id), style: { width: 20, height: 20, margin: 0, accentColor: 'var(--green)', cursor: 'pointer' } }), 'Ticked off'),
+        e('input', { type: 'checkbox', checked: !!activeLoc.visited, onChange: () => onToggleVisited(activeLoc.id), style: { width: 20, height: 20, margin: 0, accentColor: 'var(--green)', cursor: 'pointer' } }), 'Visited'),
       readoutShoots.map(s => e('a', { key: s.mi, href: hrefFor ? hrefFor(s.mi, activeLoc.id) : '#', onClick: (ev) => { ev.preventDefault(); onOpenMonth(s.mi, activeLoc.id); }, title: 'Open ' + s.monthName + ' in the calendar', style: sx('display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; font-size: 16px') }, 'Open ' + s.monthName + ' →')));
     const img = (st) => ph ? e('img', { src: ph.src, alt: '', style: { display: 'block', objectFit: 'cover', aspectRatio: '3 / 2', borderRadius: 10, ...st, ...(ph.pos || {}) } }) : null;
     const closeBtn = (st) => e('button', { type: 'button', className: 'd-round', onClick: closeCard, title: 'Close', 'aria-label': 'Close', style: { ...D.round, ...st } }, e(DIcon, { name: 'close', size: 20 }));
@@ -4178,9 +4211,9 @@ function MapView({ places, onOpenMonth, onToggleVisited, introText, onEditIntro,
         e(Editable, { key: 'map-intro-' + introText, tag: 'p', className: 'd-edit', value: introText, onCommit: onEditIntro, title: 'Click to edit', style: { margin: 0, fontSize: isMobile ? 18 : 21, lineHeight: 1.45, color: 'var(--ink-body)' } })),
       e('div', { style: isMobile ? sx('flex: 1 1 100%; display: flex; flex-direction: column; gap: 12px') : sx('display: flex; flex-direction: column; align-items: flex-end; gap: 12px') },
         e('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, ...(isMobile ? {} : { minWidth: 220 }), padding: '14px 18px', background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 12 } },
-          e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'Ticked off'),
+          e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'Visited'),
           e('span', { style: { fontWeight: 600, fontSize: isMobile ? 30 : 36, lineHeight: 1.1 } }, visitedCount + ' of ' + places.length),
-          e('div', { role: 'img', 'aria-label': visitedPct + ' ticked off', style: sx('height: 8px; border-radius: 4px; background: var(--map-land)') },
+          e('div', { role: 'img', 'aria-label': visitedPct + ' visited', style: sx('height: 8px; border-radius: 4px; background: var(--map-land)') },
             visitedCount > 0 && e('div', { style: { width: visitedPct, minWidth: 8, height: 8, borderRadius: 4, background: 'var(--green)' } }))))),
     // filters
     e('div', { style: isMobile ? sx('display: flex; flex-direction: column; gap: 14px; padding: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; overflow: hidden') : sx('display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px') },
@@ -4217,7 +4250,7 @@ function MapView({ places, onOpenMonth, onToggleVisited, introText, onEditIntro,
         isReady && e('span', { style: { position: 'absolute', left: 16, ...(isMobile ? { top: 16 } : { bottom: 16 }), zIndex: 3, padding: '4px 12px', borderRadius: 999, background: 'var(--paper)', border: '1px solid var(--line)', fontSize: 15, color: 'var(--ink-body)' } }, 'Zoom ' + zoomK.toFixed(1) + '×' + (zoomK > 1 ? ' · drag to pan' : ''))),
       // hint + key
       e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; font-size: 15px; color: var(--ink-2)') },
-        e('span', null, isMobile ? 'Tap a pin for its details · pinch to zoom, drag to pan.' : ('Hover a pin for details · click to keep it open' + (editMode ? ', then tick it off.' : '.'))),
+        e('span', null, isMobile ? 'Tap a pin for its details · pinch to zoom, drag to pan.' : ('Hover a pin for details · click to keep it open' + (editMode ? ', then mark it visited.' : '.'))),
         e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px') },
           e('span', { style: sx('display: inline-flex; align-items: center; gap: 8px') }, mark({ background: 'var(--green)' }), 'Visited'),
           e('span', { style: sx('display: inline-flex; align-items: center; gap: 8px') }, mark({ border: '3px solid var(--green)', background: 'var(--paper)' }), 'To visit'),
@@ -4227,6 +4260,8 @@ function MapView({ places, onOpenMonth, onToggleVisited, introText, onEditIntro,
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function App() {
   const isMobile = useIsMobile();
+  const isWide = useMedia('(min-width: 1744px)');                            // a very wide window: the hero stops stretching (see heroLook)
+  const isShort = useMedia('(max-height: 520px) and (orientation: landscape)'); // a phone held sideways: the photo viewer's side-by-side form
   const [data, setData] = useState(() => migrateYearEvents(Storage.loadData() || makeData()));
   // Which year the calendar (grid + events) shows. A viewing preference, so it
   // stays local to the device rather than in the shared data.
@@ -4949,7 +4984,7 @@ function App() {
   // The map page intro, stored the same way (the default adapts its hover/tap
   // wording to the device; an edited text is shown verbatim everywhere).
   const mapIntro = (data[0] && data[0].mapIntro != null) ? data[0].mapIntro
-    : "Every shoot in the calendar on one map — UK spots in green, the international trips in terracotta. Filter by region, month or whether you've ticked it off, then " + (isMobile ? 'tap' : 'hover') + ' a pin for the details.';
+    : "Every shoot in the calendar on one map — UK spots in green, the international trips in terracotta. Filter by region, month or whether you've visited, then " + (isMobile ? 'tap' : 'hover') + ' a pin for the details.';
   const editMapIntro = (t) => mutateData(d => { d[0].mapIntro = t; });
 
   // Star a location for the printable calendar: its photo fronts this month's
@@ -5073,7 +5108,7 @@ function App() {
     data.forEach((m2, i) => m2.locations.forEach(loc => locPhotos(loc).forEach(p => {
       const base = slotBase(m2.key, loc.id, p.slot);
       if (photoIndex && !photoIndex.has(base + '-thumb')) return;
-      out.push({ key: base, base, i, month: m2, loc, slot: p.slot, year: (p.year || '').trim(), tags: p.tags || [], starred: m2.printLoc === loc.id, caption: photoCaption(loc, m2.name, p.year) });
+      out.push({ key: base, base, i, month: m2, loc, slot: p.slot, year: (p.year || '').trim(), tags: p.tags || [], text: (p.caption || '').trim(), starred: m2.printLoc === loc.id, caption: photoCaption(loc, m2.name, p.year) });
     })));
     return out;
   }, [data, photoIndex]);
@@ -5091,6 +5126,17 @@ function App() {
       const list = locPhotos(loc).map(p => ({ ...p }));
       const p = list.find(x => x.slot === slot);
       if (p) { if (tags.length) p.tags = tags; else delete p.tags; loc.photos = list; }
+      break;
+    }
+  });
+  // A photo's own caption (loc.photos[i].caption): typed in the photo viewer,
+  // shown under the photo on the Gallery page. Empty text removes it.
+  const setPhotoCaption = (locId, slot, text) => mutateData(dd => {
+    for (const m2 of dd) {
+      const loc = m2.locations.find(l => l.id === locId); if (!loc) continue;
+      const list = locPhotos(loc).map(p => ({ ...p }));
+      const p = list.find(x => x.slot === slot);
+      if (p) { if (text) p.caption = text; else delete p.caption; loc.photos = list; }
       break;
     }
   });
@@ -5649,6 +5695,9 @@ function App() {
         editMode && linkRow('Calendar backups', openBackups)
       ));
   };
+  const heroLook = isMobile ? { boxStyle: { aspectRatio: '3 / 2' } }
+    : isWide ? { boxStyle: { height: 'min(calc(min(100vw - 64px, 1680px) * 0.6667), 82vh)' }, figStyle: { width: 'min(100% - 64px, 1680px)', margin: '0 auto', borderRadius: 16 } }
+    : { boxStyle: { height: 'clamp(320px, 46vw, 82vh)' } };
   const renderTopBar = () => {
     const y = '#/' + viewYear;
     const links = [['home', 'Home', goToYear, ''], ['map', 'Map', goToMap, '/map'], ['weather', 'Weather', () => goToWeather(null), '/weather'], ['trips', 'Trips', () => goToTrips(null), '/trips'], ['gallery', 'Gallery', () => goToGallery(null), '/gallery']]
@@ -5707,8 +5756,12 @@ function App() {
     // the usual packing list (what a new trip starts with): one item per line, saves on leaving the box
     const templateEditor = () => e('div', { style: col(8) },
       e('label', { style: col(6, { fontWeight: 600, fontSize: 15, color: 'var(--ink-2)' }) }, 'The usual packing list',
-        e('textarea', { autoFocus: true, className: 'd-field', defaultValue: template, 'aria-label': 'Usual packing list', onBlur: (ev) => { setPackingTemplate(ev.target.value); setTplEditing(false); }, onKeyDown: (ev) => { if (ev.key === 'Escape') setTplEditing(false); }, style: { ...D.field, maxWidth: 560, minHeight: 260, fontWeight: 400 } })),
+        e('textarea', { autoFocus: true, className: 'd-field', defaultValue: template, 'aria-label': 'Usual packing list', onBlur: (ev) => { if (ev.target.value !== template) setPackingTemplate(ev.target.value); }, onKeyDown: (ev) => { if (ev.key === 'Escape') setTplEditing(false); }, style: { ...D.field, maxWidth: 560, minHeight: 260, fontWeight: 400 } })),
       e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'What a new trip starts with · one item per line · saves when you click away'));
+    // …opened by a button on the first heading's row (the button closes it again)
+    const listBtn = editMode && e('button', { type: 'button', className: 'd-btn', onClick: () => setTplEditing(tplEditing ? false : 'page'), 'aria-expanded': tplEditing ? 'true' : 'false', title: 'The list every new trip starts with',
+      style: { ...D.btn, ...(isMobile ? { flex: '1 1 100%' } : { marginLeft: 'auto' }) } }, tplEditing ? 'Close the usual packing list' : 'Edit the usual packing list');
+    const listPanel = editMode && tplEditing && e('div', { style: { padding: isMobile ? '18px 16px' : '22px 24px', background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 16 } }, templateEditor());
 
     const tripCard = (t) => {
       const open = tripOpen === t.id;
@@ -5781,26 +5834,24 @@ function App() {
         e('div', { style: isMobile ? sx('display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px') : sx('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 12px') },
           tile('Locations', locs.length), tile('Shots taken', shotsTotal ? shotsDone + ' of ' + shotsTotal : '—'), tile('Packed', packing.length ? packed + ' of ' + packing.length : '—')),
         e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(400px, 100%), 1fr))', gap: isMobile ? 28 : '32px 44px', paddingTop: isMobile ? 24 : 28, borderTop: '1px solid var(--line-soft)' } }, left, right),
-        editMode && tplEditing === t.id && templateEditor(),
-        editMode && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 24px; border-top: 1px solid var(--line-soft)') },
-          linkBtn('Edit the usual packing list', () => setTplEditing(tplEditing === t.id ? false : t.id)),
+        editMode && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; padding-top: 24px; border-top: 1px solid var(--line-soft)') },
           e('button', { type: 'button', className: 'd-danger', onClick: () => deleteTrip(t.id), style: D.danger }, 'Delete trip')));
     };
 
-    const group = (title, list) => list.length > 0 && e('section', { key: title, 'aria-label': title, style: col(18) },
-      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px') }, e('h2', { style: H2 }, title), e('span', { style: sx('font-size: 16px; color: var(--ink-2)') }, list.length + (list.length === 1 ? ' trip' : ' trips'))),
+    const group = (title, list, lead) => list.length > 0 && e('section', { key: title, 'aria-label': title, style: col(18) },
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 14px') }, e('h2', { style: H2 }, title), e('span', { style: sx('font-size: 16px; color: var(--ink-2)') }, list.length + (list.length === 1 ? ' trip' : ' trips')), lead && listBtn),
+      lead && listPanel,
       list.map(tripCard));
-    const anyOpen = trips.some(t => t.id === tripOpen);
     return e('main', null, e('div', { style: { maxWidth: 1244, margin: '0 auto', padding: isMobile ? '18px 16px 48px' : '36px 32px 80px', display: 'flex', flexDirection: 'column', gap: isMobile ? 32 : 40 } },
       e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px') },
         e('div', { style: sx('flex: 1 1 520px; min-width: 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px') },
           e('h1', { style: { margin: 0, fontFamily: SLAB, fontWeight: 700, letterSpacing: '-0.01em', ...(isMobile ? { fontSize: 44, lineHeight: 1 } : { fontSize: 'clamp(44px, 6.6vw, 80px)', lineHeight: 0.95 }) } }, 'Trips'),
           e('p', { style: { margin: 0, fontSize: isMobile ? 18 : 21, lineHeight: 1.45, color: 'var(--ink-body)' } }, 'Planned outings — when, where, what to shoot and what to pack. Each trip also shows as a bar in the calendar and in the export.'),
           phoneAction({ height: 48 }))),
-      !trips.length && e('p', { style: quiet }, editMode ? 'No trips yet — “New trip” starts one with your usual packing list.' : 'No trips planned yet.'),
-      group('Coming up', ahead), group('Past trips', past),
-      // with no trip open, the usual packing list is still within reach
-      editMode && !anyOpen && (tplEditing === 'page' ? templateEditor() : e('div', null, linkBtn('Edit the usual packing list', () => setTplEditing('page'))))));
+      !trips.length && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px') }, e('p', { style: quiet }, editMode ? 'No trips yet — “New trip” starts one with your usual packing list.' : 'No trips planned yet.'), listBtn),
+      !trips.length && listPanel,
+      // "Coming up" holds a trip under way (marked Now), the ones ahead and any without dates; "Past trips" the finished ones, latest first
+      group('Coming up', ahead, true), group('Past trips', past, !ahead.length)));
   };
 
   // ─── Gallery page ─────────────────────────────────────────────────────────
@@ -5869,10 +5920,11 @@ function App() {
         e('span', { style: sx('display: flex; align-items: baseline; justify-content: space-between; gap: 10px') },
           e('span', { className: 'd-card-name', style: { fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 24 : 26, lineHeight: 1.15, minWidth: 0 } }, it.loc.name),
           e('span', { style: { ...subText, whiteSpace: 'nowrap' } }, it.month.name.slice(0, 3) + (it.year ? " '" + it.year : ''))),
+        it.text && e('span', { 'data-photo-caption': 'tile', style: sx('font-size: 16px; line-height: 1.45; color: var(--ink-body)') }, it.text),
         (it.tags.length > 0 || (it.loc.area || '').trim()) && e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, [(it.loc.area || '').trim(), it.tags.join(' · ')].filter(Boolean).join(' · '))));
 
     const regionChips = [chip(f.region === 'all', 'All', () => setF({ region: 'all' })), chip(f.region === 'uk', 'UK', () => setF({ region: 'uk' }), null, 'var(--green)'), chip(f.region === 'int', 'International', () => setF({ region: 'int' }), null, 'var(--terra)'),
-      chip(f.starred, 'Starred', () => setF({ starred: !f.starred }), 'Photos that front a printed month'), chip(f.visited, 'Visited', () => setF({ visited: !f.visited }), 'Locations ticked as done')];
+      chip(f.starred, 'Starred', () => setF({ starred: !f.starred }), 'Photos that front a printed month'), chip(f.visited, 'Visited', () => setF({ visited: !f.visited }), 'Locations you have visited')];
     const selects = [
       e(React.Fragment, { key: 'g' }, selCtl(galleryGroup, setGalleryGroup, GROUP_OPTS, 'Group by')),
       allYears.length > 0 && e(React.Fragment, { key: 'y' }, selCtl(f.year, (v) => setF({ year: v }), [['', 'All years']].concat(allYears.map(y => [y, "'" + y])), 'Year')),
@@ -5961,55 +6013,87 @@ function App() {
 
   // ─── Lightbox ─────────────────────────────────────────────────────────────
   // One photo full-size over the page, with ‹ › through the list it came
-  // from (arrow keys too), the caption and meta, a way to its brief, and for
-  // the owner the photo's tags and the print star.
+  // from (arrow keys too), the place and meta, the photo's own caption, a way
+  // to its brief, and for the owner the caption and tags fields and the print
+  // star. A phone held sideways gets a side-by-side form (isShort).
   const renderLightbox = () => {
     if (!lightbox) return null;
     const stale = lightbox.items[lightbox.idx];
     if (!stale) return null;
-    const it = galleryItems.find(x => x.key === stale.key) || stale; // live tags / star
+    const it = galleryItems.find(x => x.key === stale.key) || stale; // live tags / star / caption
     const close = () => setLightbox(null);
     const go = (d) => setLightbox(lb => lb && ({ ...lb, idx: (lb.idx + d + lb.items.length) % lb.items.length }));
     const many = lightbox.items.length > 1;
     const glass = (size, extra) => ({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 ' + size + 'px', width: size, height: size, padding: 0, borderRadius: '50%', background: 'var(--lb-glass-12)', border: '1px solid var(--lb-glass-40)', color: 'var(--on-photo)', fontFamily: 'inherit', cursor: 'pointer', ...(extra || {}) });
     const stop = (fn) => (ev) => { ev.stopPropagation(); fn(); };
+    const hold = (ev) => ev.stopPropagation();
     const meta = [it.month.name.slice(0, 3) + (it.year ? " '" + it.year : ''), [(it.loc.area || '').trim(), (it.loc.country || '').trim()].filter(Boolean).join(', '), (it.loc.tag || '').trim()].filter(Boolean).join(' · ');
+    // The pieces both layouts are made of.
+    const counter = e('span', { style: sx('font-size: 16px; color: var(--lb-ink-2)') }, many ? (lightbox.idx + 1) + ' of ' + lightbox.items.length : '');
+    const iBtn = (extra) => e('button', { type: 'button', className: 'lb-btn', onClick: stop(() => setLbBare(b => !b)), 'aria-label': lbBare ? 'Show the details' : 'Hide the details', 'aria-pressed': lbBare ? 'true' : 'false', title: (lbBare ? 'Show the details' : 'Hide the details — just the photo') + ' (i)', style: glass(44, { fontWeight: 600, fontSize: 17, opacity: lbBare ? .7 : 1, ...(extra || {}) }) }, 'i');
+    const xBtn = (extra) => e('button', { type: 'button', className: 'lb-btn', onClick: stop(close), 'aria-label': 'Close the photo viewer', title: 'Close', style: glass(44, extra) }, e(DIcon, { name: 'close', size: 20 }));
+    const fieldLook = { height: 44, boxSizing: 'border-box', padding: '0 12px', background: 'var(--lb-field)', border: '1px solid var(--lb-glass-40)', borderRadius: 10, color: 'var(--on-photo)', fontFamily: 'inherit', fontSize: 16 };
+    const labelLook = sx('display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 15px; color: var(--lb-ink-2)');
+    const enterBlurs = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); } ev.stopPropagation(); };
+    // the photo's own caption: a line of the owner's, typed here and shown under the photo on the Gallery page
+    const capText = !editMode && it.text ? e('span', { 'data-photo-caption': 'viewer', style: sx('margin-top: 4px; font-size: 17px; line-height: 1.45') }, it.text) : null;
+    const capInput = (extra) => editMode && e('label', { style: { ...labelLook, ...(extra || {}) } }, 'Caption',
+      e('input', { key: 'cap-' + it.key, type: 'text', className: 'lb-field', defaultValue: it.text || '', maxLength: 240, placeholder: 'A line about this photo — shown under it in the Gallery', 'aria-label': 'Photo caption',
+        onBlur: (ev) => { const next = ev.target.value.trim(); if (next !== (it.text || '')) setPhotoCaption(it.loc.id, it.slot, next); }, onKeyDown: enterBlurs, style: { ...fieldLook, width: '100%' } }));
+    const tagChips = !editMode && it.tags.length > 0 ? e('span', { style: sx('display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px') }, it.tags.map(t => e('span', { key: t, style: sx('padding: 2px 10px; border-radius: 999px; background: var(--lb-glass-12); font-size: 15px') }, t))) : null;
+    const tagsInput = (width) => editMode && e('label', { style: labelLook }, 'Tags',
+      e('input', { key: 'tags-' + it.key, type: 'text', className: 'lb-field', defaultValue: it.tags.join(', '), placeholder: 'portfolio, dawn…', 'aria-label': 'Photo tags, comma-separated',
+        onBlur: (ev) => { const next = parseTags(ev.target.value); if (next.join('|') !== it.tags.join('|')) setPhotoTags(it.loc.id, it.slot, next); }, onKeyDown: enterBlurs, style: { ...fieldLook, width } }));
+    const starBtn = editMode && e('button', { type: 'button', className: 'lb-btn', onClick: () => togglePrintStarIn(it.i, it.loc.id), 'aria-pressed': it.starred ? 'true' : 'false', title: it.starred ? 'Starred — this location fronts the printed month (click to unstar)' : 'Star — use this location on the printed month',
+      style: { display: 'inline-flex', alignItems: 'center', gap: 8, height: 44, padding: '0 16px', borderRadius: 10, fontFamily: 'inherit', fontWeight: 600, fontSize: 16, cursor: 'pointer', ...(it.starred ? { background: 'var(--gold)', border: '1px solid var(--gold)', color: 'var(--lb-ground)' } : { background: 'var(--lb-glass-12)', border: '1px solid var(--lb-glass-40)', color: 'var(--on-photo)' }) } },
+      e(DIcon, { name: 'star', size: 18, style: it.starred ? { fill: 'currentColor' } : null }), it.starred ? 'Starred' : 'Star');
+    const briefLink = e('a', { href: '#/' + viewYear + '/' + it.month.key + '/' + it.loc.id, onClick: (ev) => { ev.preventDefault(); close(); goToMonth(it.i, it.loc.id); }, style: { display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600, fontSize: 16, color: 'var(--lb-link)' } }, 'Open brief →');
+    const photo = (imgProps) => e('div', { onClick: hold, style: { position: 'relative', display: 'flex', maxWidth: '100%', maxHeight: '100%' } },
+      e('img', { key: it.base, src: Storage.photoUrl(it.base, imgEpoch || undefined), alt: it.caption, ...imgProps }),
+      e(PhotoCredit, { pill: true, style: { right: 12, bottom: 10 } }));
+    const shell = { position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, zIndex: 60, boxSizing: 'border-box', display: 'flex', background: 'var(--lb-ground)', color: 'var(--on-photo)' };
+
+    // A phone held sideways (a short, wide window): the photo takes the whole
+    // height and the details sit in a column beside it, so nothing is pushed
+    // off the top; "bare" gives the photo the width as well.
+    if (isShort) {
+      const veil = { background: 'var(--lb-veil)' };
+      const edge = (dir, label) => many && e('button', { type: 'button', className: 'lb-btn', onClick: stop(() => go(dir)), 'aria-label': label, title: label, style: glass(44, { position: 'absolute', top: '50%', marginTop: -22, zIndex: 2, ...(dir < 0 ? { left: 0 } : { right: 0 }), ...veil }) }, e(DIcon, { name: dir < 0 ? 'chevL' : 'chevR', size: 22 }));
+      return e('div', { onClick: close, role: 'dialog', 'aria-modal': 'true', 'aria-label': it.caption, style: { ...shell, gap: 12, padding: '8px max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px))', fontSize: 16, lineHeight: 1.45 } },
+        e('div', { style: { position: 'relative', flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+          photo({ className: 'lb-short-img', style: { display: 'block', maxWidth: '100%', objectFit: 'contain', borderRadius: 8 } }),
+          edge(-1, 'Previous photo'), edge(1, 'Next photo'),
+          lbBare && e('div', { style: sx('position: absolute; right: 0; top: 0; z-index: 3; display: flex; gap: 8px') }, iBtn(veil), xBtn(veil))),
+        !lbBare && e('div', { onClick: hold, style: sx('flex: 0 0 250px; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 4px') },
+          e('div', { style: sx('display: flex; align-items: center; justify-content: space-between; gap: 8px') }, counter, e('div', { style: sx('display: flex; gap: 8px') }, iBtn(), xBtn())),
+          e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: 22, lineHeight: 1.15 } }, it.loc.name),
+          e('span', { style: sx('font-size: 15px; color: var(--lb-ink-2)') }, meta),
+          capText, tagChips, capInput(), tagsInput('100%'),
+          e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px') }, starBtn, briefLink)));
+    }
+
     // The image box keeps a fixed height, so the caption never jumps while the
     // next photo is still loading; "bare" (the i button) drops the caption and
     // gives the photo the height instead.
     const boxH = lbBare ? (isMobile ? '78vh' : '82vh') : (isMobile ? '52vh' : '64vh');
     const arrow = (dir, label) => many && e('button', { type: 'button', className: 'lb-btn', onClick: stop(() => go(dir)), 'aria-label': label, title: label, style: isMobile ? glass(44, { position: 'absolute', top: '50%', marginTop: -22, zIndex: 2, ...(dir < 0 ? { left: 6 } : { right: 6 }), background: 'var(--lb-veil)' }) : glass(48) }, e(DIcon, { name: dir < 0 ? 'chevL' : 'chevR', size: 22 }));
-    return e('div', { onClick: close, role: 'dialog', 'aria-modal': 'true', 'aria-label': it.caption, style: { position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, zIndex: 60, overflowY: 'auto', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 16, padding: isMobile ? '12px 12px 24px' : '20px 24px 36px', background: 'var(--lb-ground)', color: 'var(--on-photo)', fontSize: 17, lineHeight: 1.5 } },
+    return e('div', { onClick: close, role: 'dialog', 'aria-modal': 'true', 'aria-label': it.caption, style: { ...shell, overflowY: 'auto', flexDirection: 'column', gap: 16, padding: isMobile ? '12px 12px 24px' : '20px 24px 36px', fontSize: 17, lineHeight: 1.5 } },
       // counter, then the details switch and close
-      e('div', { style: sx('display: flex; align-items: center; justify-content: space-between; gap: 12px') },
-        e('span', { style: sx('font-size: 16px; color: var(--lb-ink-2)') }, many ? (lightbox.idx + 1) + ' of ' + lightbox.items.length : ''),
-        e('div', { style: sx('display: flex; gap: 8px') },
-          e('button', { type: 'button', className: 'lb-btn', onClick: stop(() => setLbBare(b => !b)), 'aria-label': lbBare ? 'Show the details' : 'Hide the details', 'aria-pressed': lbBare ? 'true' : 'false', title: (lbBare ? 'Show the details' : 'Hide the details — just the photo') + ' (i)', style: glass(44, { fontWeight: 600, fontSize: 17, opacity: lbBare ? .7 : 1 }) }, 'i'),
-          e('button', { type: 'button', className: 'lb-btn', onClick: close, 'aria-label': 'Close the photo viewer', title: 'Close', style: glass(44) }, e(DIcon, { name: 'close', size: 20 })))),
+      e('div', { style: sx('display: flex; align-items: center; justify-content: space-between; gap: 12px') }, counter, e('div', { style: sx('display: flex; gap: 8px') }, iBtn(), xBtn())),
       // the photo between its arrows
       e('div', { style: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 } },
         arrow(-1, 'Previous photo'),
-        e('div', { onClick: (ev) => ev.stopPropagation(), style: { flex: '0 1 calc(' + boxH + ' * 1.5)', minWidth: 0, height: boxH, display: 'flex', alignItems: 'center', justifyContent: 'center' } }, // as wide as a 3:2 photo at this height, so the arrows sit beside it and never move
-          e('div', { style: { position: 'relative', display: 'flex', maxWidth: '100%', maxHeight: '100%' } },
-            e('img', { key: it.base, src: Storage.photoUrl(it.base, imgEpoch || undefined), alt: it.caption, style: { display: 'block', maxWidth: '100%', maxHeight: boxH, objectFit: 'contain', borderRadius: 10 } }),
-            e(PhotoCredit, { pill: true, style: { right: 12, bottom: 10 } }))),
+        e('div', { onClick: hold, style: { flex: '0 1 calc(' + boxH + ' * 1.5)', minWidth: 0, height: boxH, display: 'flex', alignItems: 'center', justifyContent: 'center' } }, // as wide as a 3:2 photo at this height, so the arrows sit beside it and never move
+          photo({ style: { display: 'block', maxWidth: '100%', maxHeight: boxH, objectFit: 'contain', borderRadius: 10 } })),
         arrow(1, 'Next photo')),
-      // caption: the place, its details, then tags, the star and the way to its brief
-      !lbBare && e('div', { onClick: (ev) => ev.stopPropagation(), style: sx('width: 100%; max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px') },
+      // the place, its details and the photo's caption; then tags, the star and the way to its brief
+      !lbBare && e('div', { onClick: hold, style: sx('width: 100%; max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px') },
         e('div', { style: sx('display: flex; flex-direction: column; gap: 2px; min-width: 0') },
           e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 26 : 30, lineHeight: 1.15 } }, it.loc.name),
           e('span', { style: sx('font-size: 16px; color: var(--lb-ink-2)') }, meta),
-          !editMode && it.tags.length > 0 && e('span', { style: sx('display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px') }, it.tags.map(t => e('span', { key: t, style: sx('padding: 2px 10px; border-radius: 999px; background: var(--lb-glass-12); font-size: 15px') }, t)))),
-        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px') },
-          editMode && e('label', { style: sx('display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--lb-ink-2)') }, 'Tags',
-            e('input', { key: 'tags-' + it.key, type: 'text', className: 'lb-field', defaultValue: it.tags.join(', '), placeholder: 'portfolio, dawn…', 'aria-label': 'Photo tags, comma-separated',
-              onBlur: (ev) => { const next = parseTags(ev.target.value); if (next.join('|') !== it.tags.join('|')) setPhotoTags(it.loc.id, it.slot, next); },
-              onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); } ev.stopPropagation(); },
-              style: { width: isMobile ? 160 : 200, height: 44, boxSizing: 'border-box', padding: '0 12px', background: 'var(--lb-field)', border: '1px solid var(--lb-glass-40)', borderRadius: 10, color: 'var(--on-photo)', fontFamily: 'inherit', fontSize: 16 } })),
-          editMode && e('button', { type: 'button', className: 'lb-btn', onClick: () => togglePrintStarIn(it.i, it.loc.id), 'aria-pressed': it.starred ? 'true' : 'false', title: it.starred ? 'Starred — this location fronts the printed month (click to unstar)' : 'Star — use this location on the printed month',
-            style: { display: 'inline-flex', alignItems: 'center', gap: 8, height: 44, padding: '0 16px', borderRadius: 10, fontFamily: 'inherit', fontWeight: 600, fontSize: 16, cursor: 'pointer', ...(it.starred ? { background: 'var(--gold)', border: '1px solid var(--gold)', color: 'var(--lb-ground)' } : { background: 'var(--lb-glass-12)', border: '1px solid var(--lb-glass-40)', color: 'var(--on-photo)' }) } },
-            e(DIcon, { name: 'star', size: 18, style: it.starred ? { fill: 'currentColor' } : null }), it.starred ? 'Starred' : 'Star'),
-          e('a', { href: '#/' + viewYear + '/' + it.month.key + '/' + it.loc.id, onClick: (ev) => { ev.preventDefault(); close(); goToMonth(it.i, it.loc.id); }, style: { display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600, fontSize: 16, color: 'var(--lb-link)' } }, 'Open brief →'))));
+          capText, tagChips),
+        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px') }, tagsInput(isMobile ? 160 : 200), starBtn, briefLink),
+        capInput({ flex: '1 1 100%' })));
   };
 
   // ─── Trip pop-up ──────────────────────────────────────────────────────────
@@ -6167,7 +6251,7 @@ function App() {
 
     return e('main', null,
       e(PhotoSlideshow, { d: true, photoIndex, epoch: imgEpoch, intervalMs: 15000, onCurrent: setHeroCap,
-        boxStyle: isMobile ? { aspectRatio: '3 / 2' } : { height: 'clamp(320px, 46vw, 600px)' },
+        ...heroLook,
         emptyText: 'Photos you add to the locations will show here',
         // every photo of every location, extras included, each with its own year
         items: data.flatMap(m => m.locations.flatMap(loc => locPhotos(loc).map(p => ({ key: m.key + '-' + loc.id + ':' + p.slot, base: slotBase(m.key, loc.id, p.slot), caption: photoCaption(loc, m.name, p.year) })))) }),
@@ -6566,7 +6650,7 @@ function App() {
 
     return e('main', null,
       e(PhotoSlideshow, { d: true, photoIndex, epoch: imgEpoch, intervalMs: 15000, onCurrent: setHeroCap,
-        boxStyle: isMobile ? { aspectRatio: '3 / 2' } : { height: 'clamp(320px, 46vw, 600px)' },
+        ...heroLook,
         emptyText: 'Photos you add to this month’s locations will show here',
         // this month's photos, extras included, each with its own year
         items: month.locations.flatMap(loc => locPhotos(loc).map(p => ({ key: loc.id + ':' + p.slot, base: slotBase(month.key, loc.id, p.slot), caption: photoCaption(loc, month.name, p.year) }))) }),
@@ -6675,6 +6759,24 @@ function App() {
     // Months: a full-bleed photo page, then the grid page.
     const dayNames = weekStart === 'Sunday' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     // a bar: the type's pale wash with its ink; the key's swatch: its strong colour (a new moon is an outline)
+    // A named day ("Remembrance Sunday") beside the date is never cut off: it
+    // is set as large as fits the room left by the number and any window
+    // pictures (12.5px at most), and breaks onto two lines rather than drop
+    // under 10px. Widths are in the sheet's own pixels: a day cell is 125 wide
+    // inside its padding, and a digit of the date 9.5 (the figures are
+    // tabular, which a canvas measure would not know).
+    const NAME_FONT = "400 12.5px 'Figtree', system-ui, sans-serif", BAR_FONT = "500 13px 'Figtree', system-ui, sans-serif";
+    const fitName = (text, room) => {
+      const one = Math.min(12.5, Math.floor(125 * room / textWidth(text, NAME_FONT)) / 10);
+      if (one >= 10) return { size: one, two: false };
+      const ww = text.split(' ').map(x => textWidth(x, NAME_FONT)), sp = textWidth('a b', NAME_FONT) - textWidth('ab', NAME_FONT);
+      for (let size = 11; size >= 8; size -= 0.5) {
+        const k = size / 12.5; let lines = 1, cur = 0, ok = true;
+        for (const w0 of ww) { const w = w0 * k; if (w > room) { ok = false; break; } if (cur && cur + sp * k + w > room) { lines++; cur = w; } else cur = cur ? cur + sp * k + w : w; }
+        if (ok && lines <= 2) return { size, two: lines === 2 };
+      }
+      return { size: Math.max(7.5, one), two: false };
+    };
     const barLook = (ev) => { const st = styleOf(ev); return ev.kind === 'photoop' ? { background: 'var(--ink)', color: 'var(--paper)' } : { background: ev.kind === 'fullmoon' ? 'var(--fullmoon-wash)' : st.bg, color: ev.kind === 'nature' ? 'var(--green-wash-ink)' : st.fg }; };
     const swatchLook = (ev) => ev.kind === 'newmoon' ? { border: '2px solid var(--moon-ink)' } : { background: ev.kind === 'photoop' ? 'var(--ink)' : styleOf(ev).accent };
     data.forEach((m2, i) => {
@@ -6720,20 +6822,29 @@ function App() {
             return e('div', { key: wi, style: { flex: '1 1 0', minHeight: 0, position: 'relative', display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: wi < wks.length - 1 ? '1px solid var(--grid-line)' : 'none', overflow: 'hidden' } },
               wk.days.map((d, di) => {
                 const names = d.icons.filter(ic => ic.text), pics = d.icons.filter(ic => ic.icon);
+                const room = 125 - String(d.day).length * 9.5 - 6 - (pics.length ? pics.length * 13 + (pics.length - 1) * 3 + 6 : 0) - 1.5;
+                const fits = names.map(ic => fitName(ic.text, room)), tall = fits.some(f => f.two);
                 return e('div', { key: di, style: { minWidth: 0, padding: '6px 8px 0', borderRight: di < 6 ? '1px solid var(--grid-line)' : 'none' } },
                   d.inMonth && e('div', { style: sx('display: flex; align-items: baseline; gap: 6px; min-width: 0') },
                     e('span', { style: sx('flex: none; font-weight: 600; font-size: 15px; line-height: 1.3; color: var(--ink)') }, d.day),
                     // a second name on the same date sits under the first
-                    e('span', { style: sx('flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; line-height: 1.3; color: var(--ink-body)') },
-                      names.map(ic => e('span', { key: ic.ev.id, style: sx('white-space: nowrap; overflow: hidden; text-overflow: ellipsis') }, ic.text))),
+                    // (two lines sit centred on the number, clear of the bars below)
+                    e('span', { style: { flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', color: 'var(--ink-body)', ...(tall ? { alignSelf: 'center', margin: '-3px 0', lineHeight: 1.1 } : { lineHeight: 1.3 }) } },
+                      names.map((ic, ni) => e('span', { key: ic.ev.id, 'data-day-name': ic.text, style: { fontSize: fits[ni].size, overflow: 'hidden', whiteSpace: fits[ni].two ? 'normal' : 'nowrap' } }, ic.text))),
                     pics.length > 0 && e('span', { style: sx('flex: none; align-self: center; display: inline-flex; align-items: center; gap: 3px') },
                       pics.map(ic => e(EventIcon, { key: ic.ev.id, name: ic.icon, size: 13, color: ic.accent })))));
               }),
               // event bars: rounded where the event starts and ends, square where it runs on into another week
               wk.items.map(it => {
                 const fromBefore = (it.ev.start != null ? it.ev.start : it.ev.day) < Number(firstDay), l = fromBefore ? 0 : 6, r = it.contRight ? 0 : 6;
+                // the name is set a little smaller rather than cut short ("Strawberry Moon" in one day's width), down to 10px
+                const base = barH < 16 ? 10.5 : barH < 20 ? 11.5 : 13, gsz = barH < 16 ? 9 : barH < 20 ? 10 : 12;
+                const avail = it.span * 142.5 - l - r - 16 - (it.hasGlyph ? gsz + 5 : 0) - 1.5, natural = textWidth(it.label || '', BAR_FONT) * base / 13;
+                const fs = natural > avail ? Math.max(Math.min(base, 10), Math.floor(base * avail / natural * 10) / 10) : base;
                 return e('div', { key: it.id, 'data-print-bar': it.ev.kind, style: { position: 'absolute', left: it.left, width: it.width, top: it.top, height: barH, paddingLeft: l, paddingRight: r } },
-                  e('span', { style: { display: 'block', height: '100%', padding: '0 8px', borderRadius: l + 'px ' + r + 'px ' + r + 'px ' + l + 'px', fontWeight: 500, fontSize: barH < 16 ? 10.5 : barH < 20 ? 11.5 : 13, lineHeight: barH + 'px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...barLook(it.ev) } }, it.label));
+                  e('span', { style: { display: 'flex', alignItems: 'center', gap: 5, height: '100%', padding: '0 8px', borderRadius: l + 'px ' + r + 'px ' + r + 'px ' + l + 'px', fontWeight: 500, fontSize: fs, lineHeight: barH + 'px', whiteSpace: 'nowrap', overflow: 'hidden', ...barLook(it.ev) } },
+                    it.hasGlyph && e(GlyphIcon, { glyph: it.glyph, size: gsz }),
+                    e('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' } }, it.label)));
               }));
           })),
         // footer: key to the event types on this page | Instagram handle
@@ -6742,7 +6853,7 @@ function App() {
             legendKinds.map(k => {
               const sample = printable.find(ev => ev.kind === k) || { kind: k };
               return e('span', { key: k, style: sx('display: inline-flex; align-items: center; gap: 6px') },
-                e('span', { style: { width: 18, height: 10, boxSizing: 'border-box', borderRadius: 5, ...swatchLook(sample) } }), kindLabel(k));
+                e('span', { style: { width: 18, height: 10, boxSizing: 'border-box', borderRadius: 5, ...swatchLook(sample) } }), e(GlyphIcon, { glyph: styleOf(sample).glyph, size: 12 }), kindLabel(k));
             }),
             iconEvents.map(ev => {
               const s = ev.start != null ? ev.start : ev.day, en = ev.end != null ? ev.end : ev.day;
@@ -6771,13 +6882,18 @@ function App() {
                              : sx('position: relative; min-width: 0; aspect-ratio: 3 / 2; overflow: hidden; background: var(--slot)') },
                 e(PrintMonthPhoto, { monthKey: m2.key, monthName: m2.name, locs: m2.locations, preferId: m2.printLoc, epoch: imgEpoch, photoIndex, variant: 'tile' }),
                 large
-                  ? e('span', { className: 'no-print sheet-fixed', style: { ...sx('position: absolute; left: 10px; top: 10px; z-index: 4; padding: 4px 12px; border-radius: 999px; background: var(--on-photo); color: var(--on-photo-ink); font-weight: 600; font-size: 14px; line-height: 1.55; white-space: nowrap'), transformOrigin: '0 0' } }, 'Large photo · ' + m2.name)
-                  : e('button', { type: 'button', className: 'no-print sheet-fixed d-round', onClick: () => setLarge(pi, m2.key), title: 'Make ' + m2.name + ' the large photo on this page', 'aria-label': 'Make ' + m2.name + ' the large photo',
-                      style: { ...D.round, position: 'absolute', right: 8, top: 8, zIndex: 4, transformOrigin: '100% 0' } }, e(DIcon, { name: 'expand', size: 20 })));
+                  ? e('span', { className: 'no-print ' + (isMobile ? 'sheet-tag' : 'sheet-fixed'), style: { ...sx('position: absolute; left: 10px; top: 10px; z-index: 4; padding: 4px 12px; border-radius: 999px; background: var(--on-photo); color: var(--on-photo-ink); font-weight: 600; font-size: 14px; line-height: 1.55; white-space: nowrap'), transformOrigin: '0 0' } }, 'Large photo · ' + m2.name)
+                  : isMobile
+                    // a phone: a 44px button would smother the little photo, so the photo itself is the button and carries a small badge
+                    ? e('button', { type: 'button', className: 'no-print', onClick: () => setLarge(pi, m2.key), title: 'Make ' + m2.name + ' the large photo on this page', 'aria-label': 'Make ' + m2.name + ' the large photo',
+                        style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', zIndex: 4, padding: 0, border: 0, background: 'transparent', cursor: 'pointer' } },
+                        e('span', { className: 'sheet-badge', style: { position: 'absolute', right: 8, top: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: '50%', background: 'var(--on-photo)', color: 'var(--on-photo-ink)', transformOrigin: '100% 0' } }, e(DIcon, { name: 'expand', size: 20 })))
+                    : e('button', { type: 'button', className: 'no-print sheet-fixed d-round', onClick: () => setLarge(pi, m2.key), title: 'Make ' + m2.name + ' the large photo on this page', 'aria-label': 'Make ' + m2.name + ' the large photo',
+                        style: { ...D.round, position: 'absolute', right: 8, top: 8, zIndex: 4, transformOrigin: '100% 0' } }, e(DIcon, { name: 'expand', size: 20 })));
             }))));
     });
     sheets.push(e('p', { key: 'index-note', className: 'no-print', style: sx('margin: 0; font-size: 16px; color: var(--ink-2)') },
-      'The round button on a small photo moves it into the large slot, for ' + viewYear + ' only. The buttons and the “Large photo” tag show on screen only; they do not print.'));
+      (isMobile ? 'Tap a small photo to move it' : 'The round button on a small photo moves it') + ' into the large slot, for ' + viewYear + ' only. The ' + (isMobile ? 'badges' : 'buttons') + ' and the “Large photo” tag show on screen only; they do not print.'));
 
     // Back cover: a photo of its own, with the same band as the front.
     sheet('back', 'Back cover', e('div', { className: 'print-sheet last', style: { background: 'var(--paper-bright)' } },
