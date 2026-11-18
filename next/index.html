@@ -361,7 +361,8 @@
     .d-x:hover { background: var(--tile) !important; color: var(--danger) !important; }
     .d-card:hover .d-card-name { color: var(--green); }
     .d-yearsel:hover, .d-yearsel:focus { text-decoration: underline dotted; text-underline-offset: 6px; }
-    .d-chipbtn:hover { border-color: var(--ink) !important; }
+    .d-chipbtn:hover, .d-upcard:hover { border-color: var(--ink) !important; }
+    .d-namelink:hover, .d-quietlink:hover { color: var(--green) !important; }
     .d-slot.drag-over { background: var(--green-wash) !important; border-color: var(--green) !important; }
     .d-root textarea.d-field { height: auto; padding: 10px 14px; line-height: 1.5; resize: vertical; width: 100%; }
     .d-root .leaflet-container { font-family: inherit; }
@@ -4275,6 +4276,7 @@ function App() {
   const [searchShown, setSearchShown] = useState(false);   // phones: the search row under the top bar
   const [heroCap, setHeroCap] = useState('');               // the caption under the month page's photo (set by its slideshow)
   const [locFilter, setLocFilter] = useState('all');        // month page: the All / UK / International chips
+  const [homeFilter, setHomeFilter] = useState('all');      // Home: the same chips over the month cards
   const [tideAbout, setTideAbout] = useState(null);         // the "About this data" pop-up under the tide chart
   useEffect(() => { if (!tideAbout) return; const h = (ev) => { if (ev.key === 'Escape') setTideAbout(null); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [tideAbout]);
   // The month strip measures its labels; draw again once the typefaces are in.
@@ -6044,117 +6046,119 @@ function App() {
   );
 
   // ─── Year page ────────────────────────────────────────────────────────────
-  const renderYearPage = () => e('div', null,
-    // Header
-    e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
-      // The title column may shrink so the nav fits beside it; the nav column
-      // grows so that, when it does wrap onto its own line, it spans the width
-      // and its rows stay right-aligned instead of huddling on the left.
-      e('div', { style: isMobile ? {} : { flex:'1 1 460px', minWidth:0 } },
-        // The brand lockup, rebuilt in HTML (an SVG lockup loaded via <img>
-        // can't fetch its font): mark beside PHOTOPLAN in Figtree bold,
-        // wide-tracked caps — proportions and colour per the lockup SVGs.
-        null,
-        // Keyed on the text so a cloud load (which lands after first render)
-        // refreshes the displayed copy — Editable only reads value on mount.
-        // Wide cap ≈ the logo + title + stats row above, so the intro runs the
-        // full width of the header block before wrapping.
-        // NB per-side margins only — a `margin` shorthand would override
-        // marginTop and glue the intro to the title (it did, once).
-        e(Editable, { key:'year-intro-' + yearIntro, tag:'div', value: yearIntro, onCommit:(t)=>editYearIntro(t), title:'Click to edit', style:{ marginTop:isMobile?18:26, marginLeft:-4, marginRight:-4, fontSize:isMobile?15:17, color:'var(--ink-3)', maxWidth:isMobile?'100%':720, lineHeight:1.5, cursor:'text', outline:'none', borderRadius:3, padding:'1px 4px' } }),
-        e('div', { style:{ marginTop:isMobile?16:22 } }, homeTools())
-      ),
-      // On phones this column wraps below the title, so pin it to the left edge
-      // (right-aligned buttons floating mid-screen look broken when stacked).
-      e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{ flex:'1 1 auto' }) } },
-        navRow(false),
-        yearRow(),
-        regionLegend(),
-        e('div', { style:{ display:'flex', alignItems:'center', gap:18, flexWrap:'wrap' } }, editToggle(), editMode && backupsLink())
-      )
-    ),
-    // Bottom header row, just above the divider: the calendar label + IG link
-    // on the left, the stats on the right (marginLeft auto keeps the stats
-    // right-aligned even when the row wraps on a phone).
-    e('div', { style:{ marginTop:isMobile?14:18, display:'flex', alignItems:'baseline', gap:'6px 16px', flexWrap:'wrap' } },
-      e('div', { style:{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' } },
-        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.22em', textTransform:'uppercase', color:'var(--muted)' } }, 'Photo Location Calendar'),
-        e('a', { href:'https://instagram.com/' + IG_HANDLE, target:'_blank', rel:'noopener noreferrer', className:'ig-link', title:'Follow @' + IG_HANDLE + ' on Instagram', style:{ display:'inline-flex', alignItems:'center', gap:6, textDecoration:'none', color:'var(--muted)', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em' } },
-          e('svg', { width:16, height:16, viewBox:'0 0 24 24', fill:'none', stroke:'url(#ig-grad)', strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round', 'aria-hidden':'true', style:{ display:'block' } },
-            e('defs', null,
-              e('linearGradient', { id:'ig-grad', x1:'0', y1:'1', x2:'1', y2:'0' },
-                e('stop', { offset:'0%', stopColor:'#FEDA75' }),
-                e('stop', { offset:'25%', stopColor:'#FA7E1E' }),
-                e('stop', { offset:'50%', stopColor:'#D62976' }),
-                e('stop', { offset:'75%', stopColor:'#962FBF' }),
-                e('stop', { offset:'100%', stopColor:'#4F5BD5' })
-              )
-            ),
-            e('rect', { x:2, y:2, width:20, height:20, rx:5, ry:5 }),
-            e('path', { d:'M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z' }),
-            e('line', { x1:17.5, y1:6.5, x2:17.51, y2:6.5 })
-          ),
-          e('span', null, '@' + IG_HANDLE)
-        )
-      ),
-      e('div', { style:{ marginLeft:'auto', textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.1em', color:'var(--muted)' } },
-        e('span', null, totalLocs + ' locations'),
-        e('span', { style:{ color:'var(--faint)' } }, ' · ' + ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international')
-      )
-    ),
-    e('div', { style:{ height:1, background:'var(--line)', margin:isMobile?'8px 0 18px':'10px 0 24px' } }),
-    // Hero
-    e('div', { style: matted ? { background:'var(--paper-bright)', border:'1px solid var(--ink)', padding:9, boxShadow:'7px 7px 0 var(--shadow-10)' } : { border:'1px solid var(--line)' } },
-      e(PhotoSlideshow, { photoIndex,
-        epoch: imgEpoch,
-        intervalMs: 15000,
-        boxStyle: { aspectRatio: '3 / 2' },
+  // ─── Home page (option D) ──────────────────────────────────────────────────
+  // As drawn on "D · Home": the full-width photo with its caption underneath;
+  // "The year ahead" with the intro, the counts and the Instagram link; the
+  // Coming-up cards; and a card per month (its photo, the light, the tagline
+  // and its locations) with the All / UK / International chips.
+  // The photo that stands for a month: the starred location's if it has one,
+  // else the first location with a photo (the rule the printed calendar uses).
+  const monthPick = (m2) => {
+    if (!photoIndex) return null;
+    const ordered = m2.printLoc ? m2.locations.filter(l => l.id === m2.printLoc).concat(m2.locations.filter(l => l.id !== m2.printLoc)) : m2.locations;
+    return ordered.find(x => photoIndex.has(mainBase(m2.key, x) + '-thumb')) || null;
+  };
+  // A select dressed as one of the buttons, with a chevron.
+  const dSelect = (props, options, wrap) => e('span', { style: { position: 'relative', display: 'inline-flex', maxWidth: '100%', ...(wrap || {}) } },
+    e('select', { className: 'd-btn', ...props, style: { ...D.btn, display: 'block', appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', padding: '0 38px 0 16px', maxWidth: '100%', textOverflow: 'ellipsis' } }, options),
+    e(DIcon, { name: 'chevD', size: 16, style: { position: 'absolute', right: 14, top: '50%', marginTop: -8, pointerEvents: 'none' } }));
+  const renderYearPage = () => {
+    const H2 = { margin: 0, fontFamily: SLAB, fontWeight: 700, fontSize: 30, lineHeight: 1.15 };
+    const sub = { fontSize: 16, color: 'var(--ink-2)' };
+    const focusMap = (data[0] && data[0].photoFocus) || {};
+    const monthHref = (y, i, locId) => '#/' + y + '/' + data[i].key + (locId ? '/' + locId : '');
+    const openMonth = (i, locId) => (ev) => { ev.preventDefault(); goToMonth(i, locId || null); };
+
+    const header = e('div', { style: sx('display: flex; flex-direction: column; gap: 26px') },
+      e('div', { style: sx('display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 20px; min-height: 23px; font-size: 15px; color: var(--ink-2)') },
+        e('span', null, heroCap), e('span', null, 'Twelve frames, twelve months · UK and international')),
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px') },
+        e('div', { style: sx('flex: 1 1 520px; min-width: 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px') },
+          e('h1', { style: { margin: 0, fontFamily: SLAB, fontWeight: 700, fontSize: 'clamp(44px, 6.6vw, 80px)', lineHeight: 0.95, letterSpacing: '-0.01em' } }, 'The year ahead ',
+            e('span', { style: { fontFamily: "'Figtree', system-ui, sans-serif", fontWeight: 400, fontSize: '0.5em', letterSpacing: 0, color: 'var(--ink-2)' } }, viewYear)),
+          // Keyed on the text so a cloud load (which lands after first render) refreshes it.
+          e(Editable, { key: 'year-intro-' + yearIntro, tag: 'p', className: 'd-edit', ph: 'Introduce the year…', value: yearIntro, onCommit: (t) => editYearIntro(t), title: 'Click to edit', style: { margin: 0, fontSize: isMobile ? 18 : 21, lineHeight: 1.45, color: 'var(--ink-body)' } }),
+          e('span', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; font-size: 16px; color: var(--ink-2)') },
+            e('span', null, totalLocs + ' locations · ' + ukLocs + ' UK · ' + (totalLocs - ukLocs) + ' international' + (isMobile ? '' : ' ·')),
+            e('a', { href: 'https://instagram.com/' + IG_HANDLE, target: '_blank', rel: 'noopener noreferrer', className: 'd-quietlink', title: 'Follow @' + IG_HANDLE + ' on Instagram', style: { display: 'inline-flex', alignItems: 'center', gap: 5, ...(isMobile ? { minHeight: 44, margin: '-9px 0' } : {}), color: 'var(--ink-2)', textDecoration: 'none' } }, igGlyph(16, 'currentColor'), '@' + IG_HANDLE))),
+        e('div', { style: isMobile ? sx('flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px') : sx('display: flex; flex-direction: column; align-items: flex-end; gap: 12px') },
+          dSelect({ value: viewYear, onChange: (ev) => setViewYear(parseInt(ev.target.value, 10)), 'aria-label': 'Calendar year', title: 'Choose the year to show' }, YEARS.map(y => e('option', { key: y, value: y }, 'Year ' + y))),
+          isMobile && actionBtn({ flex: '1 1 140px' }))));
+
+    // Coming up — the next few dates from today; a card opens its month (the
+    // location's brief for a photo op, the pop-up for a trip).
+    const fmtDay = (d) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/,/g, '');
+    const kindName = (ev) => ev.kind === 'nature' ? 'Nature window' : ev.kind === 'meteor' ? 'Meteor shower' : (KIND_LABEL[ev.kind] || ev.kindLabel || 'Event');
+    const comingUp = upcoming.length > 0 && e('section', { 'aria-label': 'Coming up', style: sx('display: flex; flex-direction: column; gap: 18px') },
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px') },
+        e('h2', { style: H2 }, 'Coming up'), e('span', { style: sub }, 'Next ' + UPCOMING_DAYS + ' days')),
+      e('div', { className: 'd-scroll-x' },
+        e('div', { style: sx('display: flex; gap: 12px; padding-bottom: 6px') },
+          upcoming.map(it => {
+            const ev = it.ev, st = styleOf(ev), trip = ev.tripId && trips.find(t => t.id === ev.tripId);
+            const when = it.ongoing ? 'Now · until ' + fmtDay(it.end) : fmtDay(it.date) + (it.multi ? ' – ' + fmtDay(it.end) : '');
+            const tripLocs = trip ? (trip.locIds || []).map(id => { for (const m2 of data) { const l = m2.locations.find(x => x.id === id); if (l) return l.name; } return null; }).filter(Boolean).join(', ') : '';
+            const locId = ev.kind === 'photoop' ? (ev.locId || null) : null;
+            const open = (e2) => { e2.preventDefault(); if (ev.tripId) { setTripPeek(ev.tripId); return; } setViewYear(it.y); goToMonth(it.i, locId); };
+            return e('a', { key: it.y + '-' + it.m2.key + '-' + ev.id, className: 'd-upcard', href: monthHref(it.y, it.i, locId), onClick: open, title: trip ? 'Open this trip' : 'Open ' + it.m2.name + ' ' + it.y,
+              style: sx('flex: 0 0 226px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); text-decoration: none') },
+              e('span', { style: { width: 40, height: 8, boxSizing: 'border-box', borderRadius: 4, ...(ev.kind === 'newmoon' ? { border: '2px solid var(--moon-ink)' } : { background: ev.kind === 'photoop' ? 'var(--ink)' : st.accent }) } }),
+              e('span', { style: sx('font-size: 14.5px; color: var(--ink-2)') }, when),
+              e('span', { style: { fontFamily: SLAB, fontWeight: 600, fontSize: 20, lineHeight: 1.2 } }, trip ? trip.name : ev.label),
+              e('span', { style: sx('font-size: 14.5px; color: var(--ink-2)') }, trip ? 'Trip' + (tripLocs ? ' · ' + tripLocs : '') : kindName(ev) + ' · ' + it.m2.name + (it.thisYear ? '' : ' ' + it.y)));
+          }))));
+
+    // The year, month by month.
+    const match = (l) => homeFilter === 'all' || (homeFilter === 'uk') === (l.region === 'UK');
+    const months = data.map((m2, i) => ({ m2, i, locs: m2.locations.filter(match) })).filter(x => homeFilter === 'all' || x.locs.length > 0);
+    const shown = months.reduce((a, x) => a + x.locs.length, 0);
+    const pill = (k, label, dotColor) => e('button', { key: k, type: 'button', className: homeFilter === k ? undefined : 'd-chipbtn', onClick: () => setHomeFilter(k), 'aria-pressed': homeFilter === k ? 'true' : 'false', style: homeFilter === k ? D.pillOn : D.pill },
+      dotColor && e('span', { style: { width: 9, height: 9, borderRadius: '50%', background: dotColor } }), label);
+    const slot = { display: 'flex', alignItems: 'center', justifyContent: 'center', aspectRatio: '3 / 2', boxSizing: 'border-box', padding: '0 28px', borderRadius: 12, background: 'var(--slot)', color: 'var(--ink-body)', fontWeight: 500, fontSize: 16, textAlign: 'center' };
+    const monthCard = ({ m2, i, locs }) => {
+      const pick = monthPick(m2), base = pick && mainBase(m2.key, pick), HL = monthLight(m2, i), idea = (m2.heroPlaceholder || '').split(' — ')[0];
+      return e('div', { key: m2.key, style: sx('display: flex; flex-direction: column; gap: 14px; min-width: 0') },
+        e('a', { href: monthHref(viewYear, i), onClick: openMonth(i), 'aria-label': 'Open ' + m2.name, className: 'd-monthphoto', style: { display: 'block', borderRadius: 12, color: 'var(--ink-body)', textDecoration: 'none' } },
+          base
+            ? e('img', { src: Storage.photoUrl(base + '-thumb', imgEpoch || undefined), srcSet: Storage.photoUrl(base + '-thumb', imgEpoch || undefined) + ' 500w, ' + Storage.photoUrl(base, imgEpoch || undefined) + ' 1600w', sizes: '(max-width: 640px) 100vw, 380px', loading: 'lazy', alt: photoCaption(pick, m2.name, mainYear(pick)),
+                style: { display: 'block', width: '100%', aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: 12, background: 'var(--slot)', ...focusStyle(focusMap, base) } })
+            // no photo yet: the owner is pointed at the month page (photos belong to its locations)
+            : e('span', { style: editMode ? { ...slot, border: '2px dashed var(--dash)' } : { ...slot, fontWeight: 400, color: 'var(--ink-2)' } }, photoIndex === undefined ? '' : editMode ? (idea ? idea + ' — add a photo on this month’s page' : 'Add a photo on this month’s page') : (idea || 'No photo yet'))),
+        e('div', { style: sx('display: flex; flex-direction: column; gap: 6px') },
+          e('div', { style: sx('display: flex; align-items: baseline; justify-content: space-between; gap: 10px') },
+            e('a', { href: monthHref(viewYear, i), onClick: openMonth(i), className: 'd-namelink', style: { ...(isMobile ? { margin: '-6px 0', padding: '6px 0' } : {}), fontFamily: SLAB, fontWeight: 700, fontSize: 30, lineHeight: 1.1, color: 'var(--ink)', textDecoration: 'none' } }, m2.name),
+            e('span', { title: lightTitle(m2, HL), style: sx('font-size: 15px; color: var(--ink-2); white-space: nowrap') }, '↑ ' + HL.rise + ' ↓ ' + HL.set)),
+          m2.tagline && e('span', { style: sx('font-size: 16px; color: var(--ink-body)') }, m2.tagline),
+          locs.length > 0 && e('div', { style: sx('display: flex; flex-direction: column; margin-top: 4px') },
+            locs.map(l => e('a', { key: l.id, href: monthHref(viewYear, i, l.id), onClick: openMonth(i, l.id), className: 'd-namelink', style: { display: 'flex', alignItems: 'center', gap: 8, minHeight: isMobile ? 44 : 30, color: 'var(--ink)', fontSize: 16, textDecoration: 'none' } },
+              e('span', { style: { flex: '0 0 9px', height: 9, borderRadius: '50%', background: l.region === 'UK' ? 'var(--green)' : 'var(--terra)' } }),
+              e('span', { style: { fontWeight: 600 } }, l.name),
+              l.tag && e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, l.tag))))));
+    };
+    const year = e('section', { 'aria-label': 'The year, month by month', style: sx('display: flex; flex-direction: column; gap: 22px') },
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px') },
+        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px') },
+          e('h2', { style: H2 }, 'The year, month by month'), e('span', { style: sub }, shown + (shown === 1 ? ' location' : ' locations'))),
+        e('div', { style: sx('display: flex; flex-wrap: wrap; gap: 6px') }, pill('all', 'All'), pill('uk', 'UK', 'var(--green)'), pill('int', 'International', 'var(--terra)'))),
+      months.length
+        ? e('div', { style: sx('display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 40px 24px') }, months.map(monthCard))
+        : e('p', { style: { margin: 0, ...sub } }, 'No ' + (homeFilter === 'uk' ? 'UK' : 'international') + ' locations yet.'),
+      e('p', { style: sx('margin: 0; font-size: 15px; color: var(--ink-2)') }, (isMobile ? 'Tap' : 'Click') + ' a month or a location to jump straight to its page.'));
+
+    return e('main', null,
+      e(PhotoSlideshow, { d: true, photoIndex, epoch: imgEpoch, intervalMs: 15000, onCurrent: setHeroCap,
+        boxStyle: isMobile ? { aspectRatio: '3 / 2' } : { height: 'clamp(320px, 46vw, 600px)' },
+        emptyText: 'Photos you add to the locations will show here',
         // every photo of every location, extras included, each with its own year
-        items: data.flatMap(m => m.locations.flatMap(loc => locPhotos(loc).map(p =>
-          ({ key: m.key + '-' + loc.id + ':' + p.slot, base: slotBase(m.key, loc.id, p.slot), caption: photoCaption(loc, m.name, p.year) })
-        ))),
-      })
-    ),
-    e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginTop:11, flexWrap:'wrap' } },
-      e('div', { style:{ display:'flex', alignItems:'center', gap:10 } },
-        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'var(--muted)' } }, 'The year ahead'),
-        e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontSize:16, fontWeight:600, color:'var(--ink)' } }, 'Twelve frames, twelve months')
-      ),
-      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'var(--muted)', letterSpacing:'.03em' } }, 'UK & international')
-    ),
-    // Coming up — the next few dates from today, as a row of small cards that
-    // open the month (and the location, for a photo op). Scrolls sideways on
-    // a phone rather than wrapping into a wall of cards.
-    upcoming.length > 0 && e('div', { style:{ marginTop:34 } },
-      e('div', { style:{ display:'flex', alignItems:'center', gap:14 } },
-        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'var(--muted)', whiteSpace:'nowrap' } }, 'Coming up'),
-        e('span', { style:{ flex:1, height:1, background:'var(--line)' } }),
-        e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em', color:'var(--faint)', whiteSpace:'nowrap' } }, 'next ' + UPCOMING_DAYS + ' days')
-      ),
-      e('div', { style:{ display:'flex', gap:10, marginTop:14, overflowX:'auto', paddingBottom:6, WebkitOverflowScrolling:'touch' } },
-        upcoming.map(it => {
-          const st = styleOf(it.ev);
-          const fmt = (d) => d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
-          const when = it.ongoing ? 'Now · until ' + fmt(it.end) : fmt(it.date) + (it.multi ? ' – ' + fmt(it.end) : '');
-          const open = () => { if (it.ev.tripId) { setTripPeek(it.ev.tripId); return; } setViewYear(it.y); goToMonth(it.i, it.ev.kind === 'photoop' ? (it.ev.locId || null) : null); };
-          return e('div', { key: it.y + '-' + it.m2.key + '-' + it.ev.id, role:'button', tabIndex:0, onClick:open, onKeyDown:keyActivate(open), className:'map-chip', title:'Open ' + it.m2.name + ' ' + it.y,
-              style:{ flex:'0 0 auto', width: isMobile ? 168 : 196, padding:'10px 12px 11px', background:'var(--paper)', border:'1px solid var(--line-strong)', borderLeft:'4px solid ' + st.accent, cursor:'pointer', boxShadow:'2px 2px 0 var(--shadow-08)' } },
-            e('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'.1em', textTransform:'uppercase', color: it.ongoing ? 'var(--green)' : 'var(--label)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, when),
-            e('div', { style:{ marginTop:6, fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'var(--ink)', lineHeight:1.25, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' } },
-              eventIconKey(it.ev) ? e(EventIcon, { name:eventIconKey(it.ev), size:15, color:st.accent, style:{ marginRight:6, verticalAlign:'-2px' } }) : (st.glyph ? st.glyph + ' ' : ''),
-              it.ev.label),
-            e('div', { style:{ marginTop:5, fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'var(--faint)', letterSpacing:'.06em' } }, it.m2.name + (it.thisYear ? '' : ' ' + it.y))
-          );
-        })
-      )
-    ),
-    // Month index
-    e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:40 } },
-      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'var(--muted)', whiteSpace:'nowrap' } }, 'The year, month by month'),
-      e('span', { style:{ flex:1, height:1, background:'var(--line)' } }),
-      e('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, letterSpacing:'.06em', color:'var(--faint)' } }, totalLocs + ' locations')
-    ),
-    e('div', { style:{ marginTop:4 } },
+        items: data.flatMap(m => m.locations.flatMap(loc => locPhotos(loc).map(p => ({ key: m.key + '-' + loc.id + ':' + p.slot, base: slotBase(m.key, loc.id, p.slot), caption: photoCaption(loc, m.name, p.year) })))) }),
+      e('div', { style: { maxWidth: 1244, margin: '0 auto', padding: isMobile ? '12px 16px 64px' : '14px 32px 80px', display: 'flex', flexDirection: 'column', gap: isMobile ? 40 : 52 } },
+        header, comingUp, year));
+  };
+
+  // The old Home list (a row per month with every location's idea and timing).
+  // Not shown: the redesign's Home is cards only. Kept whole so a Cards / List
+  // switch can bring it back — render it in place of the card grid.
+  const renderMonthIndexList = () => e('div', { className: 'old-page', style:{ marginTop:4 } },
       data.map((m2, i) =>
         // Phones: the 150px month column would squeeze the location text into a
         // sliver, so the month header stacks above its locations instead.
@@ -6192,9 +6196,7 @@ function App() {
           )
         )
       )
-    ),
-    e('div', { style:{ marginTop:24, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'var(--faint)', letterSpacing:'.03em' } }, 'Tap a month or a location to jump straight to its page.')
-  );
+    );
 
   // ─── Month page ────────────────────────────────────────────────────────────
   // ─── Month page (option D) ─────────────────────────────────────────────────
@@ -6212,10 +6214,7 @@ function App() {
     const spanOf = (ev) => { const s = Number(ev.start != null ? ev.start : ev.day) || 1, en = Number(ev.end != null ? ev.end : ev.day) || s; return [Math.max(1, Math.min(N, s)), Math.max(1, Math.min(N, Math.max(s, en)))]; };
     const dayName = (n) => dateOf(n, { weekday: 'short' }) + ' ' + n;
     const whenText = (s, en) => (s === 1 && en === N) ? 'All month' : s === en ? dayName(s) : dayName(s) + ' – ' + dayName(en);
-    // A select dressed as one of the buttons, with a chevron.
-    const selectBtn = (props, options, wrap) => e('span', { style: { position: 'relative', display: 'inline-flex', maxWidth: '100%', ...(wrap || {}) } },
-      e('select', { className: 'd-btn', ...props, style: { ...D.btn, display: 'block', appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', padding: '0 38px 0 16px', maxWidth: '100%', textOverflow: 'ellipsis' } }, options),
-      e(DIcon, { name: 'chevD', size: 16, style: { position: 'absolute', right: 14, top: '50%', marginTop: -8, pointerEvents: 'none' } }));
+    const selectBtn = dSelect;
     const iconBtn = (name, label, run, extra) => e('button', { type: 'button', className: 'd-iconbtn', onClick: run, title: label, 'aria-label': label, style: { ...D.iconBtn, ...(extra || {}) } }, e(DIcon, { name, size: 20 }));
     const extLink = (text, href) => e('a', { key: text, href, target: '_blank', rel: 'noopener noreferrer', style: sx('display: inline-flex; align-items: center; min-height: 44px; font-weight: 500; font-size: 16px') }, text);
     const mapLinksD = (c, name) => c ? [extLink('Google Maps ↗', 'https://www.google.com/maps/search/?api=1&query=' + c[0] + ',' + c[1]), extLink('Apple Maps ↗', 'https://maps.apple.com/?ll=' + c[0] + ',' + c[1] + '&q=' + encodeURIComponent(name || 'Location'))] : null;
@@ -6387,16 +6386,16 @@ function App() {
       });
       if (editMode) { const base = slotBase(month.key, sel.id, nextSlot); thumbs.push(e(LocationPhoto, { key: base, d: 'add', base, placeholder: 'Add another photo of ' + sel.name, photoIndex, epoch: imgEpoch, style: { width: 132, alignSelf: 'flex-start' },
         onChange: (what, info) => { bumpImg(); if (what === 'uploaded') { addPhotoSlot(sel.id, nextSlot); applyPhotoInfo(sel.id, nextSlot, info); } } })); }
-      const mainYear = (mainP.year || '').trim();
+      const mainYr = (mainP.year || '').trim();
       const left = e('div', { style: sx('flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 12px') },
         e(LocationPhoto, { key: mainBase(month.key, sel), d: 'main', base: mainBase(month.key, sel), placeholder: 'Add a photo of ' + sel.name, photoIndex, epoch: imgEpoch,
           onChange: (what, info) => { bumpImg(); if (what === 'removed') removePhotoSlot(sel.id, mainP.slot); else if (what === 'uploaded') applyPhotoInfo(sel.id, mainP.slot, info); } }),
-        (thumbs.length > 0 || editMode || mainYear) && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px') },
+        (thumbs.length > 0 || editMode || mainYr) && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px') },
           thumbs,
           editMode
             ? e('label', { style: { ...labelCol, ...(isMobile ? { flex: '1 1 100%' } : { marginLeft: 'auto' }) } }, 'Year taken (main photo)',
                 e(DInput, { key: 'year-' + sel.id + '-' + mainP.slot, value: mainP.year || '', onCommit: (t) => setPhotoYear(sel.id, mainP.slot, t), inputMode: 'numeric', placeholder: 'YY', title: 'The year the main photo was taken — it shows in the caption', style: { width: 96, padding: '0 12px' } }))
-            : mainYear && e('span', { style: { marginLeft: 'auto', fontSize: 15, color: 'var(--ink-2)' } }, "Main photo taken in '" + mainYear)),
+            : mainYr && e('span', { style: { marginLeft: 'auto', fontSize: 15, color: 'var(--ink-2)' } }, "Main photo taken in '" + mainYr)),
         (editMode || selCoords) && e('div', { style: sx('display: flex; flex-direction: column; gap: 12px; margin-top: 16px') },
           selCoords && e(MiniMap, { d: true, coords: selCoords, parking: parkingOf(sel), name: sel.name, rays: skyRays }),
           sky && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 15px; color: var(--ink-body)') },
@@ -6983,7 +6982,7 @@ function App() {
       ? oldPage(e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro, editMode, editControl: null }))
       : (printView && editMode)
         ? oldPage(renderPrintPage())
-        : (yearView ? oldPage(renderYearPage()) : renderMonthPage()),
+        : (yearView ? renderYearPage() : renderMonthPage()),
     renderEventModal(),
     renderBackups(),
     renderTripPeek(),

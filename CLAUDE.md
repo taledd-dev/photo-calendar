@@ -61,7 +61,7 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   into both files. Asset paths in `next/` are absolute (`/assets/…`).
 - **Build order (the brief's), one step at a time for the owner to review:**
   1 shared look ✔ · 2 top bar + Settings menu ✔ · 3 month page ✔ ·
-  4 Home · 5 Weather, Trips, Gallery, Map · 6 pop-ups + photo viewer ·
+  4 Home ✔ · 5 Weather, Trips, Gallery, Map · 6 pop-ups + photo viewer ·
   7 Calendar (28 pages; the photo index becomes 2 pages of 6 with one large
   photo chosen per page, remembered per calendar year in the shared data,
   default January and July — this supersedes "four per page") · 8 phone,
@@ -122,6 +122,17 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   (`PhotoSlideshow`, `LocationPhoto` `'main' | 'thumb' | 'add' | 'card'`,
   `KitField`, `LinksField`, `NotesField`, `Checklist`, `MiniMap`).
   The print calendar still uses `buildWeeks` and the day-corner icons.
+- **Home** (`renderYearPage`, "D · Home" / night / phone): the same
+  full-width photo and caption; "The year ahead" + year, the editable intro,
+  the counts and the Instagram link; the year picker (`dSelect`, "Year
+  2026"); **Coming up** cards (swatch, when, title, "kind · month"; a trip
+  opens its pop-up, a photo op the brief); and **a card per month** — its
+  photo (`monthPick(m2)`: the starred location's, else the first with one;
+  an owner without one sees a dashed hint to add it on the month page), the
+  light, the tagline and its locations as links — with the All / UK /
+  International chips (`homeFilter`; months with no match drop out). No
+  idea/when text and no Cards/List switch: the old list is kept whole as
+  `renderMonthIndexList()` (unused) so the switch can return.
 - **Parked by the brief:** starring stays exactly as it is (the starred
   location is **shared across years** — `month.printLoc`); the Home page's
   Cards/List toggle is dropped but the list should stay easy to restore; the
