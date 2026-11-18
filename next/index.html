@@ -4260,7 +4260,6 @@ function MapView({ places, onOpenMonth, onToggleVisited, introText, onEditIntro,
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function App() {
   const isMobile = useIsMobile();
-  const isWide = useMedia('(min-width: 1744px)');                            // a very wide window: the hero stops stretching (see heroLook)
   const isShort = useMedia('(max-height: 520px) and (orientation: landscape)'); // a phone held sideways: the photo viewer's side-by-side form
   const [data, setData] = useState(() => migrateYearEvents(Storage.loadData() || makeData()));
   // Which year the calendar (grid + events) shows. A viewing preference, so it
@@ -5695,9 +5694,16 @@ function App() {
         editMode && linkRow('Calendar backups', openBackups)
       ));
   };
+  // The hero photo on Home and the month pages. A phone: edge to edge, 3:2.
+  // Any wider window, laptop or monitor alike: the whole 3:2 photo — never
+  // cropped to a banner — inset with rounded corners and centred, as wide as
+  // the text column (1180px) but no taller than 60% of the window, so the
+  // page's title shows beneath it. (The owner's call: the drawn banner cut
+  // too much off a photo, and a photo filling a 32-inch monitor was too big.)
+  const HERO_W = 'max(90vh, 420px)';   // 3:2 at 60vh is 90vh wide
   const heroLook = isMobile ? { boxStyle: { aspectRatio: '3 / 2' } }
-    : isWide ? { boxStyle: { height: 'min(calc(min(100vw - 64px, 1680px) * 0.6667), 82vh)' }, figStyle: { width: 'min(100% - 64px, 1680px)', margin: '0 auto', borderRadius: 16 } }
-    : { boxStyle: { height: 'clamp(320px, 46vw, 82vh)' } };
+    : { boxStyle: { aspectRatio: '3 / 2' }, figStyle: { width: 'min(100% - 64px, 1180px, ' + HERO_W + ')', margin: '0 auto', borderRadius: 16 } };
+  const heroCapRow = isMobile ? {} : { alignSelf: 'center', width: 'min(100%, ' + HERO_W + ')' };   // the caption line keeps to the photo's width
   const renderTopBar = () => {
     const y = '#/' + viewYear;
     const links = [['home', 'Home', goToYear, ''], ['map', 'Map', goToMap, '/map'], ['weather', 'Weather', () => goToWeather(null), '/weather'], ['trips', 'Trips', () => goToTrips(null), '/trips'], ['gallery', 'Gallery', () => goToGallery(null), '/gallery']]
@@ -5916,11 +5922,12 @@ function App() {
         e('img', { src: Storage.photoUrl(it.base + '-thumb', imgEpoch || undefined), srcSet: Storage.photoUrl(it.base + '-thumb', imgEpoch || undefined) + ' 500w, ' + Storage.photoUrl(it.base, imgEpoch || undefined) + ' 1600w', sizes: '(max-width: 640px) 100vw, 380px', alt: '', loading: 'lazy', onError: (ev) => { ev.currentTarget.style.visibility = 'hidden'; },
           style: { display: 'block', width: '100%', aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: 12, background: 'var(--slot)', ...focusStyle(focusMap, it.base) } }),
         it.starred && e('span', { title: 'Fronts the printed month', style: sx('position: absolute; top: 12px; right: 12px; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: var(--gold); color: var(--field)') }, e(DIcon, { name: 'star', size: 18, style: { fill: 'currentColor' } }))),
+      // the photo's own caption, directly under it
+      it.text && e('span', { 'data-photo-caption': 'tile', style: sx('margin-top: -4px; font-size: 16px; line-height: 1.45; color: var(--ink-body)') }, it.text),
       e('span', { style: sx('display: flex; flex-direction: column; gap: 2px') },
         e('span', { style: sx('display: flex; align-items: baseline; justify-content: space-between; gap: 10px') },
           e('span', { className: 'd-card-name', style: { fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 24 : 26, lineHeight: 1.15, minWidth: 0 } }, it.loc.name),
           e('span', { style: { ...subText, whiteSpace: 'nowrap' } }, it.month.name.slice(0, 3) + (it.year ? " '" + it.year : ''))),
-        it.text && e('span', { 'data-photo-caption': 'tile', style: sx('font-size: 16px; line-height: 1.45; color: var(--ink-body)') }, it.text),
         (it.tags.length > 0 || (it.loc.area || '').trim()) && e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, [(it.loc.area || '').trim(), it.tags.join(' · ')].filter(Boolean).join(' · '))));
 
     const regionChips = [chip(f.region === 'all', 'All', () => setF({ region: 'all' })), chip(f.region === 'uk', 'UK', () => setF({ region: 'uk' }), null, 'var(--green)'), chip(f.region === 'int', 'International', () => setF({ region: 'int' }), null, 'var(--terra)'),
@@ -6036,7 +6043,7 @@ function App() {
     const labelLook = sx('display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 15px; color: var(--lb-ink-2)');
     const enterBlurs = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); } ev.stopPropagation(); };
     // the photo's own caption: a line of the owner's, typed here and shown under the photo on the Gallery page
-    const capText = !editMode && it.text ? e('span', { 'data-photo-caption': 'viewer', style: sx('margin-top: 4px; font-size: 17px; line-height: 1.45') }, it.text) : null;
+    const capText = (extra) => !editMode && it.text ? e('span', { 'data-photo-caption': 'viewer', style: { ...sx('font-size: 17px; line-height: 1.45'), ...(extra || {}) } }, it.text) : null;
     const capInput = (extra) => editMode && e('label', { style: { ...labelLook, ...(extra || {}) } }, 'Caption',
       e('input', { key: 'cap-' + it.key, type: 'text', className: 'lb-field', defaultValue: it.text || '', maxLength: 240, placeholder: 'A line about this photo — shown under it in the Gallery', 'aria-label': 'Photo caption',
         onBlur: (ev) => { const next = ev.target.value.trim(); if (next !== (it.text || '')) setPhotoCaption(it.loc.id, it.slot, next); }, onKeyDown: enterBlurs, style: { ...fieldLook, width: '100%' } }));
@@ -6068,7 +6075,7 @@ function App() {
           e('div', { style: sx('display: flex; align-items: center; justify-content: space-between; gap: 8px') }, counter, e('div', { style: sx('display: flex; gap: 8px') }, iBtn(), xBtn())),
           e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: 22, lineHeight: 1.15 } }, it.loc.name),
           e('span', { style: sx('font-size: 15px; color: var(--lb-ink-2)') }, meta),
-          capText, tagChips, capInput(), tagsInput('100%'),
+          capText({ marginTop: 4 }), tagChips, capInput(), tagsInput('100%'),
           e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px') }, starBtn, briefLink)));
     }
 
@@ -6088,10 +6095,11 @@ function App() {
         arrow(1, 'Next photo')),
       // the place, its details and the photo's caption; then tags, the star and the way to its brief
       !lbBare && e('div', { onClick: hold, style: sx('width: 100%; max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px') },
+        capText({ flex: '1 1 100%' }),   // directly under the photo, ahead of the place's name
         e('div', { style: sx('display: flex; flex-direction: column; gap: 2px; min-width: 0') },
           e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 26 : 30, lineHeight: 1.15 } }, it.loc.name),
           e('span', { style: sx('font-size: 16px; color: var(--lb-ink-2)') }, meta),
-          capText, tagChips),
+          tagChips),
         e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px') }, tagsInput(isMobile ? 160 : 200), starBtn, briefLink),
         capInput({ flex: '1 1 100%' })));
   };
@@ -6174,7 +6182,7 @@ function App() {
     const openMonth = (i, locId) => (ev) => { ev.preventDefault(); goToMonth(i, locId || null); };
 
     const header = e('div', { style: sx('display: flex; flex-direction: column; gap: 26px') },
-      e('div', { style: sx('display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 20px; min-height: 23px; font-size: 15px; color: var(--ink-2)') },
+      e('div', { 'data-hero-cap': '1', style: { ...sx('display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 20px; min-height: 23px; font-size: 15px; color: var(--ink-2)'), ...heroCapRow } },
         e('span', null, heroCap), e('span', null, 'Twelve frames, twelve months · UK and international')),
       e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px') },
         e('div', { style: sx('flex: 1 1 520px; min-width: 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px') },
@@ -6404,7 +6412,7 @@ function App() {
       style: { appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', minHeight: 44, margin: '-12px 0', padding: 0, background: 'none', border: 0, borderRadius: 6, fontFamily: "'Figtree', system-ui, sans-serif", fontWeight: 400, fontSize: '0.5em', letterSpacing: 0, color: 'var(--ink-2)', cursor: 'pointer' } },
       YEARS.map(y => e('option', { key: y, value: y }, String(y))));
     const header = e('div', { style: sx('display: flex; flex-direction: column; gap: 26px') },
-      e('span', { style: sx('min-height: 23px; font-size: 15px; color: var(--ink-2)') }, heroCap),
+      e('span', { 'data-hero-cap': '1', style: { ...sx('min-height: 23px; font-size: 15px; color: var(--ink-2)'), ...heroCapRow } }, heroCap),
       e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px') },
         e('div', { style: sx('display: flex; flex-direction: column; gap: 10px; min-width: 0') },
           e('h1', { style: { margin: 0, fontFamily: SLAB, fontWeight: 700, fontSize: 'clamp(44px, 6.6vw, 80px)', lineHeight: 0.95, letterSpacing: '-0.01em' } }, month.name + ' ', yearSel),
@@ -6440,7 +6448,7 @@ function App() {
           e('span', { className: 'd-card-name', style: { fontFamily: SLAB, fontWeight: 700, fontSize: 28, lineHeight: 1.15 } }, l.name),
           e('span', { style: sx('font-size: 16px; color: var(--ink-2)') }, [l.tag, l.where].filter(Boolean).join(' · ')),
           e('span', { style: sx('display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-weight: 500; font-size: 14px') },
-            l.done ? e('span', { style: chipS('var(--green-wash)', 'var(--green-wash-ink)') }, 'Done') : e('span', { style: chipS('var(--line-soft)', 'var(--ink-body)') }, 'To shoot'),
+            l.done ? e('span', { style: chipS('var(--green-wash)', 'var(--green-wash-ink)') }, 'Visited') : e('span', { style: chipS('var(--line-soft)', 'var(--ink-body)') }, 'To visit'),
             op && e('span', { style: chipS('var(--ink)', 'var(--paper)') }, 'Photo op ' + dateOf(op.s, { weekday: 'short', day: 'numeric', month: 'short' })))));
     };
     const pill = (k, label, dotColor) => e('button', { key: k, type: 'button', className: locFilter === k ? undefined : 'd-chipbtn', onClick: () => setLocFilter(k), 'aria-pressed': locFilter === k ? 'true' : 'false', style: locFilter === k ? D.pillOn : D.pill },
@@ -6472,8 +6480,8 @@ function App() {
             : e('span', { style: sx('font-size: 17px; color: var(--ink-2)') }, [sel.tag, sel.where, regionName].filter(Boolean).join(' · '))),
         e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 8px') },
           editMode && (sel.done
-            ? e('button', { type: 'button', className: 'd-primary', onClick: () => toggleDone(sel.id), 'aria-pressed': 'true', title: 'Completed — click to mark as not done', style: D.primary }, 'Completed')
-            : e('button', { type: 'button', className: 'd-btn', onClick: () => toggleDone(sel.id), 'aria-pressed': 'false', title: 'Mark this location as done', style: { ...D.btn, padding: '0 18px', fontWeight: 600 } }, 'Mark complete')),
+            ? e('button', { type: 'button', className: 'd-primary', onClick: () => toggleDone(sel.id), 'aria-pressed': 'true', title: 'Visited — click to mark as not visited', style: D.primary }, 'Visited')
+            : e('button', { type: 'button', className: 'd-btn', onClick: () => toggleDone(sel.id), 'aria-pressed': 'false', title: 'Mark this location as visited', style: { ...D.btn, padding: '0 18px', fontWeight: 600 } }, 'Mark as visited')),
           editMode && e('button', { type: 'button', className: 'd-btn', onClick: () => schedulePhotoOp(sel.id), title: 'Schedule a photo op here this month', style: { ...D.btn, padding: '0 18px', fontWeight: 600 } }, isMobile ? 'Photo op' : 'Schedule photo op'),
           iconBtn('close', 'Close the location brief', () => setSelectedLoc(null))));
 

@@ -101,12 +101,15 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
 - **Month page** (`renderMonthPage`, drawn on "D · Combined" / "D · Month
   night" / "D · Month phone"), top to bottom: full-width `PhotoSlideshow d`
   (caption **under** the photo via `onCurrent` → `heroCap`; only the round
-  next/pause buttons on it; sized by **`heroLook`** — a phone 3:2; a laptop
-  the drawn edge-to-edge banner, `clamp(320px, 46vw, 82vh)`; a window of
-  1744px or more, `isWide`, an inset photo `min(100% − 64px, 1680px)` wide
-  with 16px corners, as tall as the whole 3:2 picture up to 82vh — the
-  owner's 32-inch monitor showed the old 600px-high banner as a sliver, and
-  the web copy of a photo is only 1600px wide); month name + year (`.d-yearsel`, a select that
+  next/pause buttons on it; sized by **`heroLook`** — a phone: edge to
+  edge, 3:2; **every wider window, laptop and monitor alike: the whole 3:2
+  photo, never a banner crop**, inset with 16px corners and centred,
+  `min(100% − 64px, 1180px, max(90vh, 420px))` wide — the text column's
+  width at most and no taller than 60% of the window, so the title shows
+  beneath it; `heroCapRow` keeps the caption line to the photo's width.
+  This is the **owner's decision over the board's edge-to-edge banner**: the
+  banner cut too much off a photo (a sliver on his 32-inch monitor), and a
+  photo at 82% of the window's height was too big); month name + year (`.d-yearsel`, a select that
   reads as text) + tagline + month picker; **"at a glance"**: typical light,
   Add event and the **month strip** — one column per day (weekends tinted,
   a photo-op day's number dark), events as rounded bars in rows by kind
@@ -115,11 +118,13 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   all-month or long window as a pale bar with the name inside, the "Shown
   as" picture before the name; a bar or its name opens the editor (owner) or
   the trip pop-up; on phones the strip is a list (swatch, name, days);
-  **location cards** (`LocationPhoto d:'card'`, Done / To shoot / Photo op
-  chips, All/UK/International filter `locFilter`, the owner's round ★ for
+  **location cards** (`LocationPhoto d:'card'`, Visited / To visit / Photo op
+  chips — the done tick is worded **"Visited" everywhere**, the owner's
+  choice, never Done / Completed / ticked off — All/UK/International filter `locFilter`, the owner's round ★ for
   the print pick, drag to reorder on desktop, green outline when open; a
   sideways-scrolling row on phones); and the **brief** — header (name,
-  subject · where · region, Completed / Schedule photo op / ×), left column
+  subject · where · region, Visited (or "Mark as visited") / Schedule photo
+  op / ×), left column
   (main photo with round focus and remove buttons, thumbnails with
   `[year][↑][×]` — the thumbnail itself is the focus control — the dashed
   "Add photo" slot, year taken, the mini map, its legend, coordinates and
@@ -174,8 +179,8 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `setPhotoCaption(locId, slot, text)` from the viewer's "Caption" field
   (blur/Enter; empty removes it; a legacy single photo becomes a `photos`
   list), carried on gallery items as `text` (the automatic "Place · Mon
-  'YY" stays `caption`) and shown **only on the Gallery page**: under the
-  tile's name line and in the viewer. *Map* (`MapView`, props
+  'YY" stays `caption`) and shown **only on the Gallery page, directly
+  under the photo** — above the place's name on a tile and in the viewer. *Map* (`MapView`, props
   `photoFor`, `hrefFor`): the "Visited" tile with its bar (the wording is
   **"Visited", never "ticked off"** — the owner's choice), one filter
   card (Region, Status, When), the live map unchanged in a rounded frame
@@ -268,8 +273,8 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `calendar_d_test.js` (48: the controls, symbols and fitted names, the
   per-year large photo, day colours at night, the 390px scale, and the PDF
   from `page.pdf()` — 28 pages of A4 landscape by `pdfinfo`, pages rendered
-  with `pdftoppm`) and `fb1_test.js` (25: the hero at 1280 / 2560 / 3840
-  wide, photo captions, the viewer at 844 × 390).
+  with `pdftoppm`) and `fb1_test.js` (24: the hero on a laptop, a monitor
+  and a phone, photo captions, the viewer at 844 × 390).
   `dshots.js` also scans every text for contrast under 4.5:1 (3:1 for
   large type) against its real background, day and night.
   The brief's own checks per step: matches the board at 1280
