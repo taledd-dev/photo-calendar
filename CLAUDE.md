@@ -61,18 +61,22 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   into both files. Asset paths in `next/` are absolute (`/assets/…`).
 - **Build order (the brief's), one step at a time for the owner to review:**
   1 shared look ✔ · 2 top bar + Settings menu ✔ · 3 month page ✔ ·
-  4 Home ✔ · 5 Weather, Trips, Gallery, Map ✔ · 6 pop-ups + photo viewer ·
-  7 Calendar (28 pages; the photo index becomes 2 pages of 6 with one large
+  4 Home ✔ · 5 Weather, Trips, Gallery, Map ✔ · 6 pop-ups + photo viewer ✔ ·
+  7 Calendar ✔ (28 pages; the photo index is 2 pages of 6 with one large
   photo chosen per page, remembered per calendar year in the shared data,
   default January and July — this supersedes "four per page") · 8 phone,
-  then night, across the pages · 9 **link-only access** (propose the
-  approach in plain language and get agreement before building).
-  Pages not yet rebuilt render in the old look inside `oldPage(node)`
-  (`.old-page`) under the new top bar.
+  then night, across the pages ✔ · 9 **link-only access** (propose the
+  approach in plain language and get agreement before building — proposed,
+  awaiting the owner's answer; nothing built).
+  Every page is now in the new look; `.old-page` survives only for the
+  stored-away Home list (`renderMonthIndexList`). The old components'
+  non-`d` branches and `…Old` helpers are dead code to clear out when
+  `next/` replaces the live page.
 - **Shared pieces** (module scope, after `const e`): `sx('css text')` turns
   CSS text into a cached style object (so a board's styles paste in with the
   colour literals swapped for tokens); `SLAB`; `D_ICONS` + `DIcon` (2px line
-  icons: cog, search, target, close, chevL/R/D, up, pause, play, star);
+  icons: cog, search, target, close, chevL/R/D/U, plus, minus, fit, check,
+  up, pause, play, star, expand); `dTrack(on)` (the on/off switch's track);
   **`D`** = the drawn controls (`btn`, `primary`, `danger`, `iconBtn`,
   `round` — the light round button over a photo, `field`, `pill`, `pillOn`,
   `label`); `DInput` (a real input that saves on blur/Enter, plain text for
@@ -82,7 +86,9 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `.d-field`, `.d-edit` (click-to-edit text: wash on hover, field look while
   typing, `data-ph` placeholder), `.d-ev`, `.d-card`, `.d-x`, `.d-linkbtn`,
   `.d-slot`. New tokens: `on-photo-ink`, `tile`, `slot`, `dash`,
-  `green-wash-ink`, `pop-shadow`, `map-ground`; `--page` is now `#F1EBDB`.
+  `green-wash-ink`, `pop-shadow`, `map-ground`, `fullmoon-wash` (print
+  bars) and the viewer's fixed `lb-ground`, `lb-ink-2`, `lb-field`,
+  `lb-veil`, `lb-link`; `--page` is now `#F1EBDB`.
   Zilla Slab 600/700 is self-hosted (`assets/fonts/ZillaSlab-*.woff2`).
 - **Top bar** (`renderTopBar`, every page): logo → Home · the six word links
   (Home, Map, Weather, Trips, Gallery, Calendar — Calendar = the printable
@@ -160,6 +166,45 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   zoomed), the zoom tag, and the pin's card: photo, name, month and status
   chips, the owner's Ticked-off box, an "Open <month> →" link per month
   (beside the pin on a wide screen, docked at the map's foot on a phone).
+- **Pop-ups and the photo viewer** share `popScrim(z)`, `popCard(width,
+  gap)`, `popTitle` and `popClose(run, label, focus)`: `renderBackups`,
+  `renderTripPeek`, `renderTideAbout`, `renderEventModal` (title
+  `#pp-event-title`, type chips with `aria-pressed`, the "Shown as"
+  picture buttons, a × that reads "Close the event editor"), `renderDialog`
+  (a `form role=dialog`, `#pp-dialog-title`; the confirm button is red —
+  `.d-reddanger` — when `danger`), and `renderLightbox` (the viewer: dark in
+  both themes, `.lb-btn` / `.lb-field`). The sync banner
+  (`renderCloudBanner`) and the toast are in the new look too.
+- **Calendar** (`renderPrintPage`, "D · Calendar"; owner only; the top
+  bar's green button is "Print / Save PDF"): title + "… · 28 pages · A4
+  landscape", the year picker, two cards — **What prints** (a dark pill
+  with a tick per event type, `printPrefs.hideKinds`; the "Photo captions"
+  switch) and **Before you print** (six steps) — then the 28 sheets, each a
+  `section.cal-sheet` (its name, `.no-print`) around `.sheet-box >
+  .print-sheet`. **A sheet is a fixed 281 × 193 mm drawing**;
+  `SheetScale` sets `--sheet-scale` on the column and CSS scales every sheet
+  to the width on hand (a phone shows the whole sheet), while `.sheet-fixed`
+  / `.sheet-fixed-bar` controls on a sheet are scaled back up to stay 44px;
+  the print rules switch the scale off and turn the wrappers into plain
+  blocks (the last sheet carries `.last` — no trailing blank page). Sheets:
+  cover and back cover (`LocationPhoto d:'sheet'` — fills the sheet, shows
+  the print-size copy, round focus/remove buttons — under `coverBand()`,
+  the live band with Figtree in place of the mono); per month the photo
+  page and the grid page (Zilla month + Figtree year | mark + PHOTOPLAN |
+  caption, light, note; a rounded grid; day number, named-day text, window
+  pictures; **bars with rounded ends** in the type's pale wash — square
+  where an event runs into another week; `{ top: 31, step: 24 }`, 22px
+  bars, slimmer from `top: 28` when a six-week month's busiest week would
+  not fit; the key = a strong-colour pill per type, new moon outlined, then
+  each window picture with its dates; the handle with `igGlyph`); and the
+  **photo index** — two sheets (January–June, July–December), three columns
+  of 3:2 tiles, the large one `span 2` × `span 2` first and the other five
+  in month order, no month labels. The large month per sheet is
+  **`data[0].indexLarge = { '<year>': ['<month key>', '<month key>'] }`**
+  (unset = January and July; `setLarge(page, key)`), chosen with the round
+  `expand` button on a small photo; the "Large photo · <Month>" tag and the
+  buttons are `.no-print`. `printSizeBadge(text, foot)` is the "web size
+  only" pill (top-left; foot-left and shorter on an index tile).
 - **Parked by the brief:** starring stays exactly as it is (the starred
   location is **shared across years** — `month.printLoc`); the Home page's
   Cards/List toggle is dropped but the list should stay easy to restore; the
@@ -174,7 +219,14 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `month_test.js` (65 click-through checks of the month page against a
   faked Worker), and `home_test.js`, `weather_d_test.js` (+ the older
   `weather_next.js` flags test), `trips_d_test.js`, `gallery_d_test.js`,
-  `map_d_test.js` (d3 / topojson / world-atlas served from `maplibs/`). The brief's own checks per step: matches the board at 1280
+  `map_d_test.js` (d3 / topojson / world-atlas served from `maplibs/`),
+  `popups_shots.js` (29 checks of the pop-ups and the viewer) and
+  `calendar_d_test.js` (42: the controls, the per-year large photo, day
+  colours at night, the 390px scale, and the PDF from `page.pdf()` — 28
+  pages of A4 landscape by `pdfinfo`, pages rendered with `pdftoppm`).
+  `dshots.js` also scans every text for contrast under 4.5:1 (3:1 for
+  large type) against its real background, day and night.
+  The brief's own checks per step: matches the board at 1280
   and 390, nothing spills at 390, taps ≥ 44px, no photo tinted at night,
   print stays 28 day-coloured pages, nothing stored changes, and the owner
   has seen it on a real phone.
