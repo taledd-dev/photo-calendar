@@ -172,8 +172,8 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   the usual packing list") or Escape. Two sections only: **Coming up** (a
   trip under way, marked Now, the ones ahead and any without dates) and
   **Past trips** (latest first). *Gallery* (`renderGalleryPage`): pill tabs, one filter card,
-  the owner's two links ("Fill in areas and countries", "@handle on photos ·
-  on/off"), 320px tiles (thumb/hero by `srcSet`) with a gold star badge;
+  the owner's "Fill in areas and countries" **button** (a `D.btn`, his
+  request; it counts as it works), 320px tiles (thumb/hero by `srcSet`) with a gold star badge;
   the Year in review (not drawn) in the same style. **A caption per photo**
   (the owner's request): `loc.photos[i].caption`, set with
   `setPhotoCaption(locId, slot, text)` from the viewer's "Caption" field
@@ -222,8 +222,8 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   is still in the page. The owner has been told; a watermark **burnt into
   the web copies** (a watermarked hero/thumb served to the public, the
   clean ones and the print copy behind the password — needs the Worker
-  updated and every photo reprocessed) was offered as the stronger step
-  and is **not built; wait for his answer**. Not on the smaller photos
+  updated and every photo reprocessed) was offered as the stronger step:
+  the owner likes it and has **parked it — do not build it until he asks**. Not on the smaller photos
   (location cards, the brief, Home's month cards) or on print.
 - **Calendar** (`renderPrintPage`, "D · Calendar"; owner only; the top
   bar's green button is "Print / Save PDF"): title + "… · 28 pages · A4
