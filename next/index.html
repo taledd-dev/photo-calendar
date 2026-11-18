@@ -489,6 +489,7 @@ const D_ICONS = {
   chevL: [['path', { d: 'M15 5l-7 7 7 7' }]],
   chevR: [['path', { d: 'M9 5l7 7-7 7' }]],
   chevD: [['path', { d: 'M5 9l7 7 7-7' }]],
+  chevU: [['path', { d: 'M5 15l7-7 7 7' }]],
   up: [['path', { d: 'M12 20V5M5.5 11.5L12 5l6.5 6.5' }]],
   pause: [['path', { d: 'M9 5.5v13M15 5.5v13' }]],
   play: [['path', { d: 'M8 5.5l11 6.5-11 6.5z' }]],
@@ -1561,17 +1562,19 @@ function newId(prefix) { return (prefix || 'i') + Date.now().toString(36) + Math
 function Checklist({ items = [], onToggle, onAdd, onRemove, placeholder, emptyText, compact = false, d = false }) {
   const canEdit = React.useContext(EditCtx) && !!onToggle;
   const [text, setText] = useState('');
+  const phone = useIsMobile();
   const mono = "'IBM Plex Mono',monospace";
   const commit = () => { const t = text.trim(); if (t && onAdd) { onAdd(t); setText(''); } };
   if (d) {
     if (!items.length && !canEdit) return emptyText ? e('p', { style: { margin: 0, fontSize: 16, color: 'var(--ink-2)' } }, emptyText) : null;
-    return e('div', { style: sx('display: flex; flex-direction: column') },
+    const rowH = phone ? 44 : 32;
+    return e('div', { style: { display: 'flex', flexDirection: 'column', gap: phone ? 4 : 8 } },
       items.map(it => e('div', { key: it.id, style: sx('display: flex; align-items: center; gap: 4px') },
-        e('label', { style: { display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 0', minWidth: 0, minHeight: 44, cursor: canEdit ? 'pointer' : 'default', ...(it.done ? { color: 'var(--ink-2)', textDecoration: 'line-through' } : {}) } },
+        e('label', { style: { display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 0', minWidth: 0, minHeight: rowH, cursor: canEdit ? 'pointer' : 'default', ...(it.done ? { color: 'var(--ink-2)', textDecoration: 'line-through' } : {}) } },
           e('input', { type: 'checkbox', checked: !!it.done, readOnly: !canEdit, tabIndex: canEdit ? undefined : -1, onChange: canEdit ? () => onToggle(it.id) : () => {}, style: { flex: 'none', width: 20, height: 20, margin: 0, accentColor: 'var(--green)', cursor: canEdit ? 'pointer' : 'default', pointerEvents: canEdit ? 'auto' : 'none' } }),
           e('span', { style: { minWidth: 0 } }, it.text)),
-        canEdit && onRemove && e('button', { type: 'button', className: 'd-x', onClick: () => onRemove(it.id), title: 'Remove', 'aria-label': 'Remove ' + it.text, style: sx('display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; height: 44px; padding: 0; background: transparent; border: 0; border-radius: 10px; color: var(--ink-2); cursor: pointer') }, e(DIcon, { name: 'close', size: 18 })))),
-      canEdit && onAdd && e('input', { type: 'text', className: 'd-field', value: text, onChange: (ev) => setText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } }, onBlur: commit, placeholder: placeholder || 'Add an item and press Enter', 'aria-label': placeholder || 'Add an item', style: { ...D.field, marginTop: items.length ? 4 : 0 } }));
+        canEdit && onRemove && e('button', { type: 'button', className: 'd-x', onClick: () => onRemove(it.id), title: 'Remove', 'aria-label': 'Remove ' + it.text, style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 ' + (phone ? 44 : 32) + 'px', height: rowH, padding: 0, background: 'transparent', border: 0, borderRadius: 10, color: 'var(--ink-2)', cursor: 'pointer' } }, e(DIcon, { name: 'close', size: 18 })))),
+      canEdit && onAdd && e('input', { type: 'text', className: 'd-field', value: text, onChange: (ev) => setText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } }, onBlur: commit, placeholder: placeholder || 'Add an item and press Enter', 'aria-label': placeholder || 'Add an item', style: D.field }));
   }
   if (!items.length && !canEdit) return emptyText ? e('div', { style:{ fontSize:13.5, color:'var(--faint)' } }, emptyText) : null;
   return e('div', null,
@@ -5667,7 +5670,6 @@ function App() {
   // notes. Everyone reads; the owner edits in place. Cards collapse to a
   // summary; `tripOpen` (in the URL) is the expanded one.
   const renderTripsPage = () => {
-    const mono = "'IBM Plex Mono',monospace";
     const today = new Date();
     const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
     const dayDiff = (ymd) => { const p = parseYmd(ymd); return p ? Math.round((Date.UTC(p.y, p.m, p.d) - todayUtc) / 86400000) : null; };
@@ -5675,121 +5677,113 @@ function App() {
     const byStart = (a, b) => { const x = a.start || '9999', y = b.start || '9999'; return x < y ? -1 : x > y ? 1 : 0; };
     const sorted = trips.slice().sort(byStart);
     const ahead = sorted.filter(t => !isPast(t)), past = sorted.filter(isPast).reverse();
-    const when = tripWhen;
-    const rowStyle = { display:'grid', gridTemplateColumns:isMobile?'64px minmax(0, 1fr)':'90px minmax(0, 1fr)', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid var(--line-soft)' };
-    const rowLabel = (t, sub) => e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', paddingTop:3 } }, t, sub && e('div', { style:{ marginTop:3, fontSize:9.5, letterSpacing:'.06em', textTransform:'none', color:'var(--ghost)' } }, sub));
-    const smallBtn = (label, onClick) => e('button', { key:label, onClick, style:{ background:'none', border:'1px dashed var(--line-strong)', color:'var(--label)', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', padding:'4px 9px', cursor:'pointer' } }, label);
-    const quietBtn = (label, onClick) => e('button', { className:'quiet-link', onClick, style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--label)', textDecoration:'underline', textUnderlineOffset:3 } }, label);
-    const dateInput = (value, onChange, label) => e('label', { style:{ display:'inline-flex', alignItems:'center', gap:7, fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'var(--label)' } }, label,
-      e('input', { type:'date', className:'pp-date', value: value || '', onChange:(ev)=>onChange(ev.target.value), 'aria-label': label + ' date', style:{ height:30, padding:'0 8px', background:'var(--field)', border:'1px solid var(--line-strong)', color:'var(--ink)', fontFamily:mono, fontSize:12, borderRadius:0 } }));
     const template = (data[0] && data[0].packingTemplate) || DEFAULT_PACKING;
+    const H2 = { margin: 0, fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 28 : 30, lineHeight: 1.15 };
+    const quiet = { margin: 0, fontSize: 16, color: 'var(--ink-2)' };
+    const col = (gap, extra) => ({ display: 'flex', flexDirection: 'column', gap, ...(extra || {}) });
+    const linkBtn = (label, run) => e('button', { type: 'button', className: 'd-linkbtn', onClick: run, style: sx('display: inline-flex; align-items: center; min-height: 44px; padding: 0; background: none; border: 0; color: var(--green); font-family: inherit; font-weight: 500; font-size: 16px; text-decoration: underline; cursor: pointer') }, label);
+    const pillBtn = (label, run) => e('button', { key: label, type: 'button', className: 'd-chipbtn', onClick: run, style: { ...D.pill, padding: '0 14px' } }, label);
+    const xBtn = (label, run) => e('button', { type: 'button', className: 'd-x', onClick: run, title: label, 'aria-label': label, style: sx('display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; height: 44px; padding: 0; background: transparent; border: 0; border-radius: 10px; color: var(--ink-2); cursor: pointer') }, e(DIcon, { name: 'close', size: 18 }));
+    const dateIn = (label, value, onChange) => e('label', { style: isMobile ? sx('flex: 1 1 130px; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--ink-2)') : sx('display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--ink-2)') }, label,
+      e('input', { type: 'date', className: 'd-field pp-date', value: value || '', onChange: (ev) => onChange(ev.target.value), 'aria-label': label + ' date', style: { ...D.field, padding: '0 12px', ...(isMobile ? { width: '100%' } : {}) } }));
+    const badge = (w) => w && e('span', { style: { padding: '4px 12px', borderRadius: 999, fontFamily: "'Figtree', system-ui, sans-serif", fontWeight: 600, fontSize: 14, lineHeight: 1.4, whiteSpace: 'nowrap', ...(w === 'now' ? { background: 'var(--green-wash)', color: 'var(--green-wash-ink)' } : w === 'past' ? { background: 'var(--line-soft)', color: 'var(--ink-body)' } : { background: 'var(--slate-wash)', color: 'var(--slate-ink)' }) } }, w[0].toUpperCase() + w.slice(1));
+    // the usual packing list (what a new trip starts with): one item per line, saves on leaving the box
+    const templateEditor = () => e('div', { style: col(8) },
+      e('label', { style: col(6, { fontWeight: 600, fontSize: 15, color: 'var(--ink-2)' }) }, 'The usual packing list',
+        e('textarea', { autoFocus: true, className: 'd-field', defaultValue: template, 'aria-label': 'Usual packing list', onBlur: (ev) => { setPackingTemplate(ev.target.value); setTplEditing(false); }, onKeyDown: (ev) => { if (ev.key === 'Escape') setTplEditing(false); }, style: { ...D.field, maxWidth: 560, minHeight: 260, fontWeight: 400 } })),
+      e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'What a new trip starts with · one item per line · saves when you click away'));
 
     const tripCard = (t) => {
       const open = tripOpen === t.id;
       const locs = (t.locIds || []).map(id => locIndex[id]).filter(Boolean);
-      const packing = t.packing || [];
-      const packed = packing.filter(p => p.done).length;
+      const packing = t.packing || [], packed = packing.filter(p => p.done).length;
       const shotsTotal = locs.reduce((n2, h) => n2 + (h.loc.shots || []).length, 0);
       const shotsDone = locs.reduce((n2, h) => n2 + (h.loc.shots || []).filter(s => s.done).length, 0);
-      const first = parseYmd(t.start);
-      const w = when(t), nights = tripNights(t), pastTrip = isPast(t);
+      const first = parseYmd(t.start), nights = tripNights(t), pastTrip = isPast(t);
       const toggle = () => setTripOpen(open ? null : t.id);
-      return e('div', { key:t.id, className:'trip-card', 'data-trip':t.id, style:{ background:'var(--paper)', border:'1px solid ' + (open ? 'var(--ink)' : 'var(--line)'), boxShadow: open ? '6px 6px 0 var(--shadow-12)' : '0 1px 0 var(--lip)', marginBottom:12, opacity: pastTrip && !open ? .72 : 1 } },
-        e('div', { onClick:toggle, onKeyDown:keyActivate(toggle), role:'button', tabIndex:0, 'aria-expanded': open ? 'true' : 'false', style:{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:14, padding:isMobile?'12px 14px':'14px 18px', cursor:'pointer', flexWrap:'wrap' } },
-          e('div', { style:{ minWidth:0, flex:'1 1 260px' } },
-            e('div', { style:{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' } },
-              e('span', { style:{ color:'var(--slate)', fontSize:12 } }, '▲'),
-              open && editMode
-                ? e('span', { onClick:(ev)=>ev.stopPropagation(), onKeyDown:(ev)=>ev.stopPropagation() }, e(Editable, { key:'tripname-'+t.id, tag:'span', value:t.name, onCommit:(v)=>updateTrip(t.id, { name:(v || '').trim() || 'Trip' }), title:'Click to rename', style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?20:23, color:'var(--ink)', lineHeight:1.15, cursor:'text', outline:'none', borderRadius:3, padding:'0 4px', margin:'0 -4px' } }))
-                : e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?20:23, color:'var(--ink)', lineHeight:1.15 } }, t.name),
-              whenBadge(w)
-            ),
-            e('div', { style:{ marginTop:5, fontFamily:mono, fontSize:11.5, color:'var(--ink-2)', letterSpacing:'.03em' } }, fmtTripDates(t) + (nights ? ' · ' + nights + (nights === 1 ? ' night' : ' nights') : ''),
-              !t.start && editMode && e('span', { style:{ color:'var(--faint)' } }, ' — set the dates below to put it on the calendar'))
-          ),
-          e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', color:'var(--muted)', textAlign:isMobile?'left':'right', lineHeight:1.7 } },
-            e('div', null, locs.length + (locs.length === 1 ? ' location' : ' locations') + (shotsTotal ? ' · ' + shotsDone + '/' + shotsTotal + ' shots' : '')),
-            e('div', null, packing.length ? packed + '/' + packing.length + ' packed' : 'no packing list')
-          )
-        ),
-        open && e('div', { style:{ padding:isMobile?'0 14px 14px':'0 18px 18px' } },
-          editMode && e('div', { style:rowStyle }, rowLabel('Dates'),
-            e('div', { style:{ display:'flex', gap:14, flexWrap:'wrap', alignItems:'center' } },
-              dateInput(t.start, (v)=>setTripDates(t.id, v, null), 'From'), dateInput(t.end, (v)=>setTripDates(t.id, null, v), 'To'),
-              (t.start || t.end) ? quietBtn('clear', ()=>updateTrip(t.id, { start:'', end:'' })) : null)),
-          e('div', { style:rowStyle }, rowLabel('Locations'),
-            e('div', null,
-              locs.length
-                ? e('div', { style:{ display:'flex', flexWrap:'wrap', gap:8 } }, locs.map(h => {
-                    const c = coordsOf(h.loc);
-                    const L = (c && first) ? lightAt(c[0], c[1], first.y, first.m, first.d) : null;
-                    return e('div', { key:h.loc.id, style:{ display:'inline-flex', alignItems:'stretch', border:'1px solid var(--line)', background:'var(--field)' } },
-                      e('button', { className:'loc-pick', onClick:()=>goToMonth(h.i, h.loc.id), title:'Open the location brief', style:{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, padding:'7px 11px', background:'none', border:'none', cursor:'pointer', textAlign:'left' } },
-                        e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'var(--ink)', lineHeight:1.2 } }, h.loc.name),
-                        e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.1em', textTransform:'uppercase', color: h.loc.region === 'UK' ? 'var(--green)' : 'var(--terra)' } }, h.month.name + (L && !L.polar ? ' · ↑ ' + L.rise + ' ↓ ' + L.set : ''))),
-                      editMode && e('button', { className:'close-btn', onClick:()=>removeTripLoc(t.id, h.loc.id), title:'Remove from this trip', 'aria-label':'Remove ' + h.loc.name + ' from this trip', style:{ width:26, background:'none', border:'none', borderLeft:'1px solid var(--line-soft)', color:'var(--ghost)', cursor:'pointer', fontSize:15, fontFamily:"'Spectral',serif" } }, '×'));
-                  }))
-                : e('div', { style:{ fontSize:13.5, color:'var(--faint)' } }, editMode ? 'No locations yet — pick them below.' : 'No locations yet.'),
-              // Pick an existing location (grouped by month) — or make a new
-              // one in a month, which the dialog then names.
-              editMode && e('select', { value:'', onChange:(ev)=>{ const v = ev.target.value; if (!v) return; if (v.indexOf('new:') === 0) addNewLocToTrip(t.id, parseInt(v.slice(4), 10)); else addTripLoc(t.id, v); }, 'aria-label':'Add a location to this trip', style:{ marginTop:8, height:30, padding:'0 8px', background:'none', border:'1px dashed var(--line-strong)', color:'var(--label)', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', cursor:'pointer', borderRadius:0, maxWidth:'100%' } },
-                e('option', { value:'' }, 'Choose a location…'),
-                data.map(m2 => { const opts = m2.locations.filter(l => !(t.locIds || []).includes(l.id)); return opts.length ? e('optgroup', { key:m2.key, label:m2.name }, opts.map(l => e('option', { key:l.id, value:l.id }, l.name))) : null; }),
-                e('optgroup', { label:'New location in…' }, data.map((m2, i) => e('option', { key:'new-' + m2.key, value:'new:' + i }, '+ New location in ' + m2.name + (first && first.m === i ? ' (the trip\'s month)' : '')))))
-            )),
-          (shotsTotal > 0 || (editMode && locs.length > 0)) && e('div', { style:rowStyle }, rowLabel('Shots', shotsTotal ? shotsDone + ' of ' + shotsTotal : null),
-            e('div', { style:{ display:'flex', flexDirection:'column', gap:8 } }, locs.map(h => e('div', { key:h.loc.id },
-              e('div', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'var(--label)', marginBottom:2 } }, h.loc.name),
-              e(Checklist, { items: h.loc.shots || [], onToggle:(id)=>toggleShot(h.loc.id, id), onAdd:(txt)=>addShot(h.loc.id, txt), onRemove:(id)=>removeShot(h.loc.id, id), placeholder:'Add a shot for ' + h.loc.name, compact:true, emptyText: editMode ? null : 'No shot list yet' }))))),
-          e('div', { style:rowStyle }, rowLabel('Packing', packing.length ? packed + ' of ' + packing.length : null),
-            e('div', null,
-              e(Checklist, { items: packing, onToggle:(id)=>togglePacking(t.id, id), onAdd:(txt)=>addPacking(t.id, txt), onRemove:(id)=>removePacking(t.id, id), placeholder:'Add something to pack and press Enter', emptyText:'Nothing listed yet.' }),
-              editMode && e('div', { style:{ display:'flex', flexWrap:'wrap', gap:8, marginTop:10 } },
-                locs.length > 0 ? smallBtn('+ kit from these locations', ()=>addKitToPacking(t.id)) : null,
-                packed > 0 ? smallBtn('untick all', ()=>untickPacking(t.id)) : null,
-                smallBtn('reset to the usual list', ()=>resetPacking(t.id)))
-            )),
-          (editMode || (t.notes || '').trim()) && e('div', { style:rowStyle }, rowLabel('Notes'),
-            e(NotesField, { key:'tripnotes-'+t.id, value:t.notes, onCommit:(v)=>updateTrip(t.id, { notes:v }) })),
-          editMode && e('div', { style:{ display:'flex', justifyContent:'flex-end', marginTop:14, paddingTop:12, borderTop:'1px solid var(--line-soft)' } },
-            e('button', { className:'del-btn', onClick:()=>deleteTrip(t.id), style:{ display:'inline-flex', alignItems:'center', gap:7, background:'none', border:'1px solid var(--danger-line)', color:'var(--danger)', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 14px', cursor:'pointer' } }, e('span', { style:{ fontSize:13, lineHeight:1 } }, '✕'), ' Delete trip'))
-        )
-      );
+      const nameStyle = { margin: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 14px', fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 32 : 40, lineHeight: 1.05 };
+      const head = e('div', { style: isMobile ? sx('display: flex; align-items: flex-start; justify-content: space-between; gap: 12px') : sx('display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px') },
+        e('div', { style: sx('flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px') },
+          e('h3', { style: nameStyle },
+            open && editMode
+              ? e(Editable, { key: 'tripname-' + t.id, tag: 'span', className: 'd-edit', value: t.name, onCommit: (v) => updateTrip(t.id, { name: (v || '').trim() || 'Trip' }), title: 'Click to rename' })
+              : e('span', null, t.name),
+            badge(tripWhen(t))),
+          e('span', { style: sx('font-size: 17px; color: var(--ink-2)') }, fmtTripDates(t) + (nights ? ' · ' + nights + (nights === 1 ? ' night' : ' nights') : '') + (!t.start && editMode ? ' — set the dates to put it on the calendar' : '')),
+          !open && e('span', { style: sx('font-size: 16px; color: var(--ink-2)') }, locs.length + (locs.length === 1 ? ' location' : ' locations') + (shotsTotal ? ' · ' + shotsDone + ' of ' + shotsTotal + ' shots' : '') + (packing.length ? ' · ' + packed + ' of ' + packing.length + ' packed' : ''))),
+        e('button', { type: 'button', className: 'd-iconbtn', onClick: toggle, 'aria-expanded': open ? 'true' : 'false', 'aria-label': (open ? 'Collapse ' : 'Open ') + t.name, title: open ? 'Collapse this trip' : 'Open this trip', style: D.iconBtn }, e(DIcon, { name: open ? 'chevU' : 'chevD', size: 20 })));
+      const card = { display: 'flex', flexDirection: 'column', gap: isMobile ? 24 : 28, padding: isMobile ? 20 : 32, background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 16 };
+      if (!open) return e('article', { key: t.id, className: 'trip-card', 'data-trip': t.id, style: { ...card, opacity: pastTrip ? 0.8 : 1 } }, head);
+
+      const tile = (k, v) => e('div', { key: k, style: isMobile ? sx('display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; background: var(--tile); border-radius: 12px') : sx('display: flex; flex-direction: column; gap: 2px; padding: 16px 18px; background: var(--tile); border-radius: 12px') },
+        e('span', { style: { fontSize: isMobile ? 14 : 15, color: 'var(--ink-2)' } }, k), e('span', { style: isMobile ? sx('font-weight: 600; font-size: 22px; line-height: 1.2') : sx('font-weight: 600; font-size: 36px; line-height: 1.15') }, v));
+      const locRow = (h) => {
+        const c = coordsOf(h.loc), L = (c && first) ? lightAt(c[0], c[1], first.y, first.m, first.d) : null, base = mainBase(h.month.key, h.loc);
+        const has = photoIndex && photoIndex.has(base + '-thumb');
+        return e('div', { key: h.loc.id, style: { display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 14, padding: 10, background: 'var(--tile)', borderRadius: 12 } },
+          has ? e('img', { src: Storage.photoUrl(base + '-thumb', imgEpoch || undefined), alt: '', style: { display: 'block', flex: 'none', width: isMobile ? 84 : 108, aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: 8, ...focusStyle((data[0] && data[0].photoFocus) || {}, base) } })
+              : e('span', { style: { flex: 'none', width: isMobile ? 84 : 108, aspectRatio: '3 / 2', borderRadius: 8, background: 'var(--slot)' } }),
+          e('div', { style: sx('flex: 1 1 0; min-width: 0; display: flex; flex-direction: column') },
+            e('a', { className: 'd-namelink', href: '#/' + viewYear + '/' + h.month.key + '/' + h.loc.id, onClick: (ev) => { ev.preventDefault(); goToMonth(h.i, h.loc.id); }, title: 'Open the location brief', style: { alignSelf: 'flex-start', ...(isMobile ? { margin: '-9px 0', padding: '9px 0' } : {}), fontFamily: SLAB, fontWeight: 700, fontSize: 22, lineHeight: 1.2, color: 'var(--ink)', textDecoration: 'none' } }, h.loc.name),
+            isMobile
+              ? [e('span', { key: 'm', style: sx('font-size: 15px; color: var(--ink-2)') }, h.month.name), L && !L.polar && e('span', { key: 'l', style: sx('font-size: 15px; color: var(--ink-2)') }, '↑ ' + L.rise + ' ↓ ' + L.set)]
+              : e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, h.month.name + (L && !L.polar ? ' · ↑ ' + L.rise + ' ↓ ' + L.set : ''))),
+          editMode && xBtn('Remove ' + h.loc.name + ' from this trip', () => removeTripLoc(t.id, h.loc.id)));
+      };
+      const left = e('div', { style: col(28) },
+        editMode && e('div', { style: col(10) }, e('h4', { style: D.label }, 'Dates'),
+          e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px') },
+            dateIn('From', t.start, (v) => setTripDates(t.id, v, null)), dateIn('To', t.end, (v) => setTripDates(t.id, null, v)),
+            (t.start || t.end) ? linkBtn('Clear', () => updateTrip(t.id, { start: '', end: '' })) : null)),
+        e('div', { style: col(10) }, e('h4', { style: D.label }, 'Locations'),
+          locs.length ? locs.map(locRow) : e('p', { style: quiet }, editMode ? 'No locations yet — choose them below.' : 'No locations yet.'),
+          // Pick an existing location (grouped by month) — or make a new one in a month, which the dialog then names.
+          editMode && e('span', { style: { position: 'relative', display: 'flex' } },
+            e('select', { value: '', onChange: (ev) => { const v = ev.target.value; if (!v) return; if (v.indexOf('new:') === 0) addNewLocToTrip(t.id, parseInt(v.slice(4), 10)); else addTripLoc(t.id, v); }, 'aria-label': 'Add a location to this trip',
+              style: { flex: '1 1 0', minWidth: 0, appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', height: 44, padding: '0 40px 0 16px', background: 'transparent', border: '2px dashed var(--dash)', borderRadius: 10, color: 'var(--ink-body)', fontFamily: 'inherit', fontWeight: 500, fontSize: 16, cursor: 'pointer' } },
+              e('option', { value: '' }, 'Choose a location…'),
+              data.map(m2 => { const opts = m2.locations.filter(l => !(t.locIds || []).includes(l.id)); return opts.length ? e('optgroup', { key: m2.key, label: m2.name }, opts.map(l => e('option', { key: l.id, value: l.id }, l.name))) : null; }),
+              e('optgroup', { label: 'New location in…' }, data.map((m2, i) => e('option', { key: 'new-' + m2.key, value: 'new:' + i }, 'New location in ' + m2.name + (first && first.m === i ? ' (the trip\'s month)' : ''))))),
+            e(DIcon, { name: 'chevD', size: 16, style: { position: 'absolute', right: 16, top: '50%', marginTop: -8, pointerEvents: 'none' } }))),
+        (editMode || (t.notes || '').trim()) && e('div', { style: col(6) }, e('h4', { style: D.label }, 'Notes'), e(NotesField, { key: 'tripnotes-' + t.id, d: true, value: t.notes, onCommit: (v) => updateTrip(t.id, { notes: v }) })));
+      const right = e('div', { style: col(28) },
+        (shotsTotal > 0 || (editMode && locs.length > 0)) && e('div', { style: col(8) },
+          e('h4', { style: D.label }, 'Shots' + (shotsTotal ? ' · ' + shotsDone + ' of ' + shotsTotal : '')),
+          locs.map((h, i) => e('div', { key: h.loc.id, style: col(8, i ? { marginTop: 8 } : null) },
+            e('span', { style: { fontFamily: SLAB, fontWeight: 600, fontSize: 18 } }, h.loc.name),
+            e(Checklist, { d: true, items: h.loc.shots || [], onToggle: (id) => toggleShot(h.loc.id, id), onAdd: (txt) => addShot(h.loc.id, txt), onRemove: (id) => removeShot(h.loc.id, id), placeholder: 'Add a shot for ' + h.loc.name, emptyText: editMode ? null : 'No shot list yet' })))),
+        e('div', { style: col(8) },
+          e('h4', { style: D.label }, 'Packing' + (packing.length ? ' · ' + packed + ' of ' + packing.length : '')),
+          e(Checklist, { d: true, items: packing, onToggle: (id) => togglePacking(t.id, id), onAdd: (txt) => addPacking(t.id, txt), onRemove: (id) => removePacking(t.id, id), placeholder: 'Add something to pack and press Enter', emptyText: 'Nothing listed yet.' }),
+          editMode && e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: isMobile ? 10 : 4 } },
+            locs.length > 0 ? pillBtn('Add kit from these locations', () => addKitToPacking(t.id)) : null,
+            packed > 0 ? pillBtn('Untick all', () => untickPacking(t.id)) : null,
+            pillBtn('Reset to the usual list', () => resetPacking(t.id)))));
+      return e('article', { key: t.id, className: 'trip-card', 'data-trip': t.id, style: card },
+        head,
+        e('div', { style: isMobile ? sx('display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px') : sx('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 12px') },
+          tile('Locations', locs.length), tile('Shots taken', shotsTotal ? shotsDone + ' of ' + shotsTotal : '—'), tile('Packed', packing.length ? packed + ' of ' + packing.length : '—')),
+        e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(400px, 100%), 1fr))', gap: isMobile ? 28 : '32px 44px', paddingTop: isMobile ? 24 : 28, borderTop: '1px solid var(--line-soft)' } }, left, right),
+        editMode && tplEditing === t.id && templateEditor(),
+        editMode && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 24px; border-top: 1px solid var(--line-soft)') },
+          linkBtn('Edit the usual packing list', () => setTplEditing(tplEditing === t.id ? false : t.id)),
+          e('button', { type: 'button', className: 'd-danger', onClick: () => deleteTrip(t.id), style: D.danger }, 'Delete trip')));
     };
 
-    const sectionHead = (text, right) => e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:26, marginBottom:12 } },
-      e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'var(--muted)', whiteSpace:'nowrap' } }, text),
-      e('span', { style:{ flex:1, height:1, background:'var(--line)' } }),
-      right && e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.06em', color:'var(--faint)' } }, right));
-    return e('div', null,
-      e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
-        e('div', { style: isMobile ? {} : { flex:'1 1 380px', minWidth:0 } },
-          null,
-          e('h1', { style:{ margin:'6px 0 0', fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'var(--ink)', letterSpacing:'-0.01em' } }, 'Trips'),
-          e('div', { style:{ marginTop:10, fontSize:isMobile?15:16, color:'var(--ink-3)', maxWidth:'44ch', lineHeight:1.5 } }, 'Planned outings — when, where, what to shoot and what to pack. Each trip also shows as a bar in the calendar and in the export.')
-        ),
-        e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{ flex:'1 1 auto' }) } },
-          null,
-          editToggle()
-        )
-      ),
-      e('div', { style:{ height:1, background:'var(--line)', margin:isMobile?'16px 0 14px':'22px 0 16px' } }),
-      !trips.length && e('div', { style:{ border:'1px dashed var(--line-dash)', background:'var(--paper-dim)', padding:'16px 18px', fontFamily:mono, fontSize:12, color:'var(--muted)', letterSpacing:'.02em' } }, editMode ? 'No trips yet — "+ New trip" starts one with your usual packing list.' : 'No trips planned yet.'),
-      ahead.length > 0 && sectionHead('Coming up', ahead.length + (ahead.length === 1 ? ' trip' : ' trips')),
-      ahead.map(tripCard),
-      past.length > 0 && sectionHead('Past trips', past.length + (past.length === 1 ? ' trip' : ' trips')),
-      past.map(tripCard),
-      // The usual packing list (what a new trip starts with) stays out of
-      // sight: a quiet link opens its editor.
-      editMode && e('div', { style:{ marginTop:28 } },
-        tplEditing
-          ? e('div', null,
-              e('div', { style:{ display:'flex', alignItems:'baseline', gap:12, flexWrap:'wrap' } },
-                e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.18em', textTransform:'uppercase', color:'var(--muted)' } }, 'Usual packing list'),
-                e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.06em', color:'var(--ghost)' } }, 'what a new trip starts with · one item per line · saves when you click away')),
-              e('textarea', { autoFocus:true, defaultValue:template, 'aria-label':'Usual packing list', onBlur:(ev)=>{ setPackingTemplate(ev.target.value); setTplEditing(false); }, onKeyDown:(ev)=>{ if (ev.key === 'Escape') setTplEditing(false); }, style:{ marginTop:8, width:'100%', maxWidth:560, minHeight:240, fontFamily:mono, fontSize:12, lineHeight:1.6, color:'var(--ink)', background:'var(--field)', border:'1px solid var(--line-strong)', borderRadius:3, padding:'8px 10px', outline:'none', resize:'vertical' } }))
-          : quietBtn('✎ edit the usual packing list', ()=>setTplEditing(true)))
-    );
+    const group = (title, list) => list.length > 0 && e('section', { key: title, 'aria-label': title, style: col(18) },
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px') }, e('h2', { style: H2 }, title), e('span', { style: sx('font-size: 16px; color: var(--ink-2)') }, list.length + (list.length === 1 ? ' trip' : ' trips'))),
+      list.map(tripCard));
+    const anyOpen = trips.some(t => t.id === tripOpen);
+    return e('main', null, e('div', { style: { maxWidth: 1244, margin: '0 auto', padding: isMobile ? '18px 16px 48px' : '36px 32px 80px', display: 'flex', flexDirection: 'column', gap: isMobile ? 32 : 40 } },
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px') },
+        e('div', { style: sx('flex: 1 1 520px; min-width: 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px') },
+          e('h1', { style: { margin: 0, fontFamily: SLAB, fontWeight: 700, letterSpacing: '-0.01em', ...(isMobile ? { fontSize: 44, lineHeight: 1 } : { fontSize: 'clamp(44px, 6.6vw, 80px)', lineHeight: 0.95 }) } }, 'Trips'),
+          e('p', { style: { margin: 0, fontSize: isMobile ? 18 : 21, lineHeight: 1.45, color: 'var(--ink-body)' } }, 'Planned outings — when, where, what to shoot and what to pack. Each trip also shows as a bar in the calendar and in the export.'),
+          phoneAction({ height: 48 }))),
+      !trips.length && e('p', { style: quiet }, editMode ? 'No trips yet — “New trip” starts one with your usual packing list.' : 'No trips planned yet.'),
+      group('Coming up', ahead), group('Past trips', past),
+      // with no trip open, the usual packing list is still within reach
+      editMode && !anyOpen && (tplEditing === 'page' ? templateEditor() : e('div', null, linkBtn('Edit the usual packing list', () => setTplEditing('page'))))));
   };
 
   // ─── Gallery page ─────────────────────────────────────────────────────────
@@ -6989,7 +6983,7 @@ function App() {
     galleryView
       ? oldPage(renderGalleryPage())
       : tripsView
-      ? oldPage(renderTripsPage())
+      ? renderTripsPage()
       : weatherView
       ? e(WeatherView, { data, initialLocId: weatherLoc, defaultLocId: data[0] && data[0].weatherDefault, onSetDefault: editMode ? setWeatherDefault : null, onOpenMonth: goToMonth, isMobile, action: phoneAction({ height: 48 }), hrefFor: (i, id) => '#/' + viewYear + '/' + data[i].key + '/' + id })
       : mapView
