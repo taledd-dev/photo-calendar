@@ -6054,7 +6054,9 @@ function App() {
     const starBtn = editMode && e('button', { type: 'button', className: 'lb-btn', onClick: () => togglePrintStarIn(it.i, it.loc.id), 'aria-pressed': it.starred ? 'true' : 'false', title: it.starred ? 'Starred — this location fronts the printed month (click to unstar)' : 'Star — use this location on the printed month',
       style: { display: 'inline-flex', alignItems: 'center', gap: 8, height: 44, padding: '0 16px', borderRadius: 10, fontFamily: 'inherit', fontWeight: 600, fontSize: 16, cursor: 'pointer', ...(it.starred ? { background: 'var(--gold)', border: '1px solid var(--gold)', color: 'var(--lb-ground)' } : { background: 'var(--lb-glass-12)', border: '1px solid var(--lb-glass-40)', color: 'var(--on-photo)' }) } },
       e(DIcon, { name: 'star', size: 18, style: it.starred ? { fill: 'currentColor' } : null }), it.starred ? 'Starred' : 'Star');
-    const briefLink = e('a', { href: '#/' + viewYear + '/' + it.month.key + '/' + it.loc.id, onClick: (ev) => { ev.preventDefault(); close(); goToMonth(it.i, it.loc.id); }, style: { display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600, fontSize: 16, color: 'var(--lb-link)' } }, 'Open brief →');
+    // the way to the location's own page: a button (still a real link), worded "More info" — the owner's choice
+    const briefLink = e('a', { className: 'lb-btn', href: '#/' + viewYear + '/' + it.month.key + '/' + it.loc.id, onClick: (ev) => { ev.preventDefault(); close(); goToMonth(it.i, it.loc.id); }, title: 'Open ' + it.loc.name + ' in ' + it.month.name,
+      style: { display: 'inline-flex', alignItems: 'center', height: 44, boxSizing: 'border-box', padding: '0 16px', borderRadius: 10, background: 'var(--lb-glass-12)', border: '1px solid var(--lb-glass-40)', color: 'var(--on-photo)', fontWeight: 600, fontSize: 16, textDecoration: 'none', whiteSpace: 'nowrap' } }, 'More info');
     const photo = (imgProps) => e('div', { onClick: hold, style: { position: 'relative', display: 'flex', maxWidth: '100%', maxHeight: '100%' } },
       e('img', { key: it.base, src: Storage.photoUrl(it.base, imgEpoch || undefined), alt: it.caption, ...imgProps }),
       e(PhotoCredit, { pill: true, style: { right: 12, bottom: 10 } }));
@@ -6095,13 +6097,13 @@ function App() {
         arrow(1, 'Next photo')),
       // the place, its details and the photo's caption; then tags, the star and the way to its brief
       !lbBare && e('div', { onClick: hold, style: sx('width: 100%; max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px') },
-        capText({ flex: '1 1 100%' }),   // directly under the photo, ahead of the place's name
+        // the caption sits directly under the photo, ahead of the place's name: its text for a visitor, its field for the owner
+        capText({ flex: '1 1 100%' }), capInput({ flex: '1 1 100%' }),
         e('div', { style: sx('display: flex; flex-direction: column; gap: 2px; min-width: 0') },
           e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 26 : 30, lineHeight: 1.15 } }, it.loc.name),
           e('span', { style: sx('font-size: 16px; color: var(--lb-ink-2)') }, meta),
           tagChips),
-        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px') }, tagsInput(isMobile ? 160 : 200), starBtn, briefLink),
-        capInput({ flex: '1 1 100%' })));
+        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px') }, tagsInput(isMobile ? 160 : 200), starBtn, briefLink)));
   };
 
   // ─── Trip pop-up ──────────────────────────────────────────────────────────

@@ -180,7 +180,10 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   (blur/Enter; empty removes it; a legacy single photo becomes a `photos`
   list), carried on gallery items as `text` (the automatic "Place · Mon
   'YY" stays `caption`) and shown **only on the Gallery page, directly
-  under the photo** — above the place's name on a tile and in the viewer. *Map* (`MapView`, props
+  under the photo** — above the place's name on a tile and in the viewer
+  (where the owner sees the Caption field in that spot). The viewer's way
+  to the location's page is a **"More info" button** (a link styled as one;
+  the owner's wording, in place of "Open brief →"). *Map* (`MapView`, props
   `photoFor`, `hrefFor`): the "Visited" tile with its bar (the wording is
   **"Visited", never "ticked off"** — the owner's choice), one filter
   card (Region, Status, When), the live map unchanged in a rounded frame
