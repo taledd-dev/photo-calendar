@@ -5234,7 +5234,7 @@ function App() {
     const sorted = trips.slice().sort(byStart);
     const ahead = sorted.filter(t => !isPast(t)), past = sorted.filter(isPast).reverse();
     const when = tripWhen;
-    const rowStyle = { display:'grid', gridTemplateColumns:isMobile?'64px 1fr':'90px 1fr', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid var(--line-soft)' };
+    const rowStyle = { display:'grid', gridTemplateColumns:isMobile?'64px minmax(0, 1fr)':'90px minmax(0, 1fr)', gap:isMobile?10:16, padding:'11px 0', borderTop:'1px solid var(--line-soft)' }; // minmax(0, …): a long picker must not push a phone page sideways
     const rowLabel = (t, sub) => e('div', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', paddingTop:3 } }, t, sub && e('div', { style:{ marginTop:3, fontSize:9.5, letterSpacing:'.06em', textTransform:'none', color:'var(--ghost)' } }, sub));
     const smallBtn = (label, onClick) => e('button', { key:label, onClick, style:{ background:'none', border:'1px dashed var(--line-strong)', color:'var(--label)', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', padding:'4px 9px', cursor:'pointer' } }, label);
     const quietBtn = (label, onClick) => e('button', { className:'quiet-link', onClick, style:{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--label)', textDecoration:'underline', textUnderlineOffset:3 } }, label);

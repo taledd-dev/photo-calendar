@@ -41,6 +41,104 @@ home rows, month header and print grid show `monthLight(m2, i)` (15th of the
 month at `HOME_REF`, Hindhead — labelled on screen, unnamed in print), and
 the brief has a per-location "Light" row. `daylightNote` stays editorial.
 
+## The redesign — "option D" (in progress; preview at `/next/`)
+
+The owner chose a new look in a design session (18 Nov 2026): warm cream
+paper, olive-green actions, rounded corners, **two typefaces** (Zilla Slab
+700 for titles and names, Figtree for everything else, 17px body), 44px
+controls with 10px corners, 12–16px cards, pill chips, no shadows except on
+pop-ups and menus, line icons instead of font characters. The drawings are
+the boards titled **"D · …"** on the design canvas
+`https://claude.ai/artifact/8JDNdoTUnMnv7HCPksyT1W` (boards A, B, C and
+"Today" are not to be built); the written brief was the hand-over document
+the owner attached. **Where the brief and a board disagree, ask the owner.**
+
+- **It is being built in `next/index.html`**, a full copy of the app
+  published at `photoplan.studio/next/` (`noindex`; same data, password and
+  photos as the live site — an edit there is a real edit). **The live
+  `index.html` keeps the old look until the owner approves**, then
+  `next/index.html` replaces it. A fix that should reach visitors now goes
+  into both files. Asset paths in `next/` are absolute (`/assets/…`).
+- **Build order (the brief's), one step at a time for the owner to review:**
+  1 shared look ✔ · 2 top bar + Settings menu ✔ · 3 month page ✔ ·
+  4 Home · 5 Weather, Trips, Gallery, Map · 6 pop-ups + photo viewer ·
+  7 Calendar (28 pages; the photo index becomes 2 pages of 6 with one large
+  photo chosen per page, remembered per calendar year in the shared data,
+  default January and July — this supersedes "four per page") · 8 phone,
+  then night, across the pages · 9 **link-only access** (propose the
+  approach in plain language and get agreement before building).
+  Pages not yet rebuilt render in the old look inside `oldPage(node)`
+  (`.old-page`) under the new top bar.
+- **Shared pieces** (module scope, after `const e`): `sx('css text')` turns
+  CSS text into a cached style object (so a board's styles paste in with the
+  colour literals swapped for tokens); `SLAB`; `D_ICONS` + `DIcon` (2px line
+  icons: cog, search, target, close, chevL/R/D, up, pause, play, star);
+  **`D`** = the drawn controls (`btn`, `primary`, `danger`, `iconBtn`,
+  `round` — the light round button over a photo, `field`, `pill`, `pillOn`,
+  `label`); `DInput` (a real input that saves on blur/Enter, plain text for
+  visitors); `textWidth(text, font)` (canvas measure, cached once the face
+  has loaded). CSS classes `.d-root` (the shell: Figtree, 17px, tabular
+  figures), `.d-btn/.d-primary/.d-danger/.d-iconbtn/.d-round` (hover),
+  `.d-field`, `.d-edit` (click-to-edit text: wash on hover, field look while
+  typing, `data-ph` placeholder), `.d-ev`, `.d-card`, `.d-x`, `.d-linkbtn`,
+  `.d-slot`. New tokens: `on-photo-ink`, `tile`, `slot`, `dash`,
+  `green-wash-ink`, `pop-shadow`, `map-ground`; `--page` is now `#F1EBDB`.
+  Zilla Slab 600/700 is self-hosted (`assets/fonts/ZillaSlab-*.woff2`).
+- **Top bar** (`renderTopBar`, every page): logo → Home · the six word links
+  (Home, Map, Weather, Trips, Gallery, Calendar — Calendar = the printable
+  calendar, owner only, as before) · search (`searchBoxD`, where the page
+  has one) · the page's one green button (`pageAction()` / `actionBtn`;
+  on phones it moves into the page, `phoneAction`) · the Settings cog
+  (`renderSettingsMenu`: Night mode and Editing switches; Export calendar and
+  Calendar backups for the owner). `navRow`, `homeTools`, `editToggle`,
+  `backupsLink` are stubbed to `null` (originals kept as `…Old`).
+- **Month page** (`renderMonthPage`, drawn on "D · Combined" / "D · Month
+  night" / "D · Month phone"), top to bottom: full-width `PhotoSlideshow d`
+  (caption **under** the photo via `onCurrent` → `heroCap`; only the round
+  next/pause buttons on it); month name + year (`.d-yearsel`, a select that
+  reads as text) + tagline + month picker; **"at a glance"**: typical light,
+  Add event and the **month strip** — one column per day (weekends tinted,
+  a photo-op day's number dark), events as rounded bars in rows by kind
+  (nature/season windows · the sky · trips · photo ops and own events),
+  the name beside the bar (right, or left when the month ends first), an
+  all-month or long window as a pale bar with the name inside, the "Shown
+  as" picture before the name; a bar or its name opens the editor (owner) or
+  the trip pop-up; on phones the strip is a list (swatch, name, days);
+  **location cards** (`LocationPhoto d:'card'`, Done / To shoot / Photo op
+  chips, All/UK/International filter `locFilter`, the owner's round ★ for
+  the print pick, drag to reorder on desktop, green outline when open; a
+  sideways-scrolling row on phones); and the **brief** — header (name,
+  subject · where · region, Completed / Schedule photo op / ×), left column
+  (main photo with round focus and remove buttons, thumbnails with
+  `[year][↑][×]` — the thumbnail itself is the focus control — the dashed
+  "Add photo" slot, year taken, the mini map, its legend, coordinates and
+  map links), right column (Light: Weather button, day stepper, four tiles,
+  Daylight / Moon / Milky Way lines; Tides: `TideChartD` — the day's curve
+  with daylight shaded and sunrise/sunset marked, a tile per high and low,
+  "About this data" → `renderTideAbout`; then Where / Idea / When), the
+  lower grid (Shots, Visits, Trips + Same spot, Kit, Parking and Links,
+  Notes) and the footer (Move to…, the UK/International select, Delete).
+  The components carry their option-D form behind a `d` prop
+  (`PhotoSlideshow`, `LocationPhoto` `'main' | 'thumb' | 'add' | 'card'`,
+  `KitField`, `LinksField`, `NotesField`, `Checklist`, `MiniMap`).
+  The print calendar still uses `buildWeeks` and the day-corner icons.
+- **Parked by the brief:** starring stays exactly as it is (the starred
+  location is **shared across years** — `month.printLoc`); the Home page's
+  Cards/List toggle is dropped but the list should stay easy to restore; the
+  Photoplan design system is not yet updated to option D (ask the owner
+  when).
+- **Checking a step:** scratchpad `boards/` — `render.js` (the boards,
+  rendered with their own runtime → `boards/shots/`), `b2js.py` (board
+  markup → `e(…, { style: sx('…') })` with tokens), `dshots.js <dir> [only]`
+  (the preview seeded like the boards; full-page shots at 1280, night, 390
+  and as a visitor; fails on sideways overflow, a tap target under 44px, a
+  page error), `strips.js` (the month strip for all twelve months),
+  `month_test.js` (65 click-through checks of the month page against a
+  faked Worker). The brief's own checks per step: matches the board at 1280
+  and 390, nothing spills at 390, taps ≥ 44px, no photo tinted at night,
+  print stays 28 day-coloured pages, nothing stored changes, and the owner
+  has seen it on a real phone.
+
 ## Architecture at a glance
 
 - **Everything is one file: `index.html`.** No build step. React 18.3.1 is
