@@ -3637,8 +3637,7 @@ function parseKpForecast(rows) {
 // page opens on it unless arriving from a location's own "Forecast" link.
 // One picker chooses the spot to view; beside it the owner's green "Set
 // default" button (`onSetDefault`) makes the spot on show the default.
-function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, onOpenMonth, isMobile, navControl }) {
-  const mono = "'IBM Plex Mono',monospace";
+function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onOpenMonth, isMobile, action, hrefFor }) {
   const places = useMemo(() => data.flatMap((m, i) => m.locations.map(l => ({ loc: l, m, i, coords: coordsOf(l) })).filter(p => p.coords)), [data]);
   const todayMonth = new Date().getMonth();
   const savedDefault = defaultLocId && places.some(p => p.loc.id === defaultLocId) ? defaultLocId : null;
@@ -3747,16 +3746,13 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
   const guideId = (title) => 'guide-' + slugify(title);
   const goToGuide = (title) => { const el = document.getElementById(guideId(title)); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
 
-  const label = (t, extra) => e('div', { style:{ fontFamily:mono, fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)', ...(extra || {}) } }, t);
   const pct = (v) => v == null ? '—' : Math.round(v) + '%';
-  const cloudWord = (v) => v == null ? '' : v <= 15 ? 'clear' : v <= 50 ? 'some cloud' : v <= 85 ? 'cloudy' : 'overcast';
-  const fmtDay = (iso) => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const fmtDay = (iso) => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/,/g, '');
   const kpWord = (v) => v >= 7 ? 'storm — aurora possible across the UK' : v >= 5 ? 'storm — aurora possible in Scotland & the north' : v >= 4 ? 'active — watch the north' : v >= 3 ? 'unsettled' : 'quiet';
-  const kpTone = (v) => v >= 5 ? 'var(--terra)' : v >= 3 ? 'var(--amber-ink)' : 'var(--green)';
-
-  const linkStyle = { fontFamily:mono, fontSize:10.5, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--green)', textDecoration:'none', borderBottom:'1px solid var(--green-line)', paddingBottom:1, whiteSpace:'nowrap' };
-  const extLink = (href, text) => e('a', { key:text, className:'map-link', href, target:'_blank', rel:'noopener noreferrer', style:linkStyle }, text + ' ↗');
-  const card = { background:'var(--paper)', border:'1px solid var(--line-strong)', boxShadow:'0 1px 0 var(--lip)' };
+  const kpLook = (v) => v >= 5 ? { background: 'var(--terra-wash)', color: 'var(--terra)' } : v >= 3 ? { background: 'var(--amber-wash)', color: 'var(--amber-ink)' } : { background: 'var(--moon-wash)', color: 'var(--moon-ink)' };
+  const extLink = (href, text) => e('a', { key: text, href, target: '_blank', rel: 'noopener noreferrer', style: isMobile ? sx('display: inline-flex; align-items: center; min-height: 44px; font-weight: 500') : { fontWeight: 500 } }, text + ' ↗');
+  const quiet = { margin: 0, fontSize: 16, color: 'var(--ink-2)' };
+  const paperCard = sx('background: var(--paper); border: 1px solid var(--line); border-radius: 16px');
 
   const links = sel ? (() => {
     const [la, lo] = sel.coords; const uk = coordsInUK(la, lo);
@@ -3771,111 +3767,129 @@ function WeatherView({ data, initialLocId, defaultLocId, onSetDefault, onBack, o
     return out;
   })() : [];
 
-  const dayRow = (d) => {
+  // One day of the outlook: the weather, then cloud at dawn, at dusk and in
+  // the night, each with a photographer's reading of it (green when it is a
+  // good sign); rain, wind and visibility; and what the day is promising for.
+  const dayCard = (d) => {
     const w = WMO[d.code] || ['', ''];
-    const dusk = lightVerdict(d.cloudDusk, d.lowDusk, d.rainP);
-    const dawn = lightVerdict(d.cloudDawn, d.lowDawn, d.rainP);
-    const night = d.cloudNight == null ? null : d.cloudNight <= 25 ? (d.moon.frac < 0.35 ? 'dark & clear — astro night' : 'clear, moonlit') : d.cloudNight <= 60 ? 'some cloud' : 'cloudy';
-    const cell = (k, v, sub) => e('div', { style:{ minWidth: isMobile ? 'calc(50% - 6px)' : 0, flex: isMobile ? '1 1 calc(50% - 6px)' : '1 1 0' } },
-      label(k), e('div', { style:{ fontFamily:mono, fontSize:12.5, color:'var(--ink)', marginTop:3, lineHeight:1.4 } }, v),
-      sub && e('div', { style:{ fontSize:12, color:'var(--muted)', marginTop:2, lineHeight:1.35 } }, sub));
+    const dawn = lightVerdict(d.cloudDawn, d.lowDawn, d.rainP), dusk = lightVerdict(d.cloudDusk, d.lowDusk, d.rainP);
+    const good = (v) => !!v && (v.text.indexOf('Clear') === 0 || v.text.indexOf('Broken') === 0);
+    const nightWord = d.cloudNight == null ? '' : d.cloudNight <= 25 ? (d.moon.frac < 0.35 ? 'Dark and clear — astro night' : 'Clear, moonlit') : d.cloudNight <= 60 ? 'Some cloud' : 'Cloudy';
+    const nightNote = (nightWord ? nightWord + ' · ' : '') + 'moon ' + Math.round(d.moon.frac * 100) + '%' + (d.moon.waxing ? ' waxing' : ' waning');
+    const rain = (d.rainP != null ? Math.round(d.rainP) + '%' : '—') + (d.rain != null ? ' · ' + Math.round(d.rain * 10) / 10 + ' mm' : '');
+    const wind = d.wind != null ? Math.round(d.wind) + (d.gust != null ? '/' + Math.round(d.gust) : '') + ' mph' : '—';
+    const vis = d.visMin != null ? (d.visMin < 1 ? Math.round(d.visMin * 1000) + ' m' : Math.round(d.visMin) + ' km') : '—';
+    const summary = [w[0], d.tmax != null ? Math.round(d.tmin) + '–' + Math.round(d.tmax) + ' °C' : ''].filter(Boolean).join(' · ');
     const flags = d.flags || [];
-    return e('div', { key:d.date, 'data-day':d.date, style:{ ...card, padding: isMobile ? '12px 13px' : '13px 16px' } },
-      e('div', { style:{ display:'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 10 : 18, alignItems: isMobile ? 'stretch' : 'flex-start' } },
-        e('div', { style:{ flex: isMobile ? 'none' : '0 0 150px', display:'flex', gap:12, alignItems:'center' } },
-          e('span', { style:{ fontSize:26, lineHeight:1 } }, w[1]),
-          e('div', null,
-            e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:16, color:'var(--ink)' } }, fmtDay(d.date)),
-            e('div', { style:{ fontSize:12.5, color:'var(--ink-3)', marginTop:2 } }, w[0] + (d.tmax != null ? ' · ' + Math.round(d.tmin) + '–' + Math.round(d.tmax) + ' °C' : '')))),
-        e('div', { style:{ flex:1, display:'flex', flexWrap:'wrap', gap: isMobile ? '10px 12px' : 14 } },
-          cell('Dawn ' + d.sunrise, pct(d.cloudDawn) + ' cloud', dawn && e('span', { style:{ color:dawn.tone } }, dawn.text)),
-          cell('Dusk ' + d.sunset, pct(d.cloudDusk) + ' cloud', dusk && e('span', { style:{ color:dusk.tone } }, dusk.text)),
-          cell('Night', pct(d.cloudNight) + ' cloud', (night || '') + ' · moon ' + Math.round(d.moon.frac * 100) + '%' + (d.moon.waxing ? ' waxing' : ' waning')),
-          cell('Rain · wind · vis', (d.rainP != null ? Math.round(d.rainP) + '%' : '—') + ' · ' + (d.wind != null ? Math.round(d.wind) + (d.gust != null ? '/' + Math.round(d.gust) : '') + ' mph' : '—') + ' · ' + (d.visMin != null ? (d.visMin < 1 ? Math.round(d.visMin * 1000) + ' m' : Math.round(d.visMin) + ' km') : '—'),
-            d.rain != null ? Math.round(d.rain * 10) / 10 + ' mm' : null)
-        )
-      ),
-      // What the day looks promising for — one chip per kind of shoot, each
-      // leading to its card in the guide below. Days with none show nothing.
-      flags.length > 0 && e('div', { style:{ marginTop:10, paddingTop:9, borderTop:'1px solid var(--line-soft)', display:'flex', flexWrap:'wrap', alignItems:'center', gap:'6px 8px' } },
-        label('Promising for', { marginRight:4 }),
-        flags.map(f => { const g = WEATHER_GUIDE.find(x => x.title === f.title) || {}; return e('button', { key:f.title, className:'map-chip', onClick:()=>goToGuide(f.title), title: f.why + ' — see the guide below', 'data-flag':f.title,
-          style:{ display:'inline-flex', alignItems:'baseline', gap:6, padding:'4px 9px', background:'var(--green-wash)', border:'1px solid var(--green)', color:'var(--green-deep)', fontFamily:mono, fontSize:10.5, letterSpacing:'.05em', cursor:'pointer', boxShadow:'2px 2px 0 var(--shadow-08)', textAlign:'left' } },
-          e('span', { style:{ color:'var(--terra)' } }, g.glyph || '◉'), e('span', { style:{ fontWeight:600 } }, f.title), e('span', { style:{ color:'var(--ink-3)' } }, '· ' + f.when)); }))
-    );
+    const tone = (ok) => ok ? 'var(--green-wash-ink)' : 'var(--ink-2)';
+    const kv = (k, v) => e('span', { key: k }, e('span', { style: { color: 'var(--ink-2)' } }, k), ' ' + v);
+    const head = e('div', { style: isMobile ? sx('display: flex; align-items: center; gap: 12px; padding-bottom: 12px') : sx('display: flex; align-items: center; gap: 14px') },
+      e(WxIcon, { code: d.code, size: isMobile ? 40 : 44 }),
+      e('div', { style: sx('display: flex; flex-direction: column') },
+        e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: 22, lineHeight: 1.2 } }, fmtDay(d.date)),
+        e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, summary)));
+    // a pale pill inside a taller button, so the tap target is full size on a phone
+    const chip = (f) => e('button', { key: f.title, type: 'button', className: 'd-ev', onClick: () => goToGuide(f.title), title: f.why + ' — see the guide below', 'data-flag': f.title,
+      style: { display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : 34, padding: 0, background: 'none', border: 0, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' } },
+      e('span', { className: 'd-ev-name', style: sx('padding: 4px 12px; border-radius: 999px; background: var(--green-wash); color: var(--green-wash-ink); font-weight: 500; font-size: 15px') }, f.title + ' · ' + f.when));
+    const figs = [['Dawn' + (d.sunrise ? ' · ' + d.sunrise : ''), pct(d.cloudDawn), dawn && dawn.text, good(dawn)], ['Dusk' + (d.sunset ? ' · ' + d.sunset : ''), pct(d.cloudDusk), dusk && dusk.text, good(dusk)], ['Night', pct(d.cloudNight), nightNote, d.cloudNight != null && d.cloudNight <= 25]];
+    if (isMobile) return e('article', { key: d.date, 'data-day': d.date, style: { ...paperCard, display: 'flex', flexDirection: 'column', padding: '16px 16px 14px' } },
+      head,
+      figs.map(([k, v, note, ok]) => e('div', { key: k, style: sx('display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-top: 1px solid var(--line-soft)') },
+        e('div', { style: sx('display: flex; align-items: baseline; justify-content: space-between; gap: 10px') },
+          e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, k),
+          e('span', { style: sx('display: flex; align-items: baseline; gap: 6px') }, e('span', { style: sx('font-weight: 600; font-size: 24px; line-height: 1.15') }, v), e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'cloud'))),
+        note && e('span', { style: { fontSize: 15, color: tone(ok) } }, note))),
+      e('div', { style: sx('display: flex; flex-wrap: wrap; gap: 2px 16px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 15px') }, kv('Rain', rain), kv('Wind', wind), kv('Visibility', vis)),
+      flags.length > 0 && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft)') },
+        e('span', { style: sx('flex: 1 1 100%; font-size: 15px; color: var(--ink-2)') }, 'Promising for'), flags.map(chip)));
+    return e('article', { key: d.date, 'data-day': d.date, style: { ...paperCard, display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 22px' } },
+      e('div', { style: sx('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 16px 20px; align-items: start') },
+        head,
+        figs.map(([k, v, note, ok]) => e('div', { key: k, style: sx('display: flex; flex-direction: column; gap: 2px') },
+          e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, k),
+          e('span', { style: sx('display: flex; align-items: baseline; gap: 6px') }, e('span', { style: sx('font-weight: 600; font-size: 30px; line-height: 1.15') }, v), e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'cloud')),
+          note && e('span', { style: { fontSize: 15, color: tone(ok) } }, note))),
+        e('div', { style: sx('display: flex; flex-direction: column; gap: 2px; font-size: 15px') }, kv('Rain', rain), kv('Wind', wind), kv('Visibility', vis))),
+      flags.length > 0 && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding-top: 10px; border-top: 1px solid var(--line-soft)') },
+        e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'Promising for'), flags.map(chip)));
   };
 
-  return e('div', null,
-    // Header
-    e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
-      e('div', null,
-        null,
-        e('h1', { style:{ margin:'6px 0 0', fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'var(--ink)', letterSpacing:'-0.01em' } }, 'Weather'),
-        e('div', { style:{ marginTop:8, fontSize:isMobile?15:16, color:'var(--ink-3)', maxWidth:'46ch', lineHeight:1.5 } }, 'What the sky is doing at each spot, read the way a photographer needs it: cloud at dawn and dusk, the night, the moon — and what each kind of shoot wants.')
-      ),
-      null
-    ),
-    e('div', { style:{ height:1, background:'var(--line)', margin:isMobile?'16px 0 18px':'22px 0 24px' } }),
+  const isDefault = !!(sel && savedDefault === sel.loc.id);
+  const picker = e('select', { className: 'd-field', value: sel ? sel.loc.id : '', onChange: (ev) => { pickedRef.current = true; setSelId(ev.target.value); }, 'aria-label': 'Location for the forecast',
+    style: { ...D.field, padding: '0 12px', cursor: 'pointer', ...(isMobile ? { width: '100%' } : { minWidth: 240, maxWidth: '100%' }) } },
+    data.map((m, i) => { const ps = places.filter(p => p.i === i); return ps.length ? e('optgroup', { key: m.key, label: m.name }, ps.map(p => e('option', { key: p.loc.id, value: p.loc.id }, p.loc.name + (p.loc.id === savedDefault ? ' · default' : '')))) : null; }));
+  // The owner's "Set default" makes the spot on show the one the page opens on
+  // (marked "· default" in the list for everyone); on the default it clears it.
+  const defaultBtn = onSetDefault && sel && (isDefault
+    ? e('button', { type: 'button', className: 'd-btn', onClick: () => onSetDefault(null), 'aria-pressed': 'true', title: 'The Weather page opens on ' + sel.loc.name + '. Click to clear — it then opens on the current month’s first spot.', style: D.btn }, e('span', { style: { width: 9, height: 9, borderRadius: '50%', background: 'var(--green)' } }), 'Default')
+    : e('button', { type: 'button', className: 'd-primary', onClick: () => onSetDefault(sel.loc.id), 'aria-pressed': 'false', title: 'Open the Weather page on ' + sel.loc.name + ' from now on', style: D.primary }, 'Set default'));
+  const H2 = { margin: 0, fontFamily: SLAB, fontWeight: 700, lineHeight: 1.15 };
 
-    // Location picker + outlook
+  return e('main', null, e('div', { style: { maxWidth: 1244, margin: '0 auto', padding: isMobile ? '18px 16px 48px' : '36px 32px 80px', display: 'flex', flexDirection: 'column', gap: isMobile ? 32 : 40 } },
+    e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px') },
+      e('div', { style: sx('flex: 1 1 520px; min-width: 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px') },
+        e('h1', { style: { margin: 0, fontFamily: SLAB, fontWeight: 700, letterSpacing: '-0.01em', ...(isMobile ? { fontSize: 44, lineHeight: 1 } : { fontSize: 'clamp(44px, 6.6vw, 80px)', lineHeight: 0.95 }) } }, 'Weather'),
+        e('p', { style: { margin: 0, fontSize: isMobile ? 18 : 21, lineHeight: 1.45, color: 'var(--ink-body)' } }, 'What the sky is doing at each spot, read the way a photographer needs it: cloud at dawn and dusk, the night, the moon — and what each kind of shoot wants.'),
+        isMobile && action)),
+
+    // The spot on show and its seven-day outlook
     places.length === 0
-      ? e('div', { style:{ ...card, padding:18, fontSize:14, color:'var(--ink-3)' } }, 'Add map coordinates to a location to see its forecast here.')
-      : e('div', null,
-          // One picker for the spot on show. The owner's "Set default" makes it the
-          // spot the page opens on (marked "· default" in the list for everyone).
-          (() => {
-            const selStyle = { height:38, padding:'0 12px', background:'var(--field)', border:'1px solid var(--line-dark)', color:'var(--ink)', fontFamily:mono, fontSize:12, letterSpacing:'.04em', cursor:'pointer', borderRadius:0, maxWidth:'100%' };
-            const btn = { height:38, padding:'0 14px', fontFamily:mono, fontSize:11, letterSpacing:'.1em', textTransform:'uppercase', cursor:'pointer', borderRadius:0 };
-            const isDefault = !!(sel && savedDefault === sel.loc.id);
-            return e('div', { style:{ display:'flex', alignItems:'center', gap:'10px 12px', flexWrap:'wrap' } },
-              label('Location'),
-              e('select', { value: sel ? sel.loc.id : '', onChange:(ev)=>{ pickedRef.current = true; setSelId(ev.target.value); }, 'aria-label':'Location for the forecast', style:selStyle },
-                data.map((m, i) => { const ps = places.filter(p => p.i === i); return ps.length ? e('optgroup', { key:m.key, label:m.name }, ps.map(p => e('option', { key:p.loc.id, value:p.loc.id }, p.loc.name + (p.loc.id === savedDefault ? ' · default' : '')))) : null; })),
-              onSetDefault && sel && (isDefault
-                ? e('button', { onClick:()=>onSetDefault(null), 'aria-pressed':'true', title:'The Weather page opens on ' + sel.loc.name + '. Click to clear — it then opens on the current month’s first spot.', style:{ ...btn, background:'none', border:'1px solid var(--green)', color:'var(--green)' } }, '✓ Default')
-                : e('button', { className:'btn-hover', onClick:()=>onSetDefault(sel.loc.id), 'aria-pressed':'false', title:'Open the Weather page on ' + sel.loc.name + ' from now on', style:{ ...btn, background:'var(--green)', border:'1px solid var(--ink)', color:'var(--paper)', boxShadow:'3px 3px 0 var(--shadow-12)' } }, 'Set default')),
-              sel && e('button', { className:'btn-hover', onClick:()=>onOpenMonth(sel.i, sel.loc.id), style:{ ...btn, background:'var(--paper)', border:'1px solid var(--ink)', color:'var(--ink)', boxShadow:'3px 3px 0 var(--shadow-12)' } }, 'Open ' + sel.m.name + ' →')
-            );
-          })(),
-          sel && e('div', { style:{ marginTop:14, display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:'6px 18px', flexWrap:'wrap' } },
-            e('div', null,
-              e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:24, color:'var(--ink)' } }, sel.loc.name),
-              e('div', { style:{ fontSize:13.5, color:'var(--ink-3)', marginTop:2 } }, (sel.loc.where || '') + ' · ' + sel.coords[0].toFixed(3) + ', ' + sel.coords[1].toFixed(3))),
-            e('div', { style:{ fontFamily:mono, fontSize:10.5, color:'var(--faint)', letterSpacing:'.06em' } },
-              fc.status === 'ok' ? 'Seven days · ' + fc.data._model + ' · local time ' + (fc.data.timezone_abbreviation || '') : fc.status === 'loading' ? 'Fetching the forecast…' : fc.status === 'error' ? 'The forecast service could not be reached' : '')
-          ),
-          // Aurora + links
-          e('div', { style:{ marginTop:12, display:'flex', alignItems:'center', gap:'8px 18px', flexWrap:'wrap' } },
-            kp && e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.04em', color: kpTone(kp.value) } }, '✦ Aurora now: Kp ' + kp.value.toFixed(1) + ' — ' + kpWord(kp.value) + ' (NOAA ' + kp.time.slice(11) + ' UTC)'),
-            ...links
-          ),
-          // Days
-          e('div', { style:{ marginTop:16, display:'flex', flexDirection:'column', gap:8 } },
-            fc.status === 'loading' && e('div', { style:{ ...card, padding:16, fontFamily:mono, fontSize:11, color:'var(--muted)', letterSpacing:'.04em' } }, 'Loading…'),
-            fc.status === 'error' && e('div', { style:{ ...card, padding:16, fontSize:14, color:'var(--ink-3)', lineHeight:1.5 } }, 'No live forecast right now — the links above open the same spot on the forecast sites.'),
-            days.map(dayRow)
-          ),
-          fc.status === 'ok' && e('div', { style:{ marginTop:10, fontFamily:mono, fontSize:10.5, color:'var(--faint)', letterSpacing:'.03em', lineHeight:1.6 } }, 'Cloud figures are total cover at the hour nearest sunrise, sunset and 01:00. “Promising for” reads each day against the guide below — a prompt to look closer, not a promise; a kind that suits none of the seven days is not shown. Treat days four to seven as a trend, not a plan. Data: Open-Meteo.com (CC BY 4.0).')
-        ),
+      ? e('p', { style: quiet }, 'Add map coordinates to a location to see its forecast here.')
+      : e('section', { 'aria-label': 'Forecast', style: sx('display: flex; flex-direction: column; gap: 20px') },
+          isMobile
+            ? e('div', { style: sx('display: flex; align-items: flex-end; gap: 10px') }, e('label', { style: sx('flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--ink-2)') }, 'Location', picker), defaultBtn)
+            : e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px') }, e('label', { style: sx('display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--ink-2)') }, 'Location', picker), defaultBtn),
+          sel && e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 20px') },
+            e('div', { style: sx('display: flex; flex-direction: column; gap: 2px; min-width: 0') },
+              e('h2', { style: { ...H2, fontSize: isMobile ? 36 : 44, lineHeight: 1.05 } },
+                e('a', { className: 'd-namelink', href: hrefFor ? hrefFor(sel.i, sel.loc.id) : '#', onClick: (ev) => { ev.preventDefault(); onOpenMonth(sel.i, sel.loc.id); }, title: 'Open the brief for ' + sel.loc.name, style: { display: 'inline-block', padding: '4px 0', margin: '-4px 0', color: 'var(--ink)', textDecoration: 'none' } }, sel.loc.name)),
+              e('span', { style: sx('font-size: 17px; color: var(--ink-2)') }, [sel.loc.where, sel.coords[0].toFixed(3) + ', ' + sel.coords[1].toFixed(3)].filter(Boolean).join(' · '))),
+            e('span', { style: sx('font-size: 15px; color: var(--ink-2)') },
+              fc.status === 'ok' ? 'Seven days · ' + fc.data._model + ' · local time ' + (fc.data.timezone_abbreviation || '') : fc.status === 'loading' ? 'Fetching the forecast…' : fc.status === 'error' ? 'The forecast service could not be reached' : '')),
+          // Aurora now + the same spot on the forecast sites
+          e('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: isMobile ? '0 20px' : '6px 18px', fontSize: 16 } },
+            kp && e('span', { style: { ...(isMobile ? { flex: '1 1 100%', boxSizing: 'border-box', marginBottom: 4, padding: '8px 14px', borderRadius: 12 } : { padding: '5px 14px', borderRadius: 999 }), fontWeight: 500, ...kpLook(kp.value) } }, 'Aurora now: Kp ' + kp.value.toFixed(1) + ' — ' + kpWord(kp.value) + ' (NOAA ' + kp.time.slice(11) + ' UTC)'),
+            links),
+          e('div', { style: sx('display: flex; flex-direction: column; gap: 12px') },
+            fc.status === 'loading' && e('p', { style: quiet }, 'Loading…'),
+            fc.status === 'error' && e('p', { style: quiet }, 'No live forecast right now — the links above open the same spot on the forecast sites.'),
+            days.map(dayCard)),
+          fc.status === 'ok' && e('p', { style: sx('margin: 0; max-width: 62em; font-size: 15px; color: var(--ink-2)') }, 'Cloud figures are total cover at the hour nearest sunrise, sunset and 01:00. “Promising for” reads each day against the guide below — a prompt to look closer, not a promise; a kind that suits none of the seven days is not shown. Treat days four to seven as a trend, not a plan. Data: Open-Meteo.com (CC BY 4.0).')),
 
-    // Guide
-    e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:44 } },
-      e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'var(--muted)', whiteSpace:'nowrap' } }, 'Conditions & settings'),
-      e('span', { style:{ flex:1, height:1, background:'var(--line)' } }),
-      e('span', { style:{ fontFamily:mono, fontSize:11, letterSpacing:'.06em', color:'var(--faint)', whiteSpace:'nowrap' } }, WEATHER_GUIDE.length + ' kinds of shoot')
-    ),
-    e('div', { style:{ marginTop:16, display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap:12 } },
-      WEATHER_GUIDE.map(g => e('div', { key:g.title, id:guideId(g.title), style:{ ...card, padding: isMobile ? '14px 14px 15px' : '16px 18px 17px', scrollMarginTop:20 } },
-        e('div', { style:{ display:'flex', alignItems:'baseline', gap:9 } },
-          e('span', { style:{ fontFamily:mono, color:'var(--terra)', fontSize:13 } }, g.glyph),
-          e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:17, color:'var(--ink)' } }, g.title)),
-        // the days in the outlook above that look promising for this kind
-        flaggedDays[g.title] && e('div', { style:{ marginTop:6, fontFamily:mono, fontSize:10.5, letterSpacing:'.04em', color:'var(--green-deep)' } }, 'Promising at ' + (sel ? sel.loc.name : 'this spot') + ': ' + flaggedDays[g.title].map(x => fmtDay(x.date) + ' (' + x.when + ')').join(' · ')),
-        [['Conditions', g.conditions], ['Settings', g.settings], ['Tips', g.tips]].map(([k, v]) =>
-          e('div', { key:k, style:{ marginTop:10 } }, label(k), e('div', { style:{ fontSize:14, color:'var(--ink-body)', lineHeight:1.5, marginTop:3 } }, v)))
-      ))
-    )
-  );
+    // The guide: what each kind of shoot wants, and the days above that offer it
+    e('section', { 'aria-label': 'Conditions and settings', style: sx('display: flex; flex-direction: column; gap: 22px') },
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px') },
+        e('h2', { style: { ...H2, fontSize: isMobile ? 28 : 30 } }, 'Conditions and settings'),
+        e('span', { style: sx('font-size: 16px; color: var(--ink-2)') }, WEATHER_GUIDE.length + ' kinds of shoot')),
+      e('div', { style: sx('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 24px') },
+        WEATHER_GUIDE.map(g => e('article', { key: g.title, id: guideId(g.title), style: { ...paperCard, display: 'flex', flexDirection: 'column', gap: 16, padding: isMobile ? 20 : '26px 28px', scrollMarginTop: 20 } },
+          e('div', { style: sx('display: flex; flex-direction: column; align-items: flex-start; gap: 8px') },
+            e('h3', { style: { ...H2, fontSize: isMobile ? 24 : 26 } }, g.title),
+            // the days in the outlook above that look promising for this kind
+            flaggedDays[g.title] && e('span', { style: sx('padding: 4px 12px; border-radius: 14px; background: var(--green-wash); color: var(--green-wash-ink); font-weight: 500; font-size: 15px') }, 'Promising at ' + (sel ? sel.loc.name : 'this spot') + ': ' + flaggedDays[g.title].map(x => fmtDay(x.date) + ' (' + x.when + ')').join(' · '))),
+          [['Conditions', g.conditions], ['Settings', g.settings], ['Tips', g.tips]].map(([k, v]) =>
+            e('div', { key: k, style: k === 'Settings' ? sx('display: flex; flex-direction: column; gap: 4px; padding: 14px 18px; background: var(--tile); border-radius: 12px') : sx('display: flex; flex-direction: column; gap: 4px') },
+              e('h4', { style: D.label }, k), e('p', { style: { margin: 0, ...(k === 'Settings' ? { fontWeight: 500 } : {}) } }, v)))))))));
+}
+
+// A line drawing of the day's weather from its WMO code, in the look of the
+// other icons: ink outlines, the sun in amber, rain and snow in slate.
+function WxIcon({ code, size = 44 }) {
+  const k = code == null ? 'cloud' : code === 0 ? 'clear' : code <= 2 ? 'partly' : code === 3 ? 'cloud' : (code === 45 || code === 48) ? 'fog'
+    : ((code >= 71 && code <= 77) || code === 85 || code === 86) ? 'snow' : code >= 95 ? 'storm' : 'rain';
+  const amber = { stroke: 'var(--amber)' }, slate = { stroke: 'var(--slate)' };
+  const high = e('path', { key: 'c', d: 'M12 28h20a7 7 0 0 0 0-14 9 9 0 0 0-17 2 6 6 0 0 0-3 12z' });
+  const parts = {
+    clear: [e('circle', { key: 's', cx: 22, cy: 22, r: 8, style: amber }), e('path', { key: 'r', d: 'M22 5v4M22 35v4M5 22h4M35 22h4M10 10l2.8 2.8M31.2 31.2L34 34M10 34l2.8-2.8M31.2 12.8L34 10', style: amber })],
+    partly: [e('circle', { key: 's', cx: 15, cy: 15, r: 6, style: amber }), e('path', { key: 'r', d: 'M15 4v3M4 15h3M7 7l2 2M23 7l-2 2', style: amber }), e('path', { key: 'c', d: 'M14 36h18a7 7 0 0 0 0-14 9 9 0 0 0-17 2 6 6 0 0 0-1 12z', style: { fill: 'var(--paper)' } })],
+    cloud: [e('path', { key: 'c', d: 'M12 33h20a7 7 0 0 0 0-14 9 9 0 0 0-17 2 6 6 0 0 0-3 12z' })],
+    fog: [high, e('path', { key: 'f', d: 'M11 34h22M15 39h14', style: slate })],
+    rain: [high, e('path', { key: 'f', d: 'M16 33l-2 6M23 33l-2 6M30 33l-2 6', style: slate })],
+    snow: [high, e('path', { key: 'f', d: 'M16 34v.01M23 37v.01M30 34v.01M19.5 40v.01M26.5 40v.01', style: { ...slate, strokeWidth: 3 } })],
+    storm: [high, e('path', { key: 'f', d: 'M24 31l-4 6h5l-3 5', style: amber })],
+  };
+  return e('svg', { 'aria-hidden': 'true', width: size, height: size, viewBox: '0 0 44 44', style: { flex: '0 0 ' + size + 'px', fill: 'none', stroke: 'var(--ink)', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' } }, parts[k]);
 }
 
 function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEditIntro, editMode, editControl }) {
@@ -6977,7 +6991,7 @@ function App() {
       : tripsView
       ? oldPage(renderTripsPage())
       : weatherView
-      ? oldPage(e(WeatherView, { data, initialLocId: weatherLoc, defaultLocId: data[0] && data[0].weatherDefault, onSetDefault: editMode ? setWeatherDefault : null, onBack: goToYear, onOpenMonth: goToMonth, isMobile, navControl: null }))
+      ? e(WeatherView, { data, initialLocId: weatherLoc, defaultLocId: data[0] && data[0].weatherDefault, onSetDefault: editMode ? setWeatherDefault : null, onOpenMonth: goToMonth, isMobile, action: phoneAction({ height: 48 }), hrefFor: (i, id) => '#/' + viewYear + '/' + data[i].key + '/' + id })
       : mapView
       ? oldPage(e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro, editMode, editControl: null }))
       : (printView && editMode)
