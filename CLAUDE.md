@@ -179,11 +179,13 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `setPhotoCaption(locId, slot, text)` from the viewer's "Caption" field
   (blur/Enter; empty removes it; a legacy single photo becomes a `photos`
   list), carried on gallery items as `text` (the automatic "Place · Mon
-  'YY" stays `caption`) and shown **only on the Gallery page, directly
-  under the photo** — above the place's name on a tile and in the viewer
-  (where the owner sees the Caption field in that spot). The viewer's way
-  to the location's page is a **"More info" button** (a link styled as one;
-  the owner's wording, in place of "Open brief →"). *Map* (`MapView`, props
+  'YY" stays `caption`) and shown **only on the Gallery page, beneath the
+  place's name** — on a tile and in the viewer, where the owner's Caption
+  field sits at the foot (it was tried directly under the photo, above the
+  name, and the owner asked for it back). The viewer's way to the
+  location's page is a **"More info" button** (a link styled as one; the
+  owner's wording, in place of "Open brief →"). The Gallery's old
+  "@handle on photos" switch is gone — see the watermark. *Map* (`MapView`, props
   `photoFor`, `hrefFor`): the "Visited" tile with its bar (the wording is
   **"Visited", never "ticked off"** — the owner's choice), one filter
   card (Region, Status, When), the live map unchanged in a rounded frame
@@ -205,6 +207,24 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   caption, fields and links sit in a 250px column beside it; "i" hides the
   column). The sync banner
   (`renderCloudBanner`) and the toast are in the new look too.
+- **Watermark** (the owner's request; replaces the photo-credit pill in
+  the preview). `Watermark({ size, inset, rightShift })` draws
+  `OWNER_NAME` in the bottom-left corner and `@IG_HANDLE` in the
+  bottom-right of the **large photos: the hero slideshows (the handle sits
+  just left of the round buttons), the Gallery's tiles and the viewer**.
+  It is **on by default for everyone**; the owner's switch is "Watermark on
+  photos" in the Settings menu, shown only while editing, stored as
+  `data[0].watermark` (`false` = off; unset = on; `markOn` in `App`,
+  carried as `FocusCtx.credit`). While it is on, `App` also blocks
+  `contextmenu` and `dragstart` on any photo `<img>` (Worker or `blob:`
+  address) and `.pp-guard` switches off the phone's long-press save — a
+  **deterrent only**: the overlay is not in the stored file, whose address
+  is still in the page. The owner has been told; a watermark **burnt into
+  the web copies** (a watermarked hero/thumb served to the public, the
+  clean ones and the print copy behind the password — needs the Worker
+  updated and every photo reprocessed) was offered as the stronger step
+  and is **not built; wait for his answer**. Not on the smaller photos
+  (location cards, the brief, Home's month cards) or on print.
 - **Calendar** (`renderPrintPage`, "D · Calendar"; owner only; the top
   bar's green button is "Print / Save PDF"): title + "… · 28 pages · A4
   landscape", the year picker, two cards — **What prints** (a dark pill
@@ -276,8 +296,9 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `calendar_d_test.js` (48: the controls, symbols and fitted names, the
   per-year large photo, day colours at night, the 390px scale, and the PDF
   from `page.pdf()` — 28 pages of A4 landscape by `pdfinfo`, pages rendered
-  with `pdftoppm`) and `fb1_test.js` (24: the hero on a laptop, a monitor
-  and a phone, photo captions, the viewer at 844 × 390).
+  with `pdftoppm`) and `fb1_test.js` (36: the hero on a laptop, a monitor
+  and a phone, photo captions, the watermark and its switch, the viewer at
+  844 × 390).
   `dshots.js` also scans every text for contrast under 4.5:1 (3:1 for
   large type) against its real background, day and night.
   The brief's own checks per step: matches the board at 1280
@@ -856,7 +877,8 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   them from the data (`styleOf` resolves any event's colours). A type vanishes
   when no event uses it. "＋ Add event" / "Schedule photo op" only open a
   **draft** — nothing is written to the data until "Save event" is clicked.
-- **Photo credit is an overlay, off by default.** `data[0].photoCredit`
+- **(Live site; in the preview the watermark above supersedes this.)**
+  **Photo credit is an overlay, off by default.** `data[0].photoCredit`
   (owner switch "@llandscapist on photos" on the Gallery controls, cloud-
   synced so visitors see it) → `FocusCtx.credit` → `PhotoCredit` (`.photo-
   credit`): the handle top-right on the hero slideshows and bottom-right of

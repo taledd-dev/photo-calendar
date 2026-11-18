@@ -353,6 +353,7 @@
     .d-danger:hover { background: var(--danger) !important; border-color: var(--danger) !important; color: var(--paper) !important; }
     .d-reddanger:hover { filter: brightness(0.92); }
     .lb-btn:hover { border-color: var(--on-photo) !important; }
+    .pp-guard img { -webkit-touch-callout: none; }  /* watermark on: no long-press "Save image" on a phone */
     .lb-short-img { max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); }  /* the viewer on a phone held sideways: the photo fills the height */
     .lb-field::placeholder { color: var(--lb-ink-2); opacity: .8; }
     .lb-field:focus { outline: none; border-color: var(--on-photo) !important; }
@@ -616,6 +617,7 @@ function LogoMark({ style }) {
   return [e('img', { key:'day', className:'logo-day', src:LOGO_SRC, alt:'', style }), e('img', { key:'night', className:'logo-night', src:LOGO_NIGHT_SRC, alt:'', style })];
 }
 const IG_HANDLE = 'llandscapist'; // the owner's Instagram (home page + printed grid pages)
+const OWNER_NAME = 'Tim Dempsey';  // the watermark's bottom-left corner (the handle takes the bottom-right)
 // Longest edge of the print-size photo copy (<base>-print): 3200px is ~290 dpi
 // across an A4-landscape sheet, enough for a photo-book / print-shop calendar.
 const PRINT_MAX_EDGE = 3200;
@@ -636,6 +638,21 @@ const FocusCtx = React.createContext({ map: {}, set: null, credit: false });
 // The owner's handle in a corner of a large photo — hero slideshows and the
 // lightbox — when the "credit on photos" switch (Gallery page) is on. Nothing
 // is burnt into the stored images: it is an overlay, so the switch is instant.
+// The watermark over the large photos — the hero slideshows, the Gallery's
+// tiles and the photo viewer: the owner's name in the bottom-left corner and
+// the Instagram handle in the bottom-right. On unless the owner switches it
+// off (Settings, while editing; data[0].watermark === false), for everyone.
+// It is drawn over the photo, not into the stored file — see the guard in App.
+// `inset` = [sideways, up] in px; `rightShift` moves the handle clear of
+// controls in that corner (the slideshow's round buttons).
+function Watermark({ size = 15, inset = [16, 14], rightShift = 0 }) {
+  const { credit } = React.useContext(FocusCtx);
+  if (!credit) return null;
+  const look = { position: 'absolute', zIndex: 5, bottom: inset[1], maxWidth: '46%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--on-photo)', fontFamily: "'Figtree', system-ui, sans-serif", fontWeight: 600, fontSize: size, lineHeight: 1.3, letterSpacing: '.02em', textShadow: '0 1px 2px rgba(0,0,0,0.7), 0 0 10px rgba(0,0,0,0.45)', pointerEvents: 'none', userSelect: 'none' };
+  return e(React.Fragment, null,
+    e('span', { 'aria-hidden': 'true', 'data-watermark': 'name', style: { ...look, left: inset[0] } }, OWNER_NAME),
+    e('span', { 'aria-hidden': 'true', 'data-watermark': 'handle', style: { ...look, right: inset[0] + rightShift } }, '@' + IG_HANDLE));
+}
 function PhotoCredit({ style, pill }) {
   const { credit } = React.useContext(FocusCtx);
   if (!credit) return null;
@@ -1083,7 +1100,7 @@ function PhotoSlideshow({ items, boxStyle, figStyle, intervalMs = 15000, epoch =
     return e('figure', { style: { margin: 0, position: 'relative', background: 'var(--ink)', overflow: 'hidden', ...figStyle } },
       under && e('img', { key: 'u-' + under, src: Storage.photoUrl(under, epoch || undefined), alt: '', style: { ...img, position: 'absolute', left: 0, top: 0, height: '100%', ...focusStyle(focus.map, under) } }),
       e('img', { key: curD.base, className: 'slide-fade', src: Storage.photoUrl(curD.base, epoch || undefined), alt: curD.caption || '', style: { ...img, position: 'relative', ...focusStyle(focus.map, curD.base) } }),
-      e(PhotoCredit, { pill: true, style: { right: 24, top: 18 } }),
+      e(Watermark, { size: 15, inset: [24, 32], rightShift: keys.length > 1 ? 108 : 0 }),
       keys.length > 1 && e('div', { style: sx('position: absolute; right: 24px; bottom: 20px; display: flex; gap: 8px; z-index: 6') },
         e('button', { type: 'button', className: 'd-round', onClick: skip, title: 'Next photo', 'aria-label': 'Next photo', style: D.round }, e(DIcon, { name: 'chevR', size: 20 })),
         e('button', { type: 'button', className: 'd-round', onClick: () => setPaused(p => !p), title: paused ? 'Resume slideshow' : 'Pause slideshow', 'aria-label': paused ? 'Resume slideshow' : 'Pause slideshow', style: D.round }, e(DIcon, { name: paused ? 'play' : 'pause', size: 20 }))));
@@ -5690,6 +5707,7 @@ function App() {
         e('h2', { style:{ ...sx('margin: 0 0 6px; font-weight: 700; font-size: 22px; line-height: 1.2'), fontFamily:SLAB } }, 'Settings'),
         switchRow('Night mode', null, theme === 'night', () => setTheme(t => t === 'night' ? 'day' : 'night'), 60),
         switchRow('Editing controls', editMode ? 'On · turn off to hide them' : (hasKey ? 'Off · turn on to make changes' : 'Off · needs the edit password'), editMode, toggleEdit, 68),
+        editMode && switchRow('Watermark on photos', markOn ? 'On · your name and @' + IG_HANDLE + ' on the large photos' : 'Off · photos show without it', markOn, () => mutateData(d => { d[0].watermark = !markOn; }), 68),
         editMode && linkRow('Export calendar', downloadIcs),
         editMode && linkRow('Calendar backups', openBackups)
       ));
@@ -5701,6 +5719,18 @@ function App() {
   // page's title shows beneath it. (The owner's call: the drawn banner cut
   // too much off a photo, and a photo filling a 32-inch monitor was too big.)
   const HERO_W = 'max(90vh, 420px)';   // 3:2 at 60vh is 90vh wide
+  // The watermark (see Watermark): on unless the owner has switched it off.
+  // While it is on, a photo also cannot be saved with a right-click, a long
+  // press or by dragging it out of the page. A deterrent, not a lock: the
+  // stored file carries no watermark and its address is still in the page.
+  const markOn = !(data[0] && data[0].watermark === false);
+  useEffect(() => {
+    if (!markOn) return;
+    const isPhoto = (el) => !!el && el.tagName === 'IMG' && /^(blob:|https:\/\/photo-calendar-storage\.)/.test(String(el.currentSrc || el.src || ''));
+    const stop = (ev) => { if (isPhoto(ev.target)) ev.preventDefault(); };
+    document.addEventListener('contextmenu', stop); document.addEventListener('dragstart', stop);
+    return () => { document.removeEventListener('contextmenu', stop); document.removeEventListener('dragstart', stop); };
+  }, [markOn]);
   const heroLook = isMobile ? { boxStyle: { aspectRatio: '3 / 2' } }
     : { boxStyle: { aspectRatio: '3 / 2' }, figStyle: { width: 'min(100% - 64px, 1180px, ' + HERO_W + ')', margin: '0 auto', borderRadius: 16 } };
   const heroCapRow = isMobile ? {} : { alignSelf: 'center', width: 'min(100%, ' + HERO_W + ')' };   // the caption line keeps to the photo's width
@@ -5870,7 +5900,6 @@ function App() {
   const openLightbox = (list, it) => { const idx = list.indexOf(it); setLightbox({ items: list, idx: idx < 0 ? 0 : idx }); };
   const renderGalleryPage = () => {
     const focusMap = (data[0] && data[0].photoFocus) || {};
-    const photoCredit = !!(data[0] && data[0].photoCredit);
     const tagLabel = {};
     galleryItems.forEach(it => it.tags.forEach(t => { const k = t.toLowerCase(); if (!tagLabel[k]) tagLabel[k] = t; }));
     const allTags = Object.keys(tagLabel).sort();
@@ -5921,13 +5950,13 @@ function App() {
       e('span', { style: sx('position: relative; display: block') },
         e('img', { src: Storage.photoUrl(it.base + '-thumb', imgEpoch || undefined), srcSet: Storage.photoUrl(it.base + '-thumb', imgEpoch || undefined) + ' 500w, ' + Storage.photoUrl(it.base, imgEpoch || undefined) + ' 1600w', sizes: '(max-width: 640px) 100vw, 380px', alt: '', loading: 'lazy', onError: (ev) => { ev.currentTarget.style.visibility = 'hidden'; },
           style: { display: 'block', width: '100%', aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: 12, background: 'var(--slot)', ...focusStyle(focusMap, it.base) } }),
+        e(Watermark, { size: 13, inset: [12, 10] }),
         it.starred && e('span', { title: 'Fronts the printed month', style: sx('position: absolute; top: 12px; right: 12px; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: var(--gold); color: var(--field)') }, e(DIcon, { name: 'star', size: 18, style: { fill: 'currentColor' } }))),
-      // the photo's own caption, directly under it
-      it.text && e('span', { 'data-photo-caption': 'tile', style: sx('margin-top: -4px; font-size: 16px; line-height: 1.45; color: var(--ink-body)') }, it.text),
       e('span', { style: sx('display: flex; flex-direction: column; gap: 2px') },
         e('span', { style: sx('display: flex; align-items: baseline; justify-content: space-between; gap: 10px') },
           e('span', { className: 'd-card-name', style: { fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 24 : 26, lineHeight: 1.15, minWidth: 0 } }, it.loc.name),
           e('span', { style: { ...subText, whiteSpace: 'nowrap' } }, it.month.name.slice(0, 3) + (it.year ? " '" + it.year : ''))),
+        it.text && e('span', { 'data-photo-caption': 'tile', style: sx('font-size: 16px; line-height: 1.45; color: var(--ink-body)') }, it.text),   // the photo's own caption, under the place's name
         (it.tags.length > 0 || (it.loc.area || '').trim()) && e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, [(it.loc.area || '').trim(), it.tags.join(' · ')].filter(Boolean).join(' · '))));
 
     const regionChips = [chip(f.region === 'all', 'All', () => setF({ region: 'all' })), chip(f.region === 'uk', 'UK', () => setF({ region: 'uk' }), null, 'var(--green)'), chip(f.region === 'int', 'International', () => setF({ region: 'int' }), null, 'var(--terra)'),
@@ -5947,8 +5976,7 @@ function App() {
       e('div', { key: 'c', style: sx('display: flex; flex-direction: column; gap: 16px') },
         controls,
         editMode && e('div', { style: sx('display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 16px') },
-          linkBtn(geocoding ? 'Looking up areas… ' + geocoding.done + ' of ' + geocoding.total : 'Fill in areas and countries', fillAreas, 'Look up the area (county) and country of every location with coordinates that has none, from OpenStreetMap', !!geocoding),
-          linkBtn('@' + IG_HANDLE + ' on photos · ' + (photoCredit ? 'on' : 'off'), () => mutateData(d => { d[0].photoCredit = !d[0].photoCredit; }), 'Shows @' + IG_HANDLE + ' in the corner of the large photos (the slideshows and the viewer) for everyone. Nothing is added to the stored images.'))),
+          linkBtn(geocoding ? 'Looking up areas… ' + geocoding.done + ' of ' + geocoding.total : 'Fill in areas and countries', fillAreas, 'Look up the area (county) and country of every location with coordinates that has none, from OpenStreetMap', !!geocoding))),
       photoIndex === undefined
         ? e('p', { key: 'l', style: quiet }, 'Loading the photo list…')
         : !galleryItems.length
@@ -6059,7 +6087,7 @@ function App() {
       style: { display: 'inline-flex', alignItems: 'center', height: 44, boxSizing: 'border-box', padding: '0 16px', borderRadius: 10, background: 'var(--lb-glass-12)', border: '1px solid var(--lb-glass-40)', color: 'var(--on-photo)', fontWeight: 600, fontSize: 16, textDecoration: 'none', whiteSpace: 'nowrap' } }, 'More info');
     const photo = (imgProps) => e('div', { onClick: hold, style: { position: 'relative', display: 'flex', maxWidth: '100%', maxHeight: '100%' } },
       e('img', { key: it.base, src: Storage.photoUrl(it.base, imgEpoch || undefined), alt: it.caption, ...imgProps }),
-      e(PhotoCredit, { pill: true, style: { right: 12, bottom: 10 } }));
+      e(Watermark, { size: 15, inset: [14, 12] }));
     const shell = { position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, zIndex: 60, boxSizing: 'border-box', display: 'flex', background: 'var(--lb-ground)', color: 'var(--on-photo)' };
 
     // A phone held sideways (a short, wide window): the photo takes the whole
@@ -6097,13 +6125,12 @@ function App() {
         arrow(1, 'Next photo')),
       // the place, its details and the photo's caption; then tags, the star and the way to its brief
       !lbBare && e('div', { onClick: hold, style: sx('width: 100%; max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px') },
-        // the caption sits directly under the photo, ahead of the place's name: its text for a visitor, its field for the owner
-        capText({ flex: '1 1 100%' }), capInput({ flex: '1 1 100%' }),
         e('div', { style: sx('display: flex; flex-direction: column; gap: 2px; min-width: 0') },
           e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 26 : 30, lineHeight: 1.15 } }, it.loc.name),
           e('span', { style: sx('font-size: 16px; color: var(--lb-ink-2)') }, meta),
-          tagChips),
-        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px') }, tagsInput(isMobile ? 160 : 200), starBtn, briefLink)));
+          capText({ marginTop: 4 }), tagChips),
+        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px') }, tagsInput(isMobile ? 160 : 200), starBtn, briefLink),
+        capInput({ flex: '1 1 100%' })));
   };
 
   // ─── Trip pop-up ──────────────────────────────────────────────────────────
@@ -7079,7 +7106,7 @@ function App() {
   };
 
   const banner = renderCloudBanner();
-  return e(EditCtx.Provider, { value: editMode }, e(ConfirmCtx.Provider, { value: askConfirm }, e(FocusCtx.Provider, { value: { map: (data[0] && data[0].photoFocus) || {}, set: editMode ? setPhotoFocus : null, credit: !!(data[0] && data[0].photoCredit) } }, e('div', { className:'app-shell d-root', style:{ minHeight:'100vh', background:'var(--page)', color:'var(--ink)' } },
+  return e(EditCtx.Provider, { value: editMode }, e(ConfirmCtx.Provider, { value: askConfirm }, e(FocusCtx.Provider, { value: { map: (data[0] && data[0].photoFocus) || {}, set: editMode ? setPhotoFocus : null, credit: markOn } }, e('div', { className: markOn ? 'app-shell d-root pp-guard' : 'app-shell d-root', style:{ minHeight:'100vh', background:'var(--page)', color:'var(--ink)' } },
     renderTopBar(),
     banner && e('div', { className:'no-print', style:{ maxWidth:1244, margin:'0 auto', padding: isMobile ? '6px 16px 0' : '6px 32px 0' } }, banner),
     galleryView
