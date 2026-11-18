@@ -61,7 +61,7 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   into both files. Asset paths in `next/` are absolute (`/assets/…`).
 - **Build order (the brief's), one step at a time for the owner to review:**
   1 shared look ✔ · 2 top bar + Settings menu ✔ · 3 month page ✔ ·
-  4 Home ✔ · 5 Weather, Trips, Gallery, Map · 6 pop-ups + photo viewer ·
+  4 Home ✔ · 5 Weather, Trips, Gallery, Map ✔ · 6 pop-ups + photo viewer ·
   7 Calendar (28 pages; the photo index becomes 2 pages of 6 with one large
   photo chosen per page, remembered per calendar year in the shared data,
   default January and July — this supersedes "four per page") · 8 phone,
@@ -133,6 +133,33 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   International chips (`homeFilter`; months with no match drop out). No
   idea/when text and no Cards/List switch: the old list is kept whole as
   `renderMonthIndexList()` (unused) so the switch can return.
+- **Weather, Trips, Gallery, Map** (each: a large title and intro, its
+  controls, its content; `maxWidth: 1244`, `padding: 36px 32px 80px`).
+  *Weather* (`WeatherView`, props `action` = the phone's green button,
+  `hrefFor`): the picker and **Set default** (green, as the owner asked) /
+  `● Default`; the spot's name is a link to its brief; the aurora pill and
+  the outside links; a card per day with `WxIcon` (line drawings from the
+  WMO code: clear, partly, cloud, fog, rain, snow, storm), cloud at dawn /
+  dusk / night with a note that goes green for good news, rain / wind /
+  visibility, and the Promising-for chips; the guide cards (Conditions, a
+  tinted Settings panel, Tips). *Trips* (`renderTripsPage`): a card per
+  trip — name, `Tomorrow`-style chip, dates, a chevron to open; opened:
+  three tiles (Locations, Shots taken, Packed), Dates / Locations (photo,
+  name → brief, the first day's light, the dashed "Choose a location…"
+  picker) / Notes beside Shots / Packing (`Checklist d`: 32px rows with a
+  mouse, 44px on a phone); "Edit the usual packing list" in the card's foot
+  (`tplEditing` = the trip's id, or `'page'` when no card is open) and
+  Delete trip. *Gallery* (`renderGalleryPage`): pill tabs, one filter card,
+  the owner's two links ("Fill in areas and countries", "@handle on photos ·
+  on/off"), 320px tiles (thumb/hero by `srcSet`) with a gold star badge;
+  the Year in review (not drawn) in the same style. *Map* (`MapView`, props
+  `photoFor`, `hrefFor`): the "Ticked off" tile with its bar, one filter
+  card (Region, Status, When), the live map unchanged in a rounded frame
+  (the 1000 × 640 drawing is centred in the box and its coastlines overflow
+  to fill it — pointer maths untouched), `+ −` (and a fit button once
+  zoomed), the zoom tag, and the pin's card: photo, name, month and status
+  chips, the owner's Ticked-off box, an "Open <month> →" link per month
+  (beside the pin on a wide screen, docked at the map's foot on a phone).
 - **Parked by the brief:** starring stays exactly as it is (the starred
   location is **shared across years** — `month.printLoc`); the Home page's
   Cards/List toggle is dropped but the list should stay easy to restore; the
@@ -145,7 +172,9 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   and as a visitor; fails on sideways overflow, a tap target under 44px, a
   page error), `strips.js` (the month strip for all twelve months),
   `month_test.js` (65 click-through checks of the month page against a
-  faked Worker). The brief's own checks per step: matches the board at 1280
+  faked Worker), and `home_test.js`, `weather_d_test.js` (+ the older
+  `weather_next.js` flags test), `trips_d_test.js`, `gallery_d_test.js`,
+  `map_d_test.js` (d3 / topojson / world-atlas served from `maplibs/`). The brief's own checks per step: matches the board at 1280
   and 390, nothing spills at 390, taps ≥ 44px, no photo tinted at night,
   print stays 28 day-coloured pages, nothing stored changes, and the owner
   has seen it on a real phone.

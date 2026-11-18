@@ -490,6 +490,9 @@ const D_ICONS = {
   chevR: [['path', { d: 'M9 5l7 7-7 7' }]],
   chevD: [['path', { d: 'M5 9l7 7 7-7' }]],
   chevU: [['path', { d: 'M5 15l7-7 7 7' }]],
+  plus: [['path', { d: 'M12 5v14M5 12h14' }]],
+  minus: [['path', { d: 'M5 12h14' }]],
+  fit: [['path', { d: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5' }]],
   up: [['path', { d: 'M12 20V5M5.5 11.5L12 5l6.5 6.5' }]],
   pause: [['path', { d: 'M9 5.5v13M15 5.5v13' }]],
   play: [['path', { d: 'M8 5.5l11 6.5-11 6.5z' }]],
@@ -3895,7 +3898,7 @@ function WxIcon({ code, size = 44 }) {
   return e('svg', { 'aria-hidden': 'true', width: size, height: size, viewBox: '0 0 44 44', style: { flex: '0 0 ' + size + 'px', fill: 'none', stroke: 'var(--ink)', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' } }, parts[k]);
 }
 
-function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEditIntro, editMode, editControl }) {
+function MapView({ places, onOpenMonth, onToggleVisited, introText, onEditIntro, editMode, photoFor, hrefFor }) {
   const VW = 1000, VH = 640, VMIN = 1, VMAX = 20, PAPER = 'var(--paper-bright)';
   const isMobile = useIsMobile();
   const [hoveredId, setHoveredId] = useState(null);
@@ -4067,144 +4070,113 @@ function MapView({ places, onOpenMonth, onToggleVisited, onBack, introText, onEd
   const acColor = activeLoc ? colorFor(activeLoc.region) : 'var(--line-strong)';
   const cardSide = (ap && ap.x < 500) ? { right: 14 } : { left: 14 };
 
-  const lbl = { fontFamily: MAP_MONO, fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: 'var(--label)' };
-  const mkChip = (on) => ({ bg: on ? 'var(--green)' : 'var(--paper)', fg: on ? 'var(--paper)' : 'var(--ink-2)', border: on ? 'var(--ink)' : 'var(--line-strong)' });
-  const chipBtn = (c) => e('button', { key: c.key, className: 'map-chip', onClick: c.onClick,
-    style: { display: 'inline-flex', alignItems: 'center', gap: 8, height: 34, padding: '0 13px', background: c.bg, color: c.fg, border: '1px solid ' + c.border, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '2px 2px 0 var(--shadow-10)' } },
-    c.dot ? e('span', { style: { display: 'inline-flex', width: 8, height: 8, borderRadius: '50%', background: c.dot, border: '1.5px solid ' + c.dotBorder } }) : null,
-    c.label, ' ', e('span', { style: { opacity: .55 } }, c.count));
-
-  const regionChips = [{ key: 'All', label: 'All', count: places.length }, { key: 'UK', label: 'UK', count: ukCount }, { key: 'INT', label: 'International', count: intCount }]
-    .map(c => ({ ...c, ...mkChip(region === c.key), onClick: () => setRegion(c.key) }));
-  const statusChips = [{ key: 'All', label: 'All', count: places.length, dot: 'var(--ghost)', dotBorder: 'var(--ghost)' }, { key: 'Visited', label: 'Visited', count: visitedCount, dot: 'var(--green)', dotBorder: 'var(--green)' }, { key: 'To visit', label: 'To visit', count: toVisitCount, dot: 'var(--paper-bright)', dotBorder: 'var(--green)' }]
-    .map(c => ({ ...c, ...mkChip(status === c.key), onClick: () => setStatus(c.key) }));
+  const FIG = "'Figtree', system-ui, sans-serif";
+  const chipBtn = (c) => e('button', { key: String(c.key), type: 'button', className: c.on ? undefined : 'd-chipbtn', onClick: c.onClick, title: c.title, 'aria-pressed': c.on ? 'true' : 'false', style: { ...(c.on ? D.pillOn : D.pill), flex: '0 0 auto', ...(c.tight ? { padding: isMobile ? '0 13px' : '0 13px' } : {}) } },
+    c.dot && e('span', { style: { width: 9, height: 9, borderRadius: '50%', background: c.dot } }), c.label + ' · ' + c.count);
+  const regionChips = [{ key: 'All', label: 'All', count: places.length }, { key: 'UK', label: 'UK', count: ukCount, dot: 'var(--green)' }, { key: 'INT', label: 'International', count: intCount, dot: 'var(--terra)' }]
+    .map(c => ({ ...c, on: region === c.key, onClick: () => setRegion(c.key) }));
+  const statusChips = [{ key: 'All', label: 'All', count: places.length }, { key: 'Visited', label: 'Visited', count: visitedCount }, { key: 'To visit', label: 'To visit', count: toVisitCount }]
+    .map(c => ({ ...c, on: status === c.key, onClick: () => setStatus(c.key) }));
   const monthChips = [{ key: null, label: 'All', count: places.length, title: 'All months' }]
     .concat(MAP_ABBR.map((ab, mi) => ({ key: mi, label: ab, title: MAP_MONTHS[mi], count: places.filter(p => p.shoots.some(s => s.mi === mi)).length })))
-    .map(c => ({ ...c, ...mkChip(month === c.key), border: month === c.key ? 'var(--ink)' : 'var(--map-chip-line)', onClick: () => setMonth(month === c.key ? null : c.key) }));
+    .map(c => ({ ...c, tight: true, on: month === c.key, onClick: () => setMonth(month === c.key ? null : c.key) }));
+  const filterRow = (label, chips) => isMobile
+    ? e('div', { key: label, style: sx('display: flex; flex-direction: column; gap: 6px') }, e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, label), e('div', { className: 'd-scroll-x', style: sx('display: flex; gap: 6px; margin: 0 -16px; padding: 0 16px') }, chips.map(chipBtn)))
+    : e('div', { key: label, style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 6px') }, e('span', { style: sx('min-width: 62px; font-size: 15px; color: var(--ink-2)') }, label), chips.map(chipBtn));
 
   const readoutShoots = activeLoc ? activeLoc.shoots.slice().sort((a, b) => a.mi - b.mi) : [];
-  const zoomBtnStyle = { width: 36, height: 36, background: 'var(--paper)', border: '1px solid var(--ink)', color: 'var(--ink)', fontSize: 21, lineHeight: 1, cursor: 'pointer', fontFamily: "'Spectral',serif", boxShadow: '2px 2px 0 var(--shadow-14)' };
+  const closeCard = () => { setSelectedId(null); setHoveredId(null); };
+  const MAP_H = isMobile ? '540px' : 'clamp(380px, 52vw, 660px)';
+  // The pin's card: the photo, the place, a chip per month it is shot in and
+  // its status, the owner's Ticked-off box and a link to each month's page.
+  // Beside the pin on a wide screen; docked along the foot of the map on a phone.
+  const detailCard = () => {
+    if (!activeLoc) return null;
+    const ph = photoFor ? photoFor(activeLoc.id) : null;
+    const sub = [readoutShoots[0] && readoutShoots[0].tag, activeLoc.where].filter(Boolean).join(' · ');
+    const chips = e('div', { style: sx('display: flex; flex-wrap: wrap; gap: 6px; font-weight: 500; font-size: 14px') },
+      readoutShoots.map(s => e('span', { key: s.mi, style: sx('padding: 3px 10px; border-radius: 999px; background: var(--line-soft); color: var(--ink-body)') }, s.monthName)),
+      activeLoc.visited ? e('span', { style: sx('padding: 3px 10px; border-radius: 999px; background: var(--green-wash); color: var(--green-wash-ink)') }, 'Visited') : e('span', { style: sx('padding: 3px 10px; border-radius: 999px; background: var(--line-soft); color: var(--ink-body)') }, 'To visit'));
+    const foot = e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px') },
+      editMode && e('label', { style: sx('display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 16px; cursor: pointer') },
+        e('input', { type: 'checkbox', checked: !!activeLoc.visited, onChange: () => onToggleVisited(activeLoc.id), style: { width: 20, height: 20, margin: 0, accentColor: 'var(--green)', cursor: 'pointer' } }), 'Ticked off'),
+      readoutShoots.map(s => e('a', { key: s.mi, href: hrefFor ? hrefFor(s.mi, activeLoc.id) : '#', onClick: (ev) => { ev.preventDefault(); onOpenMonth(s.mi, activeLoc.id); }, title: 'Open ' + s.monthName + ' in the calendar', style: sx('display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; font-size: 16px') }, 'Open ' + s.monthName + ' →')));
+    const img = (st) => ph ? e('img', { src: ph.src, alt: '', style: { display: 'block', objectFit: 'cover', aspectRatio: '3 / 2', borderRadius: 10, ...st, ...(ph.pos || {}) } }) : null;
+    const closeBtn = (st) => e('button', { type: 'button', className: 'd-round', onClick: closeCard, title: 'Close', 'aria-label': 'Close', style: { ...D.round, ...st } }, e(DIcon, { name: 'close', size: 20 }));
+    const shell = sx('box-sizing: border-box; display: flex; flex-direction: column; background: var(--paper); border: 1px solid var(--line-strong); border-radius: 16px; z-index: 4');
+    if (isMobile) return e('div', { 'data-pincard': '1', style: { ...shell, position: 'absolute', left: 12, right: 12, bottom: 12, gap: 6, padding: 12 } },
+      e('div', { style: sx('display: flex; align-items: flex-start; gap: 12px') },
+        img({ flex: '0 0 96px', width: 96 }),
+        e('div', { style: sx('flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px') },
+          e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: 22, lineHeight: 1.15 } }, activeLoc.name),
+          sub && e('span', { style: sx('font-size: 15px; line-height: 1.35; color: var(--ink-2)') }, sub)),
+        closeBtn({ flex: '0 0 44px', margin: '-6px -6px 0 0', background: 'transparent', color: 'var(--ink)' })),
+      chips, foot);
+    return e('div', { 'data-pincard': '1', style: { ...shell, position: 'absolute', top: 76, ...((ap && ap.x < 500) ? { right: 76 } : { left: 16 }), width: 'min(300px, calc(100% - 92px))', gap: 12, padding: '12px 12px 16px' } },
+      ph ? e('div', { style: { position: 'relative' } }, img({ width: '100%' }), closeBtn({ position: 'absolute', right: 8, top: 8 }))
+         : e('div', { style: sx('display: flex; justify-content: flex-end; margin-bottom: -20px') }, closeBtn({ background: 'transparent', color: 'var(--ink)' })),
+      e('div', { style: sx('display: flex; flex-direction: column; gap: 2px; padding: 0 6px') },
+        e('span', { style: { fontFamily: SLAB, fontWeight: 700, fontSize: 26, lineHeight: 1.15 } }, activeLoc.name),
+        sub && e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, sub),
+        e('div', { style: { marginTop: 8 } }, chips),
+        e('div', { style: { marginTop: 10 } }, foot)));
+  };
+  const zoomBtn = (name, label, run, off) => e('button', { type: 'button', className: 'd-iconbtn map-iconbtn', onClick: run, title: label, 'aria-label': label, style: { ...D.iconBtn, opacity: off ? 0.4 : 1 } }, e(DIcon, { name, size: 20 }));
+  const mark = (st) => e('span', { style: { width: 14, height: 14, boxSizing: 'border-box', borderRadius: '50%', ...st } });
+  const pinFont = { fontFamily: FIG };
 
-  // The pin detail card. Desktop floats it over the map beside the pin; on a
-  // phone the map box is small, so the card renders below the map instead of
-  // blanketing it (it can't stay inside the map's overflow-hidden frame).
-  const detailCard = () => activeLoc && e('div', { style: { ...(isMobile ? { position: 'relative', marginTop: 10 } : { position: 'absolute', top: 14, ...cardSide, zIndex: 4, width: 300, maxWidth: 'calc(100% - 28px)' }), background: 'var(--paper)', border: '1px solid var(--ink)', boxShadow: '5px 5px 0 var(--shadow-16)' } },
-    e('button', { className: 'map-close', onClick: () => { setSelectedId(null); setHoveredId(null); }, title: 'Close', style: { position: 'absolute', top: 8, right: 8, zIndex: 5, width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, background: 'var(--paper-a92)', border: '1px solid transparent', borderRadius: 3, color: 'var(--label)', fontFamily: "'Spectral',serif", fontSize: 18, lineHeight: 1, cursor: 'pointer' } }, '×'),
-    e('div', { style: { height: 5, background: acColor } }),
-    e('div', { style: { padding: '14px 16px 16px' } },
-      e('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', paddingRight: 22 } },
-        e('span', { style: { fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: 21, color: 'var(--ink)', lineHeight: 1.02 } }, activeLoc.name),
-        activeLoc.region === 'UK'
-          ? e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.12em', textTransform: 'uppercase', padding: '3px 7px', background: 'var(--green-wash)', color: 'var(--green)', border: '1px solid var(--green)' } }, 'UK')
-          : e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.12em', textTransform: 'uppercase', padding: '3px 7px', background: 'var(--terra-wash)', color: 'var(--terra)', border: '1px solid var(--terra)' } }, "Int'l")
-      ),
-      e('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 9 } },
-        e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--label)', flex: '0 0 auto' } }, 'Where'),
-        e('span', { style: { fontSize: 14.5, color: 'var(--ink)' } }, activeLoc.where)
-      ),
-      mapLinks([activeLoc.lat, activeLoc.lng], activeLoc.name, { marginTop: 8 }),
-      e('div', { style: { marginTop: 12, paddingTop: 11, borderTop: '1px solid var(--line-soft)' } },
-        e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 } },
-          e('span', { style: { fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--label)' } }, 'Shoots'),
-          activeLoc.shoots.length > 1 && e('span', { style: { fontFamily: MAP_MONO, fontSize: 9, letterSpacing: '.06em', color: 'var(--terra)' } }, activeLoc.shoots.length + ' visits')
-        ),
-        e('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
-          readoutShoots.map(s => e('div', { key: s.mi, className: 'map-shootrow', onClick: () => onOpenMonth(s.mi, activeLoc.id), onKeyDown: keyActivate(() => onOpenMonth(s.mi, activeLoc.id)), role: 'button', tabIndex: 0, title: 'Open ' + s.monthName + ' in the calendar', style: { display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 10, alignItems: 'center', padding: '6px 7px', margin: '0 -7px', borderRadius: 3, cursor: 'pointer', background: 'transparent', transition: 'background .12s ease' } },
-            e('span', { style: { fontFamily: MAP_MONO, fontSize: 11, fontWeight: 600, letterSpacing: '.04em', color: acColor } }, MAP_ABBR[s.mi]),
-            e('span', { style: { fontSize: 14, color: 'var(--ink-body)', lineHeight: 1.3 } }, s.tag),
-            e('span', { style: { fontFamily: MAP_MONO, fontSize: 10.5, fontWeight: 600, color: 'var(--ghost)', whiteSpace: 'nowrap' } }, '→')
-          ))
-        ),
-        e('div', { style: { marginTop: 9, fontFamily: MAP_MONO, fontSize: 9.5, letterSpacing: '.05em', color: 'var(--map-hint)', lineHeight: 1.4 } }, '↳ Tap a month to open its page in the calendar.')
-      ),
-      editMode && e('button', { className: 'map-visitbtn', onClick: () => onToggleVisited(activeLoc.id), style: { marginTop: 14, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 38, background: activeLoc.visited ? 'var(--green)' : 'var(--paper)', color: activeLoc.visited ? 'var(--paper)' : 'var(--green)', border: '1px solid ' + (activeLoc.visited ? 'var(--ink)' : 'var(--green)'), fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '2px 2px 0 var(--shadow-12)' } }, activeLoc.visited ? '✓ Visited — tap to undo' : 'Mark as visited')
-    )
-  );
-
-  return e('div', { style: { paddingBottom: 6 } },
-    // header
-    e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' } },
-      e('div', null,
-        null,
-        e('h1', { style: { margin: 0, marginTop: 4, fontFamily: "'Zilla Slab',serif", fontWeight: 700, fontSize: isMobile ? 'clamp(30px,9vw,40px)' : 'clamp(40px,6vw,64px)', lineHeight: 0.82, color: 'var(--ink)', letterSpacing: '-0.015em' } }, 'Photo Map'),
-        // Editable intro (owner only, synced) — per-side margins, never the
-        // margin shorthand (it would cancel marginTop).
-        e(Editable, { key: 'map-intro-' + introText, tag: 'div', value: introText, onCommit: onEditIntro, title: 'Click to edit', style: { marginTop: 12, marginLeft: -4, marginRight: -4, fontSize: isMobile ? 15 : 16, color: 'var(--ink-3)', maxWidth: '56ch', lineHeight: 1.5, cursor: 'text', outline: 'none', borderRadius: 3, padding: '1px 4px' } })
-      ),
-      // Left-align + full width once this column wraps below the title on phones.
-      e('div', { style: { display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'flex-end', gap: 12, ...(isMobile ? { width: '100%' } : {}) } },
-        null,
-        e('div', { style: { display: 'flex', gap: 16, alignItems: 'center', fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.08em', color: 'var(--ink-3)' } },
-          e('span', { style: { display: 'flex', alignItems: 'center', gap: 7 } }, e('span', { style: { width: 10, height: 10, borderRadius: '50%', background: 'var(--green)', display: 'inline-block' } }), 'UK · ' + ukCount),
-          e('span', { style: { display: 'flex', alignItems: 'center', gap: 7 } }, e('span', { style: { width: 10, height: 10, borderRadius: '50%', background: 'var(--terra)', display: 'inline-block' } }), 'INTERNATIONAL · ' + intCount)
-        ),
-        e('div', { style: { width: isMobile ? '100%' : 210, maxWidth: 340 } },
-          e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontFamily: MAP_MONO, fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 5 } },
-            e('span', null, 'Ticked off'), e('span', { style: { color: 'var(--green)' } }, visitedCount + ' / ' + places.length)),
-          e('div', { style: { height: 7, background: 'var(--map-land)', border: '1px solid var(--map-track-line)', position: 'relative', overflow: 'hidden' } },
-            e('div', { style: { position: 'absolute', inset: '0 auto 0 0', width: visitedPct, background: 'var(--green)' } }))
-        ),
-        editControl
-      )
-    ),
-    e('div', { style: { height: 1, background: 'var(--line)', margin: isMobile ? '16px 0 16px' : '22px 0 20px' } }),
-    // controls
-    e('div', { style: { display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16 } },
-      // Phones: each filter label sits above its chips instead of beside them,
-      // so the chip rows get the full screen width to wrap in.
-      e('div', { style: { display: 'flex', gap: isMobile ? '14px 24px' : '20px 34px', flexWrap: 'wrap', alignItems: isMobile ? 'flex-start' : 'center' } },
-        e('div', { style: isMobile ? { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 7 } : { display: 'flex', alignItems: 'center', gap: 11 } }, e('span', { style: lbl }, 'Region'), e('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, regionChips.map(chipBtn))),
-        e('div', { style: isMobile ? { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 7 } : { display: 'flex', alignItems: 'center', gap: 11 } }, e('span', { style: lbl }, 'Status'), e('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, statusChips.map(chipBtn)))
-      ),
-      e('div', { style: isMobile ? { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 7, minWidth: 0 } : { display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 } },
-        e('span', { style: { ...lbl, flex: '0 0 auto' } }, 'When'),
-        e('div', { style: { display: 'flex', gap: 5, flexWrap: 'wrap' } }, monthChips.map((mc, i) => e('button', { key: i, className: 'map-monthchip', onClick: mc.onClick, title: mc.title, style: { position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, height: 32, padding: '0 10px', background: mc.bg, color: mc.fg, border: '1px solid ' + mc.border, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.05em', cursor: 'pointer' } }, mc.label, e('span', { style: { fontSize: 9, opacity: .55 } }, mc.count))))
-      )
-    ),
-    // map panel
-    e('div', { style: { background: 'var(--paper-bright)', border: '1px solid var(--ink)', padding: 10, boxShadow: '8px 8px 0 var(--shadow-10)' } },
-      e('div', { style: { position: 'relative', width: '100%', aspectRatio: '1000 / 640', border: '1px solid var(--map-frame)', overflow: 'hidden', background: 'var(--map-sea)' } },
-        isReady && e('svg', { viewBox: '0 0 1000 640', onPointerDown: onMapDown, onPointerMove: onMapMove, onPointerUp: onMapUp, onPointerCancel: onMapUp, onDoubleClick: onMapDouble, style: { display: 'block', position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: zoomK > 1 ? (dragging ? 'grabbing' : 'grab') : 'default', touchAction: 'none', userSelect: 'none' } },
-          e('rect', { x: 0, y: 0, width: 1000, height: 640, style: { fill: 'var(--map-sea)' } }),
-          e('g', { transform: 'translate(' + pan.x.toFixed(2) + ' ' + pan.y.toFixed(2) + ') scale(' + zoomK.toFixed(4) + ')' },
-            map && e('path', { d: map.graticule, style: { fill: 'none', stroke: 'var(--map-graticule)', strokeWidth: '0.6px', opacity: .5, vectorEffect: 'non-scaling-stroke' } }),
-            map && map.countries.map(c => e('path', { key: c.id, d: c.d, style: { fill: 'var(--map-land)', stroke: 'var(--map-land-line)', strokeWidth: '0.8px', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } })),
-            pins.map(p => e('g', { key: p.id, 'data-pin': '1', transform: 'translate(' + p.x + ' ' + p.y + ') scale(' + pinK + ')', onMouseEnter: () => setHoveredId(p.id), onMouseLeave: () => setHoveredId(null), onClick: () => setSelectedId(s => s === p.id ? null : p.id), style: { cursor: 'pointer', opacity: p.opacity, transition: 'opacity .15s ease' } },
-              p.active && e('circle', { r: 14, style: { fill: 'none', stroke: p.color, strokeWidth: '1.5px', opacity: .5 } }),
-              p.multi && e('circle', { r: p.rOuter, style: { fill: 'none', stroke: p.color, strokeWidth: '1.5px', opacity: .9 } }),
-              e('circle', { r: p.r, style: { fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeW + 'px' } }),
-              p.showCheck && e('path', { d: 'M -2.6 0 L -0.7 2 L 3 -2.4', style: { fill: 'none', stroke: p.checkColor, strokeWidth: '1.5px', strokeLinecap: 'round', strokeLinejoin: 'round', pointerEvents: 'none' } }),
-              p.showCount && e('text', { x: 0, y: 0.5, style: { textAnchor: 'middle', dominantBaseline: 'middle', fontFamily: MAP_MONO, fontSize: '8px', fontWeight: 600, fill: p.countFill, pointerEvents: 'none' } }, p.count)
-            )),
-            ap && activeLoc && e('g', { transform: 'translate(' + ap.x + ' ' + ap.y + ') scale(' + labelK + ')', style: { pointerEvents: 'none' } },
-              e('text', { x: 0, y: -30, style: { textAnchor: 'middle', fontFamily: MAP_MONO, fontSize: '12.5px', fontWeight: 500, fill: 'var(--ink)', paintOrder: 'stroke', stroke: 'var(--paper-bright)', strokeWidth: '4px', strokeLinejoin: 'round' } }, activeLoc.name)
+  return e('main', null, e('div', { style: { maxWidth: 1244, margin: '0 auto', padding: isMobile ? '18px 16px 48px' : '36px 32px 80px', display: 'flex', flexDirection: 'column', gap: 32 } },
+    e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px') },
+      e('div', { style: sx('flex: 1 1 520px; min-width: 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px') },
+        e('h1', { style: { margin: 0, fontFamily: SLAB, fontWeight: 700, letterSpacing: '-0.01em', ...(isMobile ? { fontSize: 44, lineHeight: 1 } : { fontSize: 'clamp(44px, 6.6vw, 80px)', lineHeight: 0.95 }) } }, 'Photo map'),
+        // Editable intro (owner only, synced); keyed on the text so a cloud load refreshes it.
+        e(Editable, { key: 'map-intro-' + introText, tag: 'p', className: 'd-edit', value: introText, onCommit: onEditIntro, title: 'Click to edit', style: { margin: 0, fontSize: isMobile ? 18 : 21, lineHeight: 1.45, color: 'var(--ink-body)' } })),
+      e('div', { style: isMobile ? sx('flex: 1 1 100%; display: flex; flex-direction: column; gap: 12px') : sx('display: flex; flex-direction: column; align-items: flex-end; gap: 12px') },
+        e('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, ...(isMobile ? {} : { minWidth: 220 }), padding: '14px 18px', background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 12 } },
+          e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'Ticked off'),
+          e('span', { style: { fontWeight: 600, fontSize: isMobile ? 30 : 36, lineHeight: 1.1 } }, visitedCount + ' of ' + places.length),
+          e('div', { role: 'img', 'aria-label': visitedPct + ' ticked off', style: sx('height: 8px; border-radius: 4px; background: var(--map-land)') },
+            visitedCount > 0 && e('div', { style: { width: visitedPct, minWidth: 8, height: 8, borderRadius: 4, background: 'var(--green)' } }))))),
+    // filters
+    e('div', { style: isMobile ? sx('display: flex; flex-direction: column; gap: 14px; padding: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; overflow: hidden') : sx('display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px') },
+      isMobile ? [filterRow('Region', regionChips), filterRow('Status', statusChips)] : e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px') }, filterRow('Region', regionChips), filterRow('Status', statusChips)),
+      filterRow('When', monthChips)),
+    // the map
+    e('div', { style: sx('display: flex; flex-direction: column; gap: 14px') },
+      e('div', { style: { position: 'relative', height: MAP_H, overflow: 'hidden', border: '1px solid var(--line)', borderRadius: 16, background: 'var(--map-sea)' } },
+        // the drawing keeps its 1000 × 640 frame (so pins, zoom and pan work as before), centred in the taller or wider box
+        isReady && e('div', { style: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-start' : 'center', paddingTop: isMobile ? 70 : 0 } },
+          e('svg', { viewBox: '0 0 1000 640', onPointerDown: onMapDown, onPointerMove: onMapMove, onPointerUp: onMapUp, onPointerCancel: onMapUp, onDoubleClick: onMapDouble, style: { display: 'block', flex: 'none', width: 'min(100%, calc(' + MAP_H + ' * 1.5625))', aspectRatio: '1000 / 640', height: 'auto', overflow: 'visible', cursor: zoomK > 1 ? (dragging ? 'grabbing' : 'grab') : 'default', touchAction: 'none', userSelect: 'none' } }, // overflow: the coastlines run on past the frame to fill the box
+            e('rect', { x: 0, y: 0, width: 1000, height: 640, style: { fill: 'var(--map-sea)' } }),
+            e('g', { transform: 'translate(' + pan.x.toFixed(2) + ' ' + pan.y.toFixed(2) + ') scale(' + zoomK.toFixed(4) + ')' },
+              map && e('path', { d: map.graticule, style: { fill: 'none', stroke: 'var(--map-graticule)', strokeWidth: '0.6px', opacity: .5, vectorEffect: 'non-scaling-stroke' } }),
+              map && map.countries.map(c => e('path', { key: c.id, d: c.d, style: { fill: 'var(--map-land)', stroke: 'var(--map-land-line)', strokeWidth: '0.8px', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } })),
+              pins.map(p => e('g', { key: p.id, 'data-pin': '1', transform: 'translate(' + p.x + ' ' + p.y + ') scale(' + pinK + ')', onMouseEnter: () => setHoveredId(p.id), onMouseLeave: () => setHoveredId(null), onClick: () => setSelectedId(s => s === p.id ? null : p.id), style: { cursor: 'pointer', opacity: p.opacity, transition: 'opacity .15s ease' } },
+                p.active && e('circle', { r: 14, style: { fill: 'none', stroke: p.color, strokeWidth: '1.5px', opacity: .5 } }),
+                p.multi && e('circle', { r: p.rOuter, style: { fill: 'none', stroke: p.color, strokeWidth: '1.5px', opacity: .9 } }),
+                e('circle', { r: p.r, style: { fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeW + 'px' } }),
+                p.showCheck && e('path', { d: 'M -2.6 0 L -0.7 2 L 3 -2.4', style: { fill: 'none', stroke: p.checkColor, strokeWidth: '1.5px', strokeLinecap: 'round', strokeLinejoin: 'round', pointerEvents: 'none' } }),
+                p.showCount && e('text', { x: 0, y: 0.5, style: { textAnchor: 'middle', dominantBaseline: 'middle', ...pinFont, fontSize: '8.5px', fontWeight: 700, fill: p.countFill, pointerEvents: 'none' } }, p.count)
+              )),
+              ap && activeLoc && e('g', { transform: 'translate(' + ap.x + ' ' + ap.y + ') scale(' + labelK + ')', style: { pointerEvents: 'none' } },
+                e('text', { x: 0, y: -30, style: { textAnchor: 'middle', ...pinFont, fontSize: '13px', fontWeight: 600, fill: 'var(--ink)', paintOrder: 'stroke', stroke: 'var(--paper-bright)', strokeWidth: '4px', strokeLinejoin: 'round' } }, activeLoc.name)
+              )
             )
-          )
-        ),
-        // card — overlaid on the map on desktop only (phones get it below the map)
-        !isMobile && detailCard(),
-        isLoading && e('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--map-sea)', backgroundImage: 'radial-gradient(var(--map-sea-dot) 0.9px, transparent 0.9px)', backgroundSize: '20px 20px' } },
-          e('div', { style: { fontFamily: MAP_MONO, fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--muted)', animation: 'mapPulse 1.4s ease-in-out infinite' } }, "Plotting the year's locations…")),
-        isError && e('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', background: 'var(--map-sea)' } },
-          e('div', { style: { fontFamily: MAP_MONO, fontSize: 12, color: 'var(--danger)', letterSpacing: '.03em', lineHeight: 1.7 } }, "Map libraries didn't load. Check the connection and reload the page.")),
-        isReady && e('div', { style: { position: 'absolute', right: 12, bottom: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 3 } },
-          e('button', { className: 'map-iconbtn', onClick: zoomIn, title: 'Zoom in', style: { ...zoomBtnStyle, opacity: zoomK >= VMAX ? 0.4 : 1 } }, '+'),
-          e('button', { className: 'map-iconbtn', onClick: zoomOut, title: 'Zoom out', style: { ...zoomBtnStyle, opacity: zoomK <= VMIN ? 0.4 : 1 } }, '−'),
-          e('button', { className: 'map-iconbtn', onClick: resetView, title: 'Fit all locations', style: { ...zoomBtnStyle, marginTop: 2, color: 'var(--green)', fontSize: 15, fontFamily: MAP_MONO } }, '⤢')
-        ),
-        isReady && e('div', { style: { position: 'absolute', left: 12, bottom: 12, zIndex: 3, fontFamily: MAP_MONO, fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--ink-3)', background: 'var(--paper-a86)', border: '1px solid var(--line)', padding: '5px 9px' } }, zoomK > 1 ? (zoomK.toFixed(1) + '× · drag to pan') : ('Fit · ' + zoomK.toFixed(1) + '×'))
-      ),
-      // phones: the pin card sits under the map, inside the same paper frame
-      isMobile && detailCard()
-    ),
-    // legend
-    e('div', { style: { marginTop: 12, fontFamily: MAP_MONO, fontSize: 11, letterSpacing: '.03em', color: 'var(--label)', display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' } },
-      e('span', null, isMobile ? 'Tap a pin for its details · pinch to zoom, drag to pan.' : ('Hover a pin for details · click to keep it open' + (editMode ? ', then tick it off.' : '.'))),
-      e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, e('circle', { cx: 7, cy: 7, r: 5, style: { fill: 'var(--green)', stroke: 'var(--paper)' }, strokeWidth: 1.5 })), ' Visited'),
-      e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, e('circle', { cx: 7, cy: 7, r: 4.4, style: { fill: 'var(--paper-bright)', stroke: 'var(--green)' }, strokeWidth: 2 })), ' To visit'),
-      e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7 } }, e('svg', { width: 16, height: 14, viewBox: '0 0 16 14' }, e('circle', { cx: 8, cy: 7, r: 6.2, style: { fill: 'none', stroke: 'var(--green)' }, strokeWidth: 1.3 }), e('circle', { cx: 8, cy: 7, r: 4, fill: 'var(--green)' })), ' Shot in 2+ months')
-    )
-  );
+          )),
+        detailCard(),
+        isLoading && e('div', { style: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: 'var(--ink-2)', animation: 'mapPulse 1.4s ease-in-out infinite' } }, 'Plotting the year’s locations…'),
+        isError && e('div', { style: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontSize: 16, color: 'var(--danger)' } }, 'The map couldn’t load. Check the connection and reload the page.'),
+        isReady && e('div', { style: sx('position: absolute; right: 16px; top: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 3') },
+          zoomBtn('plus', 'Zoom in', zoomIn, zoomK >= VMAX), zoomBtn('minus', 'Zoom out', zoomOut, zoomK <= VMIN),
+          zoomK > 1 && zoomBtn('fit', 'Fit all locations', resetView)),
+        isReady && e('span', { style: { position: 'absolute', left: 16, ...(isMobile ? { top: 16 } : { bottom: 16 }), zIndex: 3, padding: '4px 12px', borderRadius: 999, background: 'var(--paper)', border: '1px solid var(--line)', fontSize: 15, color: 'var(--ink-body)' } }, 'Zoom ' + zoomK.toFixed(1) + '×' + (zoomK > 1 ? ' · drag to pan' : ''))),
+      // hint + key
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; font-size: 15px; color: var(--ink-2)') },
+        e('span', null, isMobile ? 'Tap a pin for its details · pinch to zoom, drag to pan.' : ('Hover a pin for details · click to keep it open' + (editMode ? ', then tick it off.' : '.'))),
+        e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px') },
+          e('span', { style: sx('display: inline-flex; align-items: center; gap: 8px') }, mark({ background: 'var(--green)' }), 'Visited'),
+          e('span', { style: sx('display: inline-flex; align-items: center; gap: 8px') }, mark({ border: '3px solid var(--green)', background: 'var(--paper)' }), 'To visit'),
+          e('span', { style: sx('display: inline-flex; align-items: center; gap: 8px') }, mark({ background: 'var(--green)', border: '2px solid var(--paper)', outline: '2px solid var(--green)' }), 'Shot in 2+ months'))))));
 }
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
@@ -4613,6 +4585,12 @@ function App() {
   const month = monthForYear(data[mi], mi);
   const matted = heroFraming === 'Matted print';
   const mapPlaces = useMemo(() => buildMapPlaces(data), [data]);
+  // The photo on a pin's card: the location's main photo, from the first month that has one.
+  const mapPhotoFor = (locId) => {
+    if (!photoIndex) return null;
+    for (const m2 of data) { const l = m2.locations.find(x => x.id === locId); if (l) { const base = mainBase(m2.key, l); if (photoIndex.has(base + '-thumb')) return { src: Storage.photoUrl(base + '-thumb', imgEpoch || undefined), pos: focusStyle((data[0] && data[0].photoFocus) || {}, base) }; } }
+    return null;
+  };
 
   // Backfill each built-in location's own map coordinates from the table, so the
   // coordinates field is populated now that the postcode has been retired.
@@ -6990,7 +6968,7 @@ function App() {
       : weatherView
       ? e(WeatherView, { data, initialLocId: weatherLoc, defaultLocId: data[0] && data[0].weatherDefault, onSetDefault: editMode ? setWeatherDefault : null, onOpenMonth: goToMonth, isMobile, action: phoneAction({ height: 48 }), hrefFor: (i, id) => '#/' + viewYear + '/' + data[i].key + '/' + id })
       : mapView
-      ? oldPage(e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, onBack: goToYear, introText: mapIntro, onEditIntro: editMapIntro, editMode, editControl: null }))
+      ? e(MapView, { places: mapPlaces, onOpenMonth: goToMonth, onToggleVisited: toggleVisitedById, introText: mapIntro, onEditIntro: editMapIntro, editMode, photoFor: mapPhotoFor, hrefFor: (i, id) => '#/' + viewYear + '/' + data[i].key + '/' + id })
       : (printView && editMode)
         ? oldPage(renderPrintPage())
         : (yearView ? renderYearPage() : renderMonthPage()),
