@@ -5795,7 +5795,6 @@ function App() {
   const GROUP_OPTS = [['place','Place'],['area','Area'],['country','Country'],['month','Month'],['year','Year taken'],['subject','Subject'],['tag','Tag'],['trip','Trip'],['none','No grouping']];
   const openLightbox = (list, it) => { const idx = list.indexOf(it); setLightbox({ items: list, idx: idx < 0 ? 0 : idx }); };
   const renderGalleryPage = () => {
-    const mono = "'IBM Plex Mono',monospace";
     const focusMap = (data[0] && data[0].photoFocus) || {};
     const photoCredit = !!(data[0] && data[0].photoCredit);
     const tagLabel = {};
@@ -5832,45 +5831,56 @@ function App() {
     const groups = Array.from(groupMap.values()).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
     const flat = groups.flatMap(g => g.items);
 
-    const selCtl = (value, onChange, opts, label) => e('label', { style:{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:mono, fontSize:9.5, letterSpacing:'.12em', textTransform:'uppercase', color:'var(--label)' } }, label,
-      e('span', { style:{ position:'relative', display:'inline-flex' } },
-        e('select', { value, onChange:(ev)=>onChange(ev.target.value), 'aria-label':label, style:{ appearance:'none', WebkitAppearance:'none', MozAppearance:'none', height:30, padding:'0 24px 0 9px', background:'var(--paper)', border:'1px solid var(--line-strong)', color:'var(--ink)', fontFamily:mono, fontSize:11, letterSpacing:'.04em', textTransform:'none', cursor:'pointer', borderRadius:0 } }, opts.map(([v, l]) => e('option', { key:v, value:v }, l))),
-        e('span', { 'aria-hidden':'true', style:{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:10, color:'var(--green)' } }, '▾')));
-    const chip = (on, text, onClick, title) => e('button', { onClick, title, 'aria-pressed': on ? 'true' : 'false', className:'map-chip', style:{ height:30, padding:'0 10px', background: on ? 'var(--green)' : 'var(--paper)', color: on ? 'var(--paper)' : 'var(--ink-2)', border:'1px solid ' + (on ? 'var(--ink)' : 'var(--line-strong)'), fontFamily:mono, fontSize:10.5, letterSpacing:'.08em', textTransform:'uppercase', cursor:'pointer', boxShadow:'2px 2px 0 var(--shadow-10)' } }, text);
-    const sectionHead = (label, right) => e('div', { style:{ display:'flex', alignItems:'center', gap:14, marginTop:22, marginBottom:12 } },
-      e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:18, color:'var(--ink)', whiteSpace:'nowrap' } }, label),
-      e('span', { style:{ flex:1, height:1, background:'var(--line)' } }),
-      right != null && e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', color:'var(--faint)', whiteSpace:'nowrap' } }, right));
-    const gridStyle = { display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(210px, 1fr))', gap: isMobile ? 10 : 14 };
-    const tile = (list) => (it) => e('div', { key: it.key, className:'tile', role:'button', tabIndex:0, 'aria-label': it.caption, onClick:()=>openLightbox(list, it), onKeyDown:keyActivate(()=>openLightbox(list, it)), style:{ background:'var(--paper)', border:'1px solid var(--line)', cursor:'pointer', boxShadow:'0 1px 0 var(--lip)', transition:'transform .15s, box-shadow .15s' } },
-      e('div', { style:{ position:'relative', aspectRatio:'3 / 2', background:'var(--sunken)', overflow:'hidden' } },
-        e('img', { src: Storage.photoUrl(it.base + '-thumb', imgEpoch || undefined), alt:'', loading:'lazy', onError:(ev)=>{ ev.currentTarget.style.display = 'none'; }, style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', ...focusStyle(focusMap, it.base) } }),
-        it.starred && e('span', { title:'Fronts the printed month', style:{ position:'absolute', top:6, right:6, width:21, height:21, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, lineHeight:1, border:'1.5px solid var(--gold-deep)', background:'var(--gold)', color:'var(--field)' } }, '★')),
-      e('div', { style:{ padding:'6px 9px 7px' } },
-        e('div', { style:{ display:'flex', justifyContent:'space-between', gap:8, alignItems:'baseline' } },
-          e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:14, color:'var(--ink)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, it.loc.name),
-          e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.08em', color: it.loc.region === 'UK' ? 'var(--green)' : 'var(--terra)', whiteSpace:'nowrap' } }, it.month.name.slice(0, 3) + (it.year ? " '" + it.year : ''))),
-        (it.tags.length > 0 || (it.loc.area || '').trim()) && e('div', { style:{ marginTop:2, fontFamily:mono, fontSize:9, letterSpacing:'.06em', color:'var(--faint)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, [(it.loc.area || '').trim(), it.tags.join(' · ')].filter(Boolean).join(' · '))));
+    const H2 = { margin: 0, fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 28 : 30, lineHeight: 1.15 };
+    const quiet = { margin: 0, fontSize: 16, color: 'var(--ink-2)' };
+    const subText = sx('font-size: 16px; color: var(--ink-2)');
+    const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
+    const selCtl = (value, onChange, opts, label) => e('label', { style: isMobile ? sx('min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--ink-2)') : sx('display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--ink-2)') }, label,
+      e('select', { className: 'd-field', value, onChange: (ev) => onChange(ev.target.value), 'aria-label': label, style: { ...D.field, cursor: 'pointer', ...(isMobile ? { width: '100%', padding: '0 6px' } : { padding: '0 12px' }) } }, opts.map(([v, l]) => e('option', { key: v, value: v }, l))));
+    const chip = (on, text, onClick, title, dot) => e('button', { key: text, type: 'button', className: on ? undefined : 'd-chipbtn', onClick, title, 'aria-pressed': on ? 'true' : 'false', style: { ...(on ? D.pillOn : D.pill), flex: '0 0 auto' } },
+      dot && e('span', { style: { width: 9, height: 9, borderRadius: '50%', background: dot } }), text);
+    const linkBtn = (label, run, title, off) => e('button', { type: 'button', className: 'd-linkbtn', onClick: run, disabled: !!off, title, style: { ...sx('display: inline-flex; align-items: center; min-height: 44px; padding: 0; background: none; border: 0; font-family: inherit; font-weight: 500; font-size: 16px; text-decoration: underline'), color: off ? 'var(--ink-2)' : 'var(--green)', cursor: off ? 'default' : 'pointer' } }, label);
+    const groupHead = (label, right) => e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px') }, e('h2', { style: H2 }, label), right != null && e('span', { style: subText }, right));
+    const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))', gap: isMobile ? 24 : '28px 24px' };
+    // one photo: the picture (a gold star when it fronts its printed month), the location, when, and its area and tags
+    const tile = (list) => (it) => e('div', { key: it.key, className: 'd-card', role: 'button', tabIndex: 0, 'aria-label': it.caption + (it.starred ? ', starred' : ''), onClick: () => openLightbox(list, it), onKeyDown: keyActivate(() => openLightbox(list, it)), style: sx('display: flex; flex-direction: column; gap: 12px; min-width: 0; color: var(--ink); cursor: pointer') },
+      e('span', { style: sx('position: relative; display: block') },
+        e('img', { src: Storage.photoUrl(it.base + '-thumb', imgEpoch || undefined), srcSet: Storage.photoUrl(it.base + '-thumb', imgEpoch || undefined) + ' 500w, ' + Storage.photoUrl(it.base, imgEpoch || undefined) + ' 1600w', sizes: '(max-width: 640px) 100vw, 380px', alt: '', loading: 'lazy', onError: (ev) => { ev.currentTarget.style.visibility = 'hidden'; },
+          style: { display: 'block', width: '100%', aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: 12, background: 'var(--slot)', ...focusStyle(focusMap, it.base) } }),
+        it.starred && e('span', { title: 'Fronts the printed month', style: sx('position: absolute; top: 12px; right: 12px; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: var(--gold); color: var(--field)') }, e(DIcon, { name: 'star', size: 18, style: { fill: 'currentColor' } }))),
+      e('span', { style: sx('display: flex; flex-direction: column; gap: 2px') },
+        e('span', { style: sx('display: flex; align-items: baseline; justify-content: space-between; gap: 10px') },
+          e('span', { className: 'd-card-name', style: { fontFamily: SLAB, fontWeight: 700, fontSize: isMobile ? 24 : 26, lineHeight: 1.15, minWidth: 0 } }, it.loc.name),
+          e('span', { style: { ...subText, whiteSpace: 'nowrap' } }, it.month.name.slice(0, 3) + (it.year ? " '" + it.year : ''))),
+        (it.tags.length > 0 || (it.loc.area || '').trim()) && e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, [(it.loc.area || '').trim(), it.tags.join(' · ')].filter(Boolean).join(' · '))));
 
-    const photosTab = () => e('div', null,
-      e('div', { style:{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:'10px 14px', marginBottom:6 } },
-        selCtl(galleryGroup, setGalleryGroup, GROUP_OPTS, 'Group by'),
-        e('span', { style:{ display:'inline-flex', gap:6 } }, chip(f.region === 'all', 'All', ()=>setF({ region:'all' })), chip(f.region === 'uk', 'UK', ()=>setF({ region:'uk' })), chip(f.region === 'int', 'International', ()=>setF({ region:'int' }))),
-        chip(f.starred, '★ Starred', ()=>setF({ starred: !f.starred }), 'Photos that front a printed month'),
-        chip(f.visited, '✓ Visited', ()=>setF({ visited: !f.visited }), 'Locations ticked as done'),
-        allYears.length > 0 && selCtl(f.year, (v)=>setF({ year:v }), [['', 'All years']].concat(allYears.map(y => [y, "'" + y])), 'Year'),
-        allTags.length > 0 && selCtl(f.tag, (v)=>setF({ tag:v }), [['', 'All tags']].concat(allTags.map(t => [t, tagLabel[t]])), 'Tag'),
-        selCtl(gallerySort, setGallerySort, [['month','Calendar order'],['year','Year taken'],['name','Name']], 'Sort'),
-        e('span', { style:{ fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', color:'var(--faint)', marginLeft:'auto' } }, items.length + (items.length === 1 ? ' photo' : ' photos')),
-        editMode && e('button', { onClick: geocoding ? undefined : fillAreas, disabled: !!geocoding, title:'Look up the area (county) and country of every location with coordinates that has none, from OpenStreetMap', style:{ height:30, padding:'0 10px', background:'none', border:'1px dashed var(--line-strong)', color:'var(--label)', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', cursor: geocoding ? 'default' : 'pointer' } }, geocoding ? 'Looking up areas… ' + geocoding.done + ' / ' + geocoding.total : '⌖ fill in areas & countries'),
-        editMode && e('button', { onClick: () => mutateData(d => { d[0].photoCredit = !d[0].photoCredit; }), 'aria-pressed': photoCredit ? 'true' : 'false', title: (photoCredit ? 'On' : 'Off') + ' — shows @' + IG_HANDLE + ' in the corner of the large photos (the slideshows and this viewer) for everyone. Nothing is added to the stored images.', style:{ height:30, padding:'0 10px', background: photoCredit ? 'var(--sunken)' : 'none', border:'1px ' + (photoCredit ? 'solid var(--green)' : 'dashed var(--line-strong)'), color: photoCredit ? 'var(--green)' : 'var(--label)', fontFamily:mono, fontSize:10.5, letterSpacing:'.06em', cursor:'pointer' } }, (photoCredit ? '✓ ' : '') + '@' + IG_HANDLE + ' on photos')),
+    const regionChips = [chip(f.region === 'all', 'All', () => setF({ region: 'all' })), chip(f.region === 'uk', 'UK', () => setF({ region: 'uk' }), null, 'var(--green)'), chip(f.region === 'int', 'International', () => setF({ region: 'int' }), null, 'var(--terra)'),
+      chip(f.starred, 'Starred', () => setF({ starred: !f.starred }), 'Photos that front a printed month'), chip(f.visited, 'Visited', () => setF({ visited: !f.visited }), 'Locations ticked as done')];
+    const selects = [
+      e(React.Fragment, { key: 'g' }, selCtl(galleryGroup, setGalleryGroup, GROUP_OPTS, 'Group by')),
+      allYears.length > 0 && e(React.Fragment, { key: 'y' }, selCtl(f.year, (v) => setF({ year: v }), [['', 'All years']].concat(allYears.map(y => [y, "'" + y])), 'Year')),
+      allTags.length > 0 && e(React.Fragment, { key: 't' }, selCtl(f.tag, (v) => setF({ tag: v }), [['', 'All tags']].concat(allTags.map(t => [t, tagLabel[t]])), 'Tag')),
+      e(React.Fragment, { key: 's' }, selCtl(gallerySort, setGallerySort, [['month', 'Calendar order'], ['year', 'Year taken'], ['name', 'Name']], 'Sort'))];
+    const controls = isMobile
+      ? e('div', { style: sx('display: flex; flex-direction: column; gap: 14px; padding: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; overflow: hidden') },
+          e('div', { className: 'd-scroll-x', style: sx('display: flex; gap: 6px; margin: 0 -16px; padding: 0 16px') }, regionChips),
+          e('div', { style: sx('display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px') }, selects[0], selects[3], selects[1], selects[2]))
+      : e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 16px 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px') },
+          selects[0], e('div', { style: sx('display: flex; flex-wrap: wrap; gap: 6px') }, regionChips), selects.slice(1));
+    const photosTab = () => [
+      e('div', { key: 'c', style: sx('display: flex; flex-direction: column; gap: 16px') },
+        controls,
+        editMode && e('div', { style: sx('display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 16px') },
+          linkBtn(geocoding ? 'Looking up areas… ' + geocoding.done + ' of ' + geocoding.total : 'Fill in areas and countries', fillAreas, 'Look up the area (county) and country of every location with coordinates that has none, from OpenStreetMap', !!geocoding),
+          linkBtn('@' + IG_HANDLE + ' on photos · ' + (photoCredit ? 'on' : 'off'), () => mutateData(d => { d[0].photoCredit = !d[0].photoCredit; }), 'Shows @' + IG_HANDLE + ' in the corner of the large photos (the slideshows and the viewer) for everyone. Nothing is added to the stored images.'))),
       photoIndex === undefined
-        ? e('div', { style:{ marginTop:18, fontFamily:mono, fontSize:11, color:'var(--faint)', letterSpacing:'.06em' } }, 'Loading the photo list…')
+        ? e('p', { key: 'l', style: quiet }, 'Loading the photo list…')
         : !galleryItems.length
-        ? e('div', { style:{ marginTop:18, border:'1px dashed var(--line-dash)', background:'var(--paper-dim)', padding:'16px 18px', fontFamily:mono, fontSize:12, color:'var(--muted)', letterSpacing:'.02em' } }, 'No photos yet — drop one on a location in any month and it appears here.')
+        ? e('p', { key: 'n', style: quiet }, 'No photos yet — add one to a location in any month and it appears here.')
         : !items.length
-        ? e('div', { style:{ marginTop:18, fontSize:14, color:'var(--muted)' } }, 'No photos match these filters.')
-        : groups.map(g => e('div', { key:g.key }, galleryGroup !== 'none' && sectionHead(g.label, g.items.length + (g.items.length === 1 ? ' photo' : ' photos')), e('div', { style:{ ...gridStyle, marginTop: galleryGroup === 'none' ? 18 : 0 } }, g.items.map(tile(flat))))));
+        ? e('p', { key: 'm', style: quiet }, 'No photos match these filters.')
+        : groups.map(g => e('section', { key: 'g-' + g.key, 'aria-label': g.label || 'Photos', style: sx('display: flex; flex-direction: column; gap: 18px') },
+            galleryGroup !== 'none' && groupHead(g.label, plural(g.items.length, 'photo')), e('div', { style: grid }, g.items.map(tile(flat)))))];
 
     const reviewTab = () => {
       const ys = String(viewYear), yy = ys.slice(2);
@@ -5887,56 +5897,49 @@ function App() {
       const counts = {};
       visits.forEach(v => { const g = places.byId[v.loc.id]; if (!counts[g.id]) counts[g.id] = { g, n: 0, i: v.i, locId: v.loc.id }; counts[g.id].n++; });
       const top = Object.values(counts).sort((a, b) => b.n - a.n).slice(0, 6);
-      const stat = (n, label) => e('div', { key:label, style:{ flex:'1 1 110px', background:'var(--paper)', border:'1px solid var(--line)', padding:'12px 14px' } },
-        e('div', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:30, lineHeight:1, color:'var(--ink)' } }, n),
-        e('div', { style:{ marginTop:6, fontFamily:mono, fontSize:9.5, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--label)' } }, label));
-      const empty = (text) => e('div', { style:{ fontSize:14, color:'var(--muted)', lineHeight:1.5 } }, text);
-      const rowBtn = (key, onClick, left, right) => e('button', { key, className:'loc-row', onClick, style:{ width:'100%', display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:12, padding:'7px 8px', background:'none', border:'none', borderBottom:'1px solid var(--line-faint)', cursor:'pointer', textAlign:'left' } }, left, right);
-      return e('div', null,
-        e('div', { style:{ display:'flex', alignItems:'baseline', gap:16, flexWrap:'wrap', marginBottom:16 } }, yearRow(), e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.06em', color:'var(--ghost)' } }, 'visits logged · photos dated that year · trips · places')),
-        e('div', { style:{ display:'flex', gap:10, flexWrap:'wrap' } }, stat(visits.length, 'Visits logged'), stat(yearPhotos.length, 'Photos taken'), stat(yearTrips.length, 'Trips'), stat(placeIds.size, 'Places'), stat(areas.size, 'Areas'), stat(countries.size, 'Countries')),
-        sectionHead('Month by month', 'visits in green · photos in gold'),
-        e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(12, 1fr)', gap:isMobile?2:4 } }, perMonth.map(m => e('button', { key:m.i, onClick:()=>goToMonth(m.i, null), title: m.name + ': ' + m.visits + (m.visits === 1 ? ' visit · ' : ' visits · ') + m.photos + (m.photos === 1 ? ' photo' : ' photos'), style:{ display:'flex', flexDirection:'column', alignItems:'center', gap:5, padding:'6px 2px', background:'none', border:'none', cursor:'pointer' } },
-          e('div', { style:{ width:'100%', height:64, display:'flex', alignItems:'flex-end', justifyContent:'center', gap:2 } },
-            e('div', { style:{ width:'36%', height: (m.visits ? Math.max(3, Math.round(64 * m.visits / maxBar)) : 0) + 'px', background:'var(--green)' } }),
-            e('div', { style:{ width:'36%', height: (m.photos ? Math.max(3, Math.round(64 * m.photos / maxBar)) : 0) + 'px', background:'var(--gold)' } })),
-          e('span', { style:{ fontFamily:mono, fontSize:isMobile?8.5:9.5, letterSpacing:'.06em', color:'var(--muted)' } }, m.name.slice(0, 3))))),
-        e('div', { style:{ display:'flex', gap:24, flexWrap:'wrap' } },
-          e('div', { style:{ flex:'1 1 280px', minWidth:0 } }, sectionHead('Most visited'),
-            top.length ? top.map(x => rowBtn(x.g.id, ()=>goToMonth(x.i, x.locId), e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'var(--ink)' } }, x.g.label), e('span', { style:{ fontFamily:mono, fontSize:10.5, color:'var(--muted)', whiteSpace:'nowrap' } }, x.n + (x.n === 1 ? ' visit' : ' visits')))) : empty('No visits logged for ' + viewYear + ' yet — log them in a location\'s Visits row.')),
-          e('div', { style:{ flex:'1 1 280px', minWidth:0 } }, sectionHead('Trips'),
-            yearTrips.length ? yearTrips.map(t => rowBtn(t.id, ()=>setTripPeek(t.id), e('span', { style:{ display:'inline-flex', alignItems:'center', gap:8 } }, e('span', { style:{ color:'var(--slate)', fontSize:11 } }, '▲'), e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'var(--ink)' } }, t.name)), e('span', { style:{ fontFamily:mono, fontSize:10.5, color:'var(--muted)', whiteSpace:'nowrap' } }, fmtTripDates(t)))) : empty('No trips in ' + viewYear + '.'))),
-        sectionHead('Visit log', visits.length ? visits.length + (visits.length === 1 ? ' visit' : ' visits') : null),
-        visits.length
-          ? e('div', null, visits.map(v => rowBtn(v.id, ()=>goToMonth(v.i, v.loc.id),
-              e('span', { style:{ display:'flex', alignItems:'baseline', gap:12, minWidth:0, flexWrap:'wrap' } },
-                e('span', { style:{ fontFamily:mono, fontSize:11, color:'var(--ink-2)', whiteSpace:'nowrap' } }, fmtTripDates({ start: v.date })),
-                e('span', { style:{ fontFamily:"'Zilla Slab',serif", fontWeight:600, fontSize:15, color:'var(--ink)' } }, v.loc.name),
-                v.note && e('span', { style:{ fontSize:14, color:'var(--ink-3)' } }, v.note)),
-              e('span', { style:{ fontFamily:mono, fontSize:9.5, letterSpacing:'.1em', textTransform:'uppercase', color: v.loc.region === 'UK' ? 'var(--green)' : 'var(--terra)', whiteSpace:'nowrap' } }, v.month.name))))
-          : empty('Nothing logged yet. Each location brief has a Visits row — a date and a line about how it went.'),
-        sectionHead('Photos taken in ' + viewYear, yearPhotos.length ? yearPhotos.length + (yearPhotos.length === 1 ? ' photo' : ' photos') : null),
-        yearPhotos.length ? e('div', { style:gridStyle }, yearPhotos.map(tile(yearPhotos))) : empty("No photos dated '" + yy + " yet — the year under each photo in its brief (or the camera's date on upload) puts it here.")
-      );
+      const paper = sx('background: var(--paper); border: 1px solid var(--line); border-radius: 16px');
+      const stat = (n, label) => e('div', { key: label, style: { ...paper, borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 2, padding: isMobile ? '12px 14px' : '16px 18px' } },
+        e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, label), e('span', { style: { fontWeight: 600, fontSize: isMobile ? 28 : 36, lineHeight: 1.15 } }, n));
+      const rowBtn = (key, onClick, left, right) => e('button', { key, type: 'button', className: 'd-card', onClick, style: sx('width: 100%; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; min-height: 44px; padding: 8px 0; background: none; border: 0; border-top: 1px solid var(--line-soft); border-radius: 0; color: var(--ink); font-family: inherit; font-size: 16px; text-align: left; cursor: pointer') }, left, right);
+      const nameSpan = (text) => e('span', { className: 'd-card-name', style: { fontFamily: SLAB, fontWeight: 600, fontSize: 18 } }, text);
+      const side = (text) => e('span', { style: sx('font-size: 15px; color: var(--ink-2); white-space: nowrap') }, text);
+      const block = (title, right, body) => e('section', { key: title, 'aria-label': title, style: sx('display: flex; flex-direction: column; gap: 14px; min-width: 0') }, groupHead(title, right), body);
+      return [
+        e('div', { key: 'y', style: sx('display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px') },
+          dSelect({ value: viewYear, onChange: (ev) => setViewYear(parseInt(ev.target.value, 10)), 'aria-label': 'Calendar year', title: 'Choose the year to review' }, YEARS.map(y => e('option', { key: y, value: y }, 'Year ' + y))),
+          e('span', { style: sx('font-size: 15px; color: var(--ink-2)') }, 'Visits logged, photos dated that year, trips and places')),
+        e('div', { key: 's', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(' + (isMobile ? 140 : 160) + 'px, 100%), 1fr))', gap: isMobile ? 8 : 12 } },
+          stat(visits.length, 'Visits logged'), stat(yearPhotos.length, 'Photos taken'), stat(yearTrips.length, 'Trips'), stat(placeIds.size, 'Places'), stat(areas.size, 'Areas'), stat(countries.size, 'Countries')),
+        block('Month by month', 'Visits in green · photos in gold',
+          e('div', { style: { ...paper, display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gap: isMobile ? 2 : 6, padding: isMobile ? '14px 8px 6px' : '20px 22px 10px' } }, perMonth.map(m => e('button', { key: m.i, type: 'button', className: 'd-card', onClick: () => goToMonth(m.i, null), title: m.name + ': ' + plural(m.visits, 'visit') + ' · ' + plural(m.photos, 'photo'), 'aria-label': m.name + ': ' + plural(m.visits, 'visit') + ', ' + plural(m.photos, 'photo'),
+            style: sx('display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; padding: 0 0 6px; background: none; border: 0; color: var(--ink); font-family: inherit; cursor: pointer') },
+            e('span', { style: sx('width: 100%; height: 72px; display: flex; align-items: flex-end; justify-content: center; gap: 3px; border-bottom: 1px solid var(--line)') },
+              e('span', { style: { width: '34%', maxWidth: 18, borderRadius: '3px 3px 0 0', height: (m.visits ? Math.max(4, Math.round(70 * m.visits / maxBar)) : 0) + 'px', background: 'var(--green)' } }),
+              e('span', { style: { width: '34%', maxWidth: 18, borderRadius: '3px 3px 0 0', height: (m.photos ? Math.max(4, Math.round(70 * m.photos / maxBar)) : 0) + 'px', background: 'var(--gold)' } })),
+            e('span', { className: 'd-card-name', style: { fontSize: 13, color: 'var(--ink-2)' } }, isMobile ? m.name.slice(0, 1) : m.name.slice(0, 3)))))),
+        e('div', { key: 'two', style: sx('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 32px 44px') },
+          block('Most visited', null, top.length ? e('div', null, top.map(x => rowBtn(x.g.id, () => goToMonth(x.i, x.locId), nameSpan(x.g.label), side(plural(x.n, 'visit'))))) : e('p', { style: quiet }, 'No visits logged for ' + viewYear + ' yet — log them in a location’s Visits list.')),
+          block('Trips', null, yearTrips.length ? e('div', null, yearTrips.map(t => rowBtn(t.id, () => setTripPeek(t.id), nameSpan(t.name), side(fmtTripDates(t))))) : e('p', { style: quiet }, 'No trips in ' + viewYear + '.'))),
+        block('Visit log', visits.length ? plural(visits.length, 'visit') : null,
+          visits.length
+            ? e('div', null, visits.map(v => rowBtn(v.id, () => goToMonth(v.i, v.loc.id),
+                e('span', { style: sx('display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; min-width: 0') }, e('span', { style: { fontWeight: 600, whiteSpace: 'nowrap' } }, fmtTripDates({ start: v.date })), nameSpan(v.loc.name), v.note && e('span', { style: { color: 'var(--ink-body)' } }, v.note)),
+                side(v.month.name))))
+            : e('p', { style: quiet }, 'Nothing logged yet. Each location brief has a Visits list — a date and a line about how it went.')),
+        block('Photos taken in ' + viewYear, yearPhotos.length ? plural(yearPhotos.length, 'photo') : null,
+          yearPhotos.length ? e('div', { style: grid }, yearPhotos.map(tile(yearPhotos))) : e('p', { style: quiet }, "No photos dated '" + yy + ' yet — the year under each photo in its brief (or the camera’s date on upload) puts it here.'))];
     };
 
-    const tabBtn = (key, label) => e('button', { className:'gal-tab', role:'tab', onClick:()=>setGalleryTab(key), 'aria-selected': galleryTab === key ? 'true' : 'false', style:{ background:'none', border:'none', borderBottom:'2px solid ' + (galleryTab === key ? 'var(--green)' : 'transparent'), padding:'8px 2px 10px', marginBottom:-1, cursor:'pointer', fontFamily:mono, fontSize:11, letterSpacing:'.14em', textTransform:'uppercase', color: galleryTab === key ? 'var(--ink)' : 'var(--muted)' } }, label);
-    return e('div', null,
-      e('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24, flexWrap:'wrap' } },
-        e('div', { style: isMobile ? {} : { flex:'1 1 380px', minWidth:0 } },
-          null,
-          e('h1', { style:{ margin:'6px 0 0', fontFamily:"'Zilla Slab',serif", fontWeight:700, fontSize:isMobile?'clamp(32px,10vw,40px)':'clamp(40px,6vw,58px)', lineHeight:'0.95', color:'var(--ink)', letterSpacing:'-0.01em' } }, 'Gallery'),
-          e('div', { style:{ marginTop:10, fontSize:isMobile?15:16, color:'var(--ink-3)', maxWidth:'46ch', lineHeight:1.5 } }, 'Every photo in the calendar, gathered by place, area, month or tag — and the year in review: where you went, what you brought back.')
-        ),
-        e('div', { style:{ display:'flex', flexDirection:'column', alignItems:isMobile?'flex-start':'flex-end', gap:14, ...(isMobile?{width:'100%'}:{ flex:'1 1 auto' }) } },
-          null,
-          editToggle()
-        )
-      ),
-      e('div', { style:{ height:1, background:'var(--line)', margin:isMobile?'16px 0 0':'22px 0 0' } }),
-      e('div', { role:'tablist', style:{ display:'flex', gap:22, borderBottom:'1px solid var(--line)', marginBottom:18 } }, tabBtn('photos', 'Photos · ' + galleryItems.length), tabBtn('review', 'Year in review · ' + viewYear)),
-      galleryTab === 'review' ? reviewTab() : photosTab()
-    );
+    const tabBtn = (key, label) => e('button', { key, type: 'button', className: galleryTab === key ? 'gal-tab' : 'gal-tab d-chipbtn', role: 'tab', onClick: () => setGalleryTab(key), 'aria-selected': galleryTab === key ? 'true' : 'false', style: { ...(galleryTab === key ? D.pillOn : D.pill), padding: '0 18px', fontWeight: 600, fontSize: 16 } }, label);
+    return e('main', null, e('div', { style: { maxWidth: 1244, margin: '0 auto', padding: isMobile ? '18px 16px 48px' : '36px 32px 80px', display: 'flex', flexDirection: 'column', gap: isMobile ? 32 : 40 } },
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px') },
+        e('div', { style: sx('flex: 1 1 520px; min-width: 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px') },
+          e('h1', { style: { margin: 0, fontFamily: SLAB, fontWeight: 700, letterSpacing: '-0.01em', ...(isMobile ? { fontSize: 44, lineHeight: 1 } : { fontSize: 'clamp(44px, 6.6vw, 80px)', lineHeight: 0.95 }) } }, 'Gallery'),
+          e('p', { style: { margin: 0, fontSize: isMobile ? 18 : 21, lineHeight: 1.45, color: 'var(--ink-body)' } }, 'Every photo in the calendar, gathered by place, area, month or tag — and the year in review: where you went, what you brought back.'))),
+      e('div', { style: sx('display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin-bottom: -16px') },
+        e('div', { role: 'tablist', style: sx('display: flex; flex-wrap: wrap; gap: 6px') }, tabBtn('photos', 'Photos · ' + galleryItems.length), tabBtn('review', 'Year in review · ' + viewYear)),
+        galleryTab !== 'review' && e('span', { style: subText }, plural(items.length, 'photo'))),
+      galleryTab === 'review' ? reviewTab() : photosTab()));
   };
 
   // ─── Lightbox ─────────────────────────────────────────────────────────────
@@ -6981,7 +6984,7 @@ function App() {
     renderTopBar(),
     banner && e('div', { className:'old-page', style:{ maxWidth:1180 + (isMobile ? 32 : 100), margin:'0 auto', padding: isMobile ? '4px 16px 0' : '4px 50px 0' } }, banner),
     galleryView
-      ? oldPage(renderGalleryPage())
+      ? renderGalleryPage()
       : tripsView
       ? renderTripsPage()
       : weatherView
