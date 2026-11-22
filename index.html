@@ -621,12 +621,12 @@ function LogoMark({ style }) {
 }
 const IG_HANDLE = 'llandscapist'; // the owner's Instagram (home page + printed grid pages)
 const OWNER_NAME = 'Tim Dempsey';  // the watermark's bottom-left corner (the handle takes the bottom-right)
-// Longest edge of the print-size photo copy (<base>-print). A 3:2 photo that
-// fills the print-shop page (A4 landscape plus bleed, 303 × 216 mm) is cropped
-// at the sides, so its height does the work: 3840px long is 2560px tall,
-// 300 dpi over 216mm. Copies made before this was raised are 3200px — about
-// 250 dpi there, which still prints well on a wall calendar.
-const PRINT_MAX_EDGE = 3840;
+// Longest edge of the print-size photo copy (<base>-print): 3200px — the size
+// the owner exports and uploads every photo at, so keep it (his decision: a
+// larger value would leave the calendar with photos at two sizes). A 3:2
+// photo that fills the print-shop page (A4 landscape plus bleed, 303 × 216
+// mm) is about 250 dpi, on plain A4 about 260. An upload is never enlarged.
+const PRINT_MAX_EDGE = 3200;
 
 // Whether editing controls are shown (the owner, with the password) or the page
 // is view-only (family). Editable, KitField and LocationPhoto read it through

@@ -264,8 +264,8 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   (`pad()`: 11 / 8 / 0 mm), so that drawing is identical on all three and
   sits 8mm inside the trimmed edge; the cover band moves in by the bleed.
   The PDF is 28 pages either way (Chrome writes the page box in 300ths of
-  an inch — 303.0 × 215.9 mm). **The PDF is RGB, photos at 300 dpi, fonts
-  embedded; a printing company converts to CMYK itself** — crop marks,
+  an inch — 303.0 × 215.9 mm). **The PDF is RGB, each photo its whole 3200px print copy (about 250
+  dpi on the page, not resampled), fonts embedded; a printing company converts to CMYK itself** — crop marks,
   another bleed, a binding margin or CMYK output are not built: **the owner
   has not yet named the company — ask for its artwork guide before
   changing any of this.** Under the title a **photo check**
@@ -348,8 +348,8 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   their edge pixels read by `pixels.py`: photo to the very edge, or white
   all round on the bordered paper), `pdf_res_test.js` (9: the print-shop
   PDF made from real JPEGs at the three stored sizes — `pdfimages -list`
-  shows each full-page photo as its 3840 × 2560 print copy, still a JPEG,
-  300 dpi on the page, no web copy anywhere) and `fb1_test.js` (36: the hero on a laptop, a monitor
+  shows each full-page photo as its 3200 × 2133 print copy, still a JPEG,
+  about 250 dpi on the page, no web copy anywhere) and `fb1_test.js` (36: the hero on a laptop, a monitor
   and a phone, photo captions, the watermark and its switch, the viewer at
   844 × 390).
   `dshots.js` also scans every text for contrast under 4.5:1 (3:1 for
@@ -467,10 +467,11 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
     carry the print copy.
   - Each photo is stored three times: `<base>` (hero, ~1600px, the slideshows),
     `<base>-thumb` (~500px, tiles) and `<base>-print` (`PRINT_MAX_EDGE` =
-    3840px — a 3:2 photo filling the 303 × 216 mm print-shop page is then
-    300 dpi; copies made before 22 Nov 2026 are 3200px, about 250 dpi there,
-    and only a fresh upload replaces them — only the printable calendar
-    loads it), under
+    3200px — **the size the owner exports and uploads every photo at; do
+    not change it without asking** (it was raised unasked on 22 Nov 2026 and
+    he had it put back: he does not want photos at two sizes). A 3:2 photo
+    filling the 303 × 216 mm print-shop page is about 250 dpi; an upload is
+    never enlarged. Only the printable calendar loads it), under
     a **`photos/` folder**. `base = photoBase(monthKey, locId) =
     "photos/<monthKey>-ref-<locId>"`, e.g. `photos/jan-ref-lake-district`.
     Photos uploaded before the print size existed have no `-print` copy; the
