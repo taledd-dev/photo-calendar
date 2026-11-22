@@ -240,20 +240,43 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   (location cards, the brief, Home's month cards) or on print.
 - **Calendar** (`renderPrintPage`, "D · Calendar"; owner only; the top
   bar's green button is "Print / Save PDF"): title + "… · 28 pages · A4
-  landscape", the year picker, two cards — **What prints** (a dark pill
-  with a tick per event type, `printPrefs.hideKinds`; the "Photo captions"
-  switch) and **Before you print** (six steps) — then the 28 sheets, each a
+  landscape · 3mm bleed", the photo check, the year picker, two cards —
+  **What prints** (a dark pill with a tick per event type,
+  `printPrefs.hideKinds`; the "Photo captions" switch; the Paper pills) and
+  **Before you print** (seven steps for a print shop — save as PDF, then
+  what to tell the printer — six otherwise) — then the 28 sheets, each a
   `section.cal-sheet` (its name, `.no-print`) around `.sheet-box >
-  .print-sheet`. **Pages run to the paper's edge** (the owner asked why
-  every page had a white border): a sheet is the whole A4 page, 297 × 210
-  mm (`--sheet-w` / `--sheet-h` on `.cal-sheets`), and the page adds
-  `@page { margin: 0 }` in a `<style>` of its own; a cover or month photo
-  then fills the paper, while a grid or index page pads itself the same
-  8mm in (`pad()`), so its drawing is unchanged. The "What prints" switch
-  **"White border on every page"** (`printPrefs.border`, off unless set)
-  brings back the old form — a 281 × 193 mm sheet inside the stylesheet's
-  8mm `@page` margin — for a printer that cannot print to the edge. Either
-  way the PDF is 28 A4-landscape pages. **A sheet is a fixed drawing**;
+  .print-sheet`. **Paper** (the owner is having the calendar printed by a
+  printing company; he had asked why every page had a white border): the
+  "What prints" card's three pills set `printPrefs.paper` — the `PAPERS`
+  table in `renderPrintPage`. **`shop`, "Print shop · with bleed", is the
+  choice until another is made**: each sheet is 303 × 216 mm — A4 plus 3mm
+  of bleed on every side, no crop marks — photos run through the bleed,
+  and a dashed **cut line** (`[data-cut-line]`, `.no-print`, added by
+  `sheet()`) shows on screen where the printer trims, with a note above
+  the first sheet. `edge`, "A4 · to the edge": 297 × 210 mm, photos to the
+  paper's edge. `border`, "A4 · white border": a 281 × 193 mm sheet inside
+  the stylesheet's 8mm `@page` margin, for a home printer (a calendar
+  saved with the old `printPrefs.border: true` opens on it). The sheet's
+  size is `--sheet-w` / `--sheet-h` on `.cal-sheets`; for `shop` and
+  `edge` the page declares `@page { size: …; margin: 0 }` in a `<style>` of
+  its own; a grid or index page pads itself in by the paper's `inset`
+  (`pad()`: 11 / 8 / 0 mm), so that drawing is identical on all three and
+  sits 8mm inside the trimmed edge; the cover band moves in by the bleed.
+  The PDF is 28 pages either way (Chrome writes the page box in 300ths of
+  an inch — 303.0 × 215.9 mm). **The PDF is RGB, photos at 300 dpi, fonts
+  embedded; a printing company converts to CMYK itself** — crop marks,
+  another bleed, a binding margin or CMYK output are not built: **the owner
+  has not yet named the company — ask for its artwork guide before
+  changing any of this.** Under the title a **photo check**
+  (`calendarPhotos()` in `App`, `[data-print-check]`): how many of the
+  fourteen photos (cover, twelve month picks, back cover) are in place,
+  which are missing and which are "web size only". **"Print / Save PDF"
+  waits** (`printCalendar`): a sheet's `<img>` carries `data-print-wait`
+  until its print-size copy is shown, the button reads "Fetching the
+  photos…" meanwhile, and if a copy never arrives the owner is asked
+  ("Print as it is") before the dialog opens — a PDF made too early would
+  hold 1600px photos. **A sheet is a fixed drawing**;
   `SheetScale` (prop `mm`, the sheet's width) sets `--sheet-scale` on the
   column and CSS scales every sheet
   to the width on hand (a phone shows the whole sheet), while `.sheet-fixed`
@@ -316,11 +339,17 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `weather_next.js` flags test), `trips_d_test.js`, `gallery_d_test.js`,
   `map_d_test.js` (d3 / topojson / world-atlas served from `maplibs/`),
   `popups_shots.js` (29 checks of the pop-ups and the viewer),
-  `calendar_d_test.js` (54: the controls, symbols and fitted names, the
-  per-year large photo, day colours at night, the 390px scale, and the PDF
-  from `page.pdf()` both ways — 28 pages of A4 landscape by `pdfinfo`,
-  pages rendered with `pdftoppm` and their edge pixels read by `pixels.py`:
-  photo to the paper's edge, or white all round with the border switch on) and `fb1_test.js` (36: the hero on a laptop, a monitor
+  `calendar_d_test.js` (69: the controls, symbols and fitted names, the
+  per-year large photo, day colours at night, the 390px scale, the three
+  papers and the cut line, the photo check, the Print button waiting for
+  slow copies and asking about one that fails, and the PDF from
+  `page.pdf()` for each paper — 28 pages by `pdfinfo` at 303 × 216 mm or
+  A4, fonts embedded by `pdffonts`, pages rendered with `pdftoppm` and
+  their edge pixels read by `pixels.py`: photo to the very edge, or white
+  all round on the bordered paper), `pdf_res_test.js` (9: the print-shop
+  PDF made from real JPEGs at the three stored sizes — `pdfimages -list`
+  shows each full-page photo as its 3840 × 2560 print copy, still a JPEG,
+  300 dpi on the page, no web copy anywhere) and `fb1_test.js` (36: the hero on a laptop, a monitor
   and a phone, photo captions, the watermark and its switch, the viewer at
   844 × 390).
   `dshots.js` also scans every text for contrast under 4.5:1 (3:1 for
@@ -430,13 +459,18 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
     matching the Worker secret `UPLOAD_PASSWORD`. Because an `<img>` can't
     send a header, the site fetches print copies with it and shows `blob:`
     URLs: `fetchPrivateUrl(key, bust)` (session cache) + the
-    `usePrivateImage(key, bust)` hook, used by `PrintMonthPhoto` and
+    `usePrivateImage(key, bust)` hook (a failed fetch is tried again after
+    4, 8 and 12 s, and at once on the window event `pp-print-copies`, which
+    the Print button sends), used by `PrintMonthPhoto` and
     `LocationPhoto full`; the hero shows until the copy arrives ("Loading the
     print-size copy…" on-screen badge). `copyImage` sends the header so moves
     carry the print copy.
   - Each photo is stored three times: `<base>` (hero, ~1600px, the slideshows),
     `<base>-thumb` (~500px, tiles) and `<base>-print` (`PRINT_MAX_EDGE` =
-    3200px, ~290 dpi across A4 — only the printable calendar loads it), under
+    3840px — a 3:2 photo filling the 303 × 216 mm print-shop page is then
+    300 dpi; copies made before 22 Nov 2026 are 3200px, about 250 dpi there,
+    and only a fresh upload replaces them — only the printable calendar
+    loads it), under
     a **`photos/` folder**. `base = photoBase(monthKey, locId) =
     "photos/<monthKey>-ref-<locId>"`, e.g. `photos/jan-ref-lake-district`.
     Photos uploaded before the print size existed have no `-print` copy; the
