@@ -450,21 +450,24 @@
     .map-close:hover { color: var(--ink) !important; background: var(--sunken) !important; border-color: var(--line) !important; }
     .map-visitbtn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 var(--shadow-16) !important; }
     @keyframes mapPulse { 0%,100% { opacity: .45; } 50% { opacity: .9; } }
-    /* ── The printable calendar ── Each sheet is a fixed A4-landscape drawing
-       (281 × 193 mm: A4 less the 8mm page margin), a flex column so a grid
-       page can fill its height. Where the screen is narrower than a sheet,
+    /* ── The printable calendar ── Each sheet is a fixed A4-landscape drawing,
+       a flex column so a grid page can fill its height. Its size is
+       --sheet-w × --sheet-h, set by the Calendar page: the whole page, 297 ×
+       210 mm, photos to the paper's edge (the usual case; the page then also
+       sets the paper margin to none), or 281 × 193 mm inside an 8mm white
+       border (the owner's switch, for a printer that cannot print to the edge). Where the screen is narrower than a sheet,
        SheetScale sets --sheet-scale and the whole sheet shrinks to fit;
        `.sheet-fixed` controls on a sheet are scaled back up so they stay a
        fingertip wide. When printing, the scale is off, everything but the
        sheets hides, each sheet is exactly one page and colours print as shown. */
-    .print-sheet { position: relative; display: flex; flex-direction: column; flex: none; width: 281mm; height: 193mm; margin: 0 auto; background: #fff; border: 1px solid var(--line); box-shadow: 0 6px 18px var(--shadow-12); overflow: hidden; transform: scale(var(--sheet-scale, 1)); transform-origin: 0 0; break-after: page; page-break-after: always; break-inside: avoid; }
+    .print-sheet { position: relative; display: flex; flex-direction: column; flex: none; width: var(--sheet-w, 281mm); height: var(--sheet-h, 193mm); margin: 0 auto; background: #fff; border: 1px solid var(--line); box-shadow: 0 6px 18px var(--shadow-12); overflow: hidden; transform: scale(var(--sheet-scale, 1)); transform-origin: 0 0; break-after: page; page-break-after: always; break-inside: avoid; }
     .print-sheet.last { break-after: auto; page-break-after: auto; }
-    .sheet-box { height: calc(193mm * var(--sheet-scale, 1)); }
+    .sheet-box { height: calc(var(--sheet-h, 193mm) * var(--sheet-scale, 1)); }
     .sheet-fixed { transform: scale(calc(1 / var(--sheet-scale, 1))); }
     .sheet-badge { transform: scale(max(1, calc(0.6 / var(--sheet-scale, 1)))); }  /* a phone's index photos: a badge about 26px across */
     .sheet-tag { transform: scale(max(1, calc(0.8 / var(--sheet-scale, 1)))); }   /* …and their "Large photo" tag at about 11px */
     .sheet-fixed-bar { width: calc(100% * var(--sheet-scale, 1)); transform: scale(calc(1 / var(--sheet-scale, 1))); transform-origin: 0 100%; }
-    @page { size: A4 landscape; margin: 8mm; }
+    @page { size: A4 landscape; margin: 8mm; }  /* the white-border form; the Calendar page adds a rule with no margin for edge-to-edge */
     @media print {
       body { background: #fff; }
       .no-print { display: none !important; }
@@ -557,19 +560,20 @@ const D = {
 // The track of an on/off switch (Settings, the Calendar page's "Photo captions").
 const dTrack = (on) => e('span', { style: { ...sx('position: relative; flex: 0 0 52px; height: 30px; border-radius: 999px'), background: on ? 'var(--green)' : 'var(--dash)' } },
   e('span', { style: { ...sx('position: absolute; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--paper); transition: left .15s'), left: on ? 25 : 3 } }));
-// The Calendar page's sheets are a fixed A4 drawing (281 × 193 mm). Where the
-// column is narrower than a sheet, this sets --sheet-scale on its box and the
-// stylesheet shrinks every sheet inside to fit (never in print).
-function SheetScale({ className, style, children }) {
+// The Calendar page's sheets are a fixed A4 drawing, `mm` wide (297 edge to
+// edge, 281 with the white border). Where the column is narrower than a
+// sheet, this sets --sheet-scale on its box and the stylesheet shrinks every
+// sheet inside to fit (never in print).
+function SheetScale({ className, style, children, mm = 281 }) {
   const ref = useRef(null);
   React.useLayoutEffect(() => {
     const el = ref.current; if (!el) return;
-    const fit = () => { const w = el.clientWidth; if (w) el.style.setProperty('--sheet-scale', String(Math.min(1, Math.floor(w / (281 * 96 / 25.4) * 10000) / 10000))); };
+    const fit = () => { const w = el.clientWidth; if (w) el.style.setProperty('--sheet-scale', String(Math.min(1, Math.floor(w / (mm * 96 / 25.4) * 10000) / 10000))); };
     fit();
     if (typeof ResizeObserver === 'undefined') { window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit); }
     const ro = new ResizeObserver(fit); ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [mm]);
   return e('div', { ref, className, style }, children);
 }
 // A real <input> that saves on blur or Enter (Escape puts the old text back).
@@ -6722,12 +6726,18 @@ function App() {
   // the shared data (data[0].printPrefs) so they follow the owner across
   // devices; a single event's noPrint still applies on top. Printing goes
   // through the browser's dialog (Save as PDF lives there too): .no-print
-  // chrome hides and each .print-sheet is exactly one page.
+  // chrome hides and each .print-sheet is exactly one page. Pages run to the
+  // paper's edge (a 297 × 210 mm sheet, no paper margin) unless the owner
+  // switches on printPrefs.border: then each is 281 × 193 mm inside an 8mm
+  // white border, for a printer that cannot print to the edge. Either way a
+  // grid or index page keeps its content the same 8mm in from the paper.
   const renderPrintPage = () => {
     const FIG = "'Figtree', system-ui, sans-serif";
     const prefs = (data[0] && data[0].printPrefs) || {};
     const hiddenKinds = new Set(prefs.hideKinds || []);
     const captions = prefs.captions !== false;
+    const border = prefs.border === true;   // the 8mm white border; off = edge to edge
+    const pad = (css) => border ? css : css.replace(/(\d+(?:\.\d+)?(?:px|mm))/g, 'calc($1 + 8mm)');   // a sheet's own padding, plus the paper margin it replaces
     const setPrintPref = (patch) => mutateData(d => { d[0].printPrefs = { ...(d[0].printPrefs || {}), ...patch }; });
     const toggleKind = (k) => { const next = new Set(hiddenKinds); if (next.has(k)) next.delete(k); else next.add(k); setPrintPref({ hideKinds: Array.from(next) }); };
 
@@ -6837,7 +6847,7 @@ function App() {
         // clean full-bleed photo — its caption sits top-right of the grid page
         e(PrintMonthPhoto, { monthKey: m2.key, monthName: m2.name, locs: m2.locations, preferId: m2.printLoc, epoch: imgEpoch, photoIndex, variant: 'page', caption: false })));
 
-      sheet(m2.key + '-grid', m2.name + ' — calendar', e('div', { className: 'print-sheet', style: sx('gap: 12px; padding: 26px 30px 20px') },
+      sheet(m2.key + '-grid', m2.name + ' — calendar', e('div', { className: 'print-sheet', style: { gap: 12, padding: pad('26px 30px 20px') } },
         // header: month + year | the lockup, centred on the page | the photo's caption, the light, the note
         e('div', { style: sx('flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 16px') },
           e('h2', { style: { margin: 0, fontFamily: SLAB, fontWeight: 700, fontSize: 54, lineHeight: 0.95, color: 'var(--ink)', whiteSpace: 'nowrap' } }, m2.name + ' ',
@@ -6897,7 +6907,7 @@ function App() {
                 e(EventIcon, { name: eventIconKey(ev), size: 13, color: styleOf(ev).accent }),
                 ev.label + ' ' + (s === en ? s : s + '–' + en));
             })),
-          e('span', { style: sx('flex: none; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap') },
+          e('span', { style: sx('flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap') },   // stays on the right when a long key wraps
             igGlyph(14, 'var(--ink-body)'), '@' + IG_HANDLE))));
     });
 
@@ -6909,7 +6919,7 @@ function App() {
       const big = largeKey(pi);
       const ordered = half.filter(m2 => m2.key === big).concat(half.filter(m2 => m2.key !== big));
       sheet('index-' + pi, 'Photo index · ' + (pi + 1) + ' of 2 · ' + half[0].name + ' to ' + half[half.length - 1].name,
-        e('div', { className: 'print-sheet', style: sx('align-items: center; justify-content: center; padding: 4mm; background: var(--paper-bright)') },
+        e('div', { className: 'print-sheet', style: { ...sx('align-items: center; justify-content: center; background: var(--paper-bright)'), padding: pad('4mm') } },
           e('div', { style: sx('display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; width: 273mm; max-width: 100%') },
             ordered.map(m2 => {
               const large = m2.key === big;
@@ -6959,17 +6969,24 @@ function App() {
           e('div', { role: 'group', 'aria-label': 'Event types to print', style: sx('display: flex; flex-wrap: wrap; gap: 6px') }, kindOrder.map(chip)),
           e('button', { type: 'button', role: 'switch', 'aria-checked': captions ? 'true' : 'false', className: 'd-menurow', onClick: () => setPrintPref({ captions: !captions }), title: 'The photo’s caption, top-right of each month’s calendar page',
             style: sx('display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 56px; margin-top: 4px; padding: 0; background: transparent; border: 0; border-top: 1px solid var(--line-soft); color: var(--ink); font-family: inherit; font-size: 17px; font-weight: 500; text-align: left; cursor: pointer') },
-            e('span', null, 'Photo captions'), dTrack(captions))),
+            e('span', null, 'Photo captions'), dTrack(captions)),
+          e('button', { type: 'button', role: 'switch', 'aria-checked': border ? 'true' : 'false', className: 'd-menurow', onClick: () => setPrintPref({ border: !border }), title: 'Most home printers cannot print to the very edge of the paper',
+            style: sx('display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 64px; margin-top: -14px; padding: 6px 0; background: transparent; border: 0; border-top: 1px solid var(--line-soft); color: var(--ink); font-family: inherit; font-size: 17px; font-weight: 500; text-align: left; cursor: pointer') },
+            e('span', { style: sx('display: flex; flex-direction: column') }, e('span', null, 'White border on every page'),
+              e('span', { style: sx('font-weight: 400; font-size: 15px; color: var(--ink-2)') }, border ? 'On · 8mm of white all round, for a printer that cannot print to the edge' : 'Off · photos run to the edge of the paper')),
+            dTrack(border))),
         e('section', { 'aria-label': 'Before you print', style: { ...card, gap: 12 } },
           e('h2', { style: H2 }, 'Before you print'),
           e('ol', { style: sx('margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 16px; color: var(--ink-body)') },
-            e('li', null, 'In the print dialog choose A4, Landscape, default margins and 100% scale. Switch “Background graphics” on if colours print pale. “Save as PDF” keeps a copy.'),
+            e('li', null, 'In the print dialog choose A4, Landscape, default margins and 100% scale. Switch “Background graphics” on if colours print pale. “Save as PDF” keeps a copy.' + (border ? '' : ' Pages run to the paper’s edge: if your printer leaves a white strip or cuts the edges off, switch on “White border on every page”.')),
             e('li', null, 'Each month uses its starred location’s photo, or its first location with a photo. Its caption sits top-right of the month’s calendar page.'),
             e('li', null, 'UK bank holidays (England & Wales, substitutes included) and the named days are worked out for the chosen year and sit as small text beside the date.'),
             e('li', null, 'Drop a photo onto the cover and back-cover sheets below.'),
             e('li', null, 'Untick “Shown on the printable calendar” in an event’s editor to keep a single event off.'),
             e('li', null, 'Photos upload with a print-size copy (' + PRINT_MAX_EDGE + 'px). A sheet flagged “web size only” holds an older photo — drop it on again to replace it at print quality.')))),
-      e(SheetScale, { className: 'cal-sheets', style: { display: 'flex', flexDirection: 'column', gap: isMobile ? 24 : 32, minWidth: 0 } }, sheets)));
+      // edge to edge: a full A4 sheet and no paper margin (this rule comes after the stylesheet's, so it wins)
+      !border && e('style', null, '@page { size: A4 landscape; margin: 0; }'),
+      e(SheetScale, { className: 'cal-sheets', mm: border ? 281 : 297, style: { display: 'flex', flexDirection: 'column', gap: isMobile ? 24 : 32, minWidth: 0, '--sheet-w': border ? '281mm' : '297mm', '--sheet-h': border ? '193mm' : '210mm' } }, sheets)));
   };
 
   // ─── Event editor modal ────────────────────────────────────────────────────

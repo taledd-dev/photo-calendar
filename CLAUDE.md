@@ -244,8 +244,18 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   with a tick per event type, `printPrefs.hideKinds`; the "Photo captions"
   switch) and **Before you print** (six steps) — then the 28 sheets, each a
   `section.cal-sheet` (its name, `.no-print`) around `.sheet-box >
-  .print-sheet`. **A sheet is a fixed 281 × 193 mm drawing**;
-  `SheetScale` sets `--sheet-scale` on the column and CSS scales every sheet
+  .print-sheet`. **Pages run to the paper's edge** (the owner asked why
+  every page had a white border): a sheet is the whole A4 page, 297 × 210
+  mm (`--sheet-w` / `--sheet-h` on `.cal-sheets`), and the page adds
+  `@page { margin: 0 }` in a `<style>` of its own; a cover or month photo
+  then fills the paper, while a grid or index page pads itself the same
+  8mm in (`pad()`), so its drawing is unchanged. The "What prints" switch
+  **"White border on every page"** (`printPrefs.border`, off unless set)
+  brings back the old form — a 281 × 193 mm sheet inside the stylesheet's
+  8mm `@page` margin — for a printer that cannot print to the edge. Either
+  way the PDF is 28 A4-landscape pages. **A sheet is a fixed drawing**;
+  `SheetScale` (prop `mm`, the sheet's width) sets `--sheet-scale` on the
+  column and CSS scales every sheet
   to the width on hand (a phone shows the whole sheet), while `.sheet-fixed`
   / `.sheet-fixed-bar` controls on a sheet are scaled back up to stay 44px;
   the print rules switch the scale off and turn the wrappers into plain
@@ -306,10 +316,11 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `weather_next.js` flags test), `trips_d_test.js`, `gallery_d_test.js`,
   `map_d_test.js` (d3 / topojson / world-atlas served from `maplibs/`),
   `popups_shots.js` (29 checks of the pop-ups and the viewer),
-  `calendar_d_test.js` (48: the controls, symbols and fitted names, the
+  `calendar_d_test.js` (54: the controls, symbols and fitted names, the
   per-year large photo, day colours at night, the 390px scale, and the PDF
-  from `page.pdf()` — 28 pages of A4 landscape by `pdfinfo`, pages rendered
-  with `pdftoppm`) and `fb1_test.js` (36: the hero on a laptop, a monitor
+  from `page.pdf()` both ways — 28 pages of A4 landscape by `pdfinfo`,
+  pages rendered with `pdftoppm` and their edge pixels read by `pixels.py`:
+  photo to the paper's edge, or white all round with the border switch on) and `fb1_test.js` (36: the hero on a laptop, a monitor
   and a phone, photo captions, the watermark and its switch, the viewer at
   844 × 390).
   `dshots.js` also scans every text for contrast under 4.5:1 (3:1 for
