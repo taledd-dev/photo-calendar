@@ -6866,6 +6866,10 @@ function App() {
     // page, the back cover) and at the foot of those that hang below it (the
     // cover, each dates page, the second index page). On screen only.
     const HOLE = { across: 5, inside: 7.5 };
+    // An index page's block of photos would sit only 3mm from that hole, so
+    // on the print-shop paper it slides 3mm towards the fold (the photos keep
+    // their size; about 6mm clear of the hole, 10mm from the cut at the fold).
+    const INDEX_SHIFT = 3;
     const holeMark = (top) => e('div', { key: 'hole', className: 'no-print', 'aria-hidden': 'true', 'data-drill-hole': top ? 'top' : 'bottom', style: { position: 'absolute', left: 'calc(50% - ' + HOLE.across / 2 + 'mm)', [top ? 'top' : 'bottom']: (paper.bleed + HOLE.inside - HOLE.across / 2) + 'mm', width: HOLE.across + 'mm', height: HOLE.across + 'mm', boxSizing: 'border-box', borderRadius: '50%', zIndex: 7, border: 'calc(1.5px / var(--sheet-scale, 1)) solid var(--on-photo)', boxShadow: '0 0 0 calc(1px / var(--sheet-scale, 1)) var(--ink), inset 0 0 0 calc(1px / var(--sheet-scale, 1)) var(--ink)', pointerEvents: 'none' } });   // a white ring edged dark: it shows on any photo and on white paper
     let pageNo = 0;
     const sheet = (key, text, node) => { pageNo += 1;
@@ -6996,9 +7000,10 @@ function App() {
     halves.forEach((half, pi) => {
       const big = largeKey(pi);
       const ordered = half.filter(m2 => m2.key === big).concat(half.filter(m2 => m2.key !== big));
+      const slide = !cutLine ? 0 : (pageNo + 1) % 2 === 0 ? INDEX_SHIFT : -INDEX_SHIFT;   // away from the hole: down on a page that hangs above the fold, up on one below
       sheet('index-' + pi, 'Photo index · ' + (pi + 1) + ' of 2 · ' + half[0].name + ' to ' + half[half.length - 1].name,
         e('div', { className: 'print-sheet', style: { ...sx('align-items: center; justify-content: center; background: var(--paper-bright)'), padding: pad('4mm') } },
-          e('div', { style: sx('display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; width: 273mm; max-width: 100%') },
+          e('div', { 'data-index-block': '1', style: { ...sx('display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; width: 273mm; max-width: 100%'), ...(slide ? { position: 'relative', top: slide + 'mm' } : {}) } },
             ordered.map(m2 => {
               const large = m2.key === big;
               return e('div', { key: m2.key, 'data-index-month': m2.key, 'data-large': large ? '1' : undefined,

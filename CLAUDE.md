@@ -286,8 +286,14 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   foot-centre of the odd ones (cover, dates pages, second index page). It
   clears everything on the dates pages by 4mm or more and sits in the
   cover band between the lockup and the year; on the two index pages it
-  is only about 3mm from the middle photo — **moving those photos ~3mm
-  towards the fold was offered and is awaiting the owner's answer.**
+  was only about 3mm from the middle photo, so **on the `shop` paper each
+  index page's block of photos slides 3mm towards the fold** (the owner's
+  go-ahead; `INDEX_SHIFT`, `[data-index-block]`): same-size photos, 6mm
+  clear of the hole, 10mm from the cut at the fold; centred as before on
+  the other two papers. **A test copy:** Mixam quoted the owner £50 for one
+  copy against £66 for all ten, so a separate test print nearly doubles
+  the bill — the advice given was to order the ten in one go and check the
+  PDF and Mixam's on-screen proof carefully instead.
   Mixam converts RGB to CMYK itself on upload (their article; the most
   saturated colours may print a little duller) — no CMYK output is
   needed. Crop marks are not wanted. Under the title a **photo check**
@@ -361,9 +367,10 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `weather_next.js` flags test), `trips_d_test.js`, `gallery_d_test.js`,
   `map_d_test.js` (d3 / topojson / world-atlas served from `maplibs/`),
   `popups_shots.js` (29 checks of the pop-ups and the viewer),
-  `calendar_d_test.js` (72: the controls, symbols and fitted names, the
+  `calendar_d_test.js` (74: the controls, symbols and fitted names, the
   per-year large photo, day colours at night, the 390px scale, the three
-  papers, the cut line and the hole ring, the photo check, the Print button waiting for
+  papers, the cut line and the hole ring, the index photos clear of the
+  hole, the photo check, the Print button waiting for
   slow copies and asking about one that fails, and the PDF from
   `page.pdf()` for each paper — 28 pages by `pdfinfo` at 303 × 216 mm or
   A4, fonts embedded by `pdffonts`, pages rendered with `pdftoppm` and
