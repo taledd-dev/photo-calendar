@@ -6858,11 +6858,22 @@ function App() {
     const sheets = [];
     // (with bleed, a dashed line shows on screen where the printer cuts)
     const cutLine = paper.bleed > 0 && e('div', { key: 'cut', className: 'no-print', 'aria-hidden': 'true', 'data-cut-line': '1', style: { position: 'absolute', left: paper.bleed + 'mm', top: paper.bleed + 'mm', right: paper.bleed + 'mm', bottom: paper.bleed + 'mm', zIndex: 7, border: 'calc(1px / var(--sheet-scale, 1)) dashed var(--on-photo)', mixBlendMode: 'difference', pointerEvents: 'none' } });
-    const sheet = (key, text, node) => sheets.push(e('section', { key, className: 'cal-sheet', 'aria-label': text, style: sx('display: flex; flex-direction: column; gap: 8px; min-width: 0') },
-      e('span', { className: 'no-print', style: D.label }, text),
-      e('div', { className: 'sheet-box' }, cutLine ? React.cloneElement(node, null, ...React.Children.toArray(node.props.children), cutLine) : node)));
+    // …and a small circle where the hanging hole is drilled. The owner's
+    // printer is Mixam, as a stapled wall calendar with one centred hole: by
+    // their A4 print guide the hole is 5mm across, its centre 7.5mm inside the
+    // cut, on the edge away from the fold — so at the top of the pages that
+    // hang above the fold (the even ones: each month's photo, the first index
+    // page, the back cover) and at the foot of those that hang below it (the
+    // cover, each dates page, the second index page). On screen only.
+    const HOLE = { across: 5, inside: 7.5 };
+    const holeMark = (top) => e('div', { key: 'hole', className: 'no-print', 'aria-hidden': 'true', 'data-drill-hole': top ? 'top' : 'bottom', style: { position: 'absolute', left: 'calc(50% - ' + HOLE.across / 2 + 'mm)', [top ? 'top' : 'bottom']: (paper.bleed + HOLE.inside - HOLE.across / 2) + 'mm', width: HOLE.across + 'mm', height: HOLE.across + 'mm', boxSizing: 'border-box', borderRadius: '50%', zIndex: 7, border: 'calc(1.5px / var(--sheet-scale, 1)) solid var(--on-photo)', boxShadow: '0 0 0 calc(1px / var(--sheet-scale, 1)) var(--ink), inset 0 0 0 calc(1px / var(--sheet-scale, 1)) var(--ink)', pointerEvents: 'none' } });   // a white ring edged dark: it shows on any photo and on white paper
+    let pageNo = 0;
+    const sheet = (key, text, node) => { pageNo += 1;
+      sheets.push(e('section', { key, className: 'cal-sheet', 'aria-label': text, style: sx('display: flex; flex-direction: column; gap: 8px; min-width: 0') },
+        e('span', { className: 'no-print', style: D.label }, text),
+        e('div', { className: 'sheet-box' }, cutLine ? React.cloneElement(node, null, ...React.Children.toArray(node.props.children), cutLine, holeMark(pageNo % 2 === 0)) : node))); };
     if (cutLine) sheets.push(e('p', { key: 'cut-note', className: 'no-print', style: sx('margin: 0; max-width: 760px; font-size: 16px; color: var(--ink-2)') },
-      'The dashed line on each sheet is where the printer cuts. Everything outside it is spare picture: it is trimmed off, and is there so that no white edge shows if a cut lands a hair out. The line shows on screen only.'));
+      'The dashed line on each sheet is where the printer cuts. Everything outside it is spare picture: it is trimmed off, and is there so that no white edge shows if a cut lands a hair out. The small circle is where the 5mm hanging hole is drilled: at the top of each photo page and at the foot of each dates page. If it lands on something that matters in a photo, move that photo’s focus point a little, or choose another photo. Both marks show on screen only.'));
 
     // Cover: the cover photo with the band.
     sheet('cover', 'Cover', e('div', { className: 'print-sheet', style: { background: 'var(--paper-bright)' } },

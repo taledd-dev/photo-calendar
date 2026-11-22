@@ -254,7 +254,9 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   of bleed on every side, no crop marks — photos run through the bleed,
   and a dashed **cut line** (`[data-cut-line]`, `.no-print`, added by
   `sheet()`) shows on screen where the printer trims, with a note above
-  the first sheet. `edge`, "A4 · to the edge": 297 × 210 mm, photos to the
+  the first sheet; with it a small ring (`holeMark`, `[data-drill-hole=
+  "top|bottom"]`, also `.no-print`; the owner's go-ahead) marks **the
+  hanging hole** — see "The print job" below for where it falls. `edge`, "A4 · to the edge": 297 × 210 mm, photos to the
   paper's edge. `border`, "A4 · white border": a 281 × 193 mm sheet inside
   the stylesheet's 8mm `@page` margin, for a home printer (a calendar
   saved with the old `printPrefs.border: true` opens on it). The sheet's
@@ -265,10 +267,30 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   sits 8mm inside the trimmed edge; the cover band moves in by the bleed.
   The PDF is 28 pages either way (Chrome writes the page box in 300ths of
   an inch — 303.0 × 215.9 mm). **The PDF is RGB, each photo its whole 3200px print copy (about 250
-  dpi on the page, not resampled), fonts embedded; a printing company converts to CMYK itself** — crop marks,
-  another bleed, a binding margin or CMYK output are not built: **the owner
-  has not yet named the company — ask for its artwork guide before
-  changing any of this.** Under the title a **photo check**
+  dpi on the page, not resampled), fonts embedded.** **The print job**
+  (agreed with the owner, 22 Nov 2026): **Mixam** (mixam.co.uk — this
+  environment cannot open their site; the owner sends what is needed), a
+  **stapled wall calendar, A4 landscape, one centred drilled hole**, at
+  most ten copies, as gifts. Suggested order: 24 pages on 170gsm silk + a
+  4-page cover on 250gsm silk, inner cover printing on, matt lamination,
+  no foiling; one test copy before the rest. Mixam's own A4 print guide
+  (the owner's download) matches the `shop` paper exactly — 303 × 216 mm
+  with 3mm bleed, a 5mm quiet area (everything printed here sits 8mm or
+  more inside the cut), **every page supplied upright** ("Body Top" = a
+  photo page, hole at the top, fold at the foot; "Body Bottom" = a dates
+  page, fold at the top, hole at the foot). The 28 pages map as: 1 front
+  cover · 2 inside front cover (January's photo) · 3–26 the 24 body pages
+  · 27 inside back cover (the second index page) · 28 back cover. **The
+  hole** is 5mm across, centred, its centre 7.5mm inside the cut (`HOLE`):
+  top-centre of the even pages (photos, first index page, back cover),
+  foot-centre of the odd ones (cover, dates pages, second index page). It
+  clears everything on the dates pages by 4mm or more and sits in the
+  cover band between the lockup and the year; on the two index pages it
+  is only about 3mm from the middle photo — **moving those photos ~3mm
+  towards the fold was offered and is awaiting the owner's answer.**
+  Mixam converts RGB to CMYK itself on upload (their article; the most
+  saturated colours may print a little duller) — no CMYK output is
+  needed. Crop marks are not wanted. Under the title a **photo check**
   (`calendarPhotos()` in `App`, `[data-print-check]`): how many of the
   fourteen photos (cover, twelve month picks, back cover) are in place,
   which are missing and which are "web size only". **"Print / Save PDF"
@@ -339,9 +361,9 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
   `weather_next.js` flags test), `trips_d_test.js`, `gallery_d_test.js`,
   `map_d_test.js` (d3 / topojson / world-atlas served from `maplibs/`),
   `popups_shots.js` (29 checks of the pop-ups and the viewer),
-  `calendar_d_test.js` (69: the controls, symbols and fitted names, the
+  `calendar_d_test.js` (72: the controls, symbols and fitted names, the
   per-year large photo, day colours at night, the 390px scale, the three
-  papers and the cut line, the photo check, the Print button waiting for
+  papers, the cut line and the hole ring, the photo check, the Print button waiting for
   slow copies and asking about one that fails, and the PDF from
   `page.pdf()` for each paper — 28 pages by `pdfinfo` at 303 × 216 mm or
   A4, fonts embedded by `pdffonts`, pages rendered with `pdftoppm` and
