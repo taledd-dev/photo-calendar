@@ -955,6 +955,16 @@ the owner attached. **Where the brief and a board disagree, ask the owner.**
 
 ## Working on it
 
+- **Talk it through before building.** The owner, 22 Nov 2026: *"how about
+  we brainstorm things first before you start making changes to the
+  website"* — said after the print-shop work, where a "best set-up" request
+  was built and published in one go and the print-copy size was raised
+  without being asked for (he had it put back). So: for anything beyond a
+  change he has spelled out, set out the options and a recommendation in
+  plain language first, agree what will be built, and only then edit and
+  publish. Never change something he did not ask about as part of a larger
+  job. (The reading that a small, exactly specified fix can still go
+  straight ahead is Claude's, not his words — if unsure, ask.)
 - **Live at `https://photoplan.studio`** (custom domain). Set up via a `CNAME`
   file (`photoplan.studio`) + Cloudflare DNS (four A records to GitHub's
   `185.199.108–111.153`, **DNS-only/grey**, plus a `www` CNAME) + GitHub Pages
